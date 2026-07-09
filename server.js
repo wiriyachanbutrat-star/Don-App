@@ -27,6 +27,49 @@ async function fetchTwelveData(path, params) {
   return data;
 }
 
+function ema(values, period) {
+  const k = 2 / (period + 1);
+  let prev = values.slice(0, period).reduce((a, b) => a + b, 0) / period;
+  const out = new Array(values.length).fill(null);
+  out[period - 1] = prev;
+  for (let i = period; i < values.length; i++) {
+    prev = values[i] * k + prev * (1 - k);
+    out[i] = prev;
+  }
+  return out;
+}
+
+function rsi(closes, period = 14) {
+  let gains = 0, losses = 0;
+  for (let i = 1; i <= period; i++) {
+    const diff = closes[i] - closes[i - 1];
+    if (diff >= 0) gains += diff; else losses -= diff;
+  }
+  let avgGain = gains / period;
+  let avgLoss = losses / period;
+  for (let i = period + 1; i < closes.length; i++) {
+    const diff = closes[i] - closes[i - 1];
+    const gain = diff > 0 ? diff : 0;
+    const loss = diff < 0 ? -diff : 0;
+    avgGain = (avgGain * (period - 1) + gain) / period;
+    avgLoss = (avgLoss * (period - 1) + loss) / period;
+  }
+  if (avgLoss === 0) return 100;
+  const rs = avgGain / avgLoss;
+  return 100 - 100 / (1 + rs);
+}
+
+function macd(closes) {
+  const ema12 = ema(closes, 12);
+  const ema26 = ema(closes, 26);
+  const macdLine = closes.map((_, i) => (ema12[i] != null && ema26[i] != null) ? ema12[i] - ema26[i] : null);
+  const macdValues = macdLine.filter(v => v != null);
+  const signalSeries = ema(macdValues, 9);
+  const signal = signalSeries[signalSeries.length - 1];
+  const macdNow = macdValues[macdValues.length - 1];
+  return { macd: macdNow, signal, histogram: macdNow - signal };
+}
+
 app.get('/api/market-data', async (req, res) => {
   if (!TWELVE_DATA_API_KEY) {
     return res.status(500).json({ error: 'ยังไม่ได้ตั้งค่า TWELVE_DATA_API_KEY บนเซิร์ฟเวอร์' });
@@ -36,13 +79,7 @@ app.get('/api/market-data', async (req, res) => {
     : '1h';
 
   try {
-    const [series, rsi, macd, ema20, ema50] = await Promise.all([
-      fetchTwelveData('time_series', { symbol: SYMBOL, interval, outputsize: 100 }),
-      fetchTwelveData('rsi', { symbol: SYMBOL, interval }),
-      fetchTwelveData('macd', { symbol: SYMBOL, interval }),
-      fetchTwelveData('ema', { symbol: SYMBOL, interval, time_period: 20 }),
-      fetchTwelveData('ema', { symbol: SYMBOL, interval, time_period: 50 }),
-    ]);
+    const series = await fetchTwelveData('time_series', { symbol: SYMBOL, interval, outputsize: 100 });
 
     // Twelve Data returns newest-first; put oldest-first for trend reading.
     const candles = series.values.slice().reverse().map(c => ({
@@ -62,6 +99,9 @@ app.get('/api/market-data', async (req, res) => {
     const recentUp = candles.slice(-15).filter(c => c.close >= c.open).length;
     const recentDown = 15 - recentUp;
 
+    const ema20Series = ema(closes, 20);
+    const ema50Series = ema(closes, 50);
+
     res.json({
       symbol: SYMBOL,
       interval,
@@ -70,14 +110,10 @@ app.get('/api/market-data', async (req, res) => {
       resistance,
       candleCounts: { up: recentUp, down: recentDown },
       recentCandles: recent,
-      rsi: Number(rsi.values[0].rsi),
-      macd: {
-        macd: Number(macd.values[0].macd),
-        signal: Number(macd.values[0].macd_signal),
-        histogram: Number(macd.values[0].macd_hist),
-      },
-      ema20: Number(ema20.values[0].ema),
-      ema50: Number(ema50.values[0].ema),
+      rsi: rsi(closes),
+      macd: macd(closes),
+      ema20: ema20Series[ema20Series.length - 1],
+      ema50: ema50Series[ema50Series.length - 1],
     });
   } catch (err) {
     console.error(err);
