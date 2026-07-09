@@ -28,6 +28,8 @@ app.post('/api/analyze', async (req, res) => {
       },
       body: JSON.stringify({
         model: MODEL,
+        temperature: 0.3,
+        response_format: { type: 'json_object' },
         messages: [
           {
             role: 'user',
