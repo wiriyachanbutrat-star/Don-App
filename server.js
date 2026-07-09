@@ -9,6 +9,10 @@ const MODEL = 'meta-llama/llama-4-scout-17b-16e-instruct';
 app.use(express.json({ limit: '15mb' }));
 app.use(express.static(__dirname));
 
+app.get('/', (req, res) => {
+  res.sendFile(require('path').join(__dirname, 'gold.html'));
+});
+
 app.post('/api/analyze', async (req, res) => {
   if (!API_KEY) {
     return res.status(500).json({ error: 'ยังไม่ได้ตั้งค่า GROQ_API_KEY บนเซิร์ฟเวอร์' });
