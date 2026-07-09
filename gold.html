@@ -368,6 +368,8 @@
   <!-- STEP 3: RESULTS -->
   <div id="view-results">
 
+    <button class="btn btn-gold" id="newImageBtn" type="button" style="width:100%; margin-bottom:18px;">+ วิเคราะห์ภาพใหม่</button>
+
     <div class="verdict-panel">
       <div class="verdict-header">AI Prediction</div>
       <div class="gauge-wrap">
@@ -558,6 +560,12 @@
   const ANALYSIS_PROMPT = `คุณคือนักวิเคราะห์เทคนิคที่อ่านภาพกราฟราคาทองคำ (XAUUSD) จากภาพหน้าจอกราฟที่ได้รับ
 ให้ประเมินแนวโน้ม รูปแบบแท่งเทียน แนวรับ-แนวต้าน และประมาณค่าอินดิเคเตอร์ (RSI, MACD, EMA20/50, Volume) จากลักษณะที่ปรากฏในภาพเท่านั้น (เป็นการประมาณค่า ไม่ใช่การคำนวณจากข้อมูลราคาจริง)
 
+ก่อนสรุปผล ให้สังเกตภาพนี้โดยเฉพาะจริงๆ ก่อน (ห้ามใช้คำตอบสำเร็จรูปหรือค่ามาตรฐานที่ไม่ได้มาจากภาพนี้):
+- นับจำนวนแท่งเทียนสีเขียว(ขึ้น)กับสีแดง(ลง)ใน 10-15 แท่งล่าสุดทางขวาของภาพ
+- สังเกตราคาสูงสุด/ต่ำสุดที่ตัวเลขบนแกนราคาจริง (ถ้ามองเห็น) และตำแหน่งแท่งเทียนล่าสุดเทียบกับแนวรับ-แนวต้าน
+- สังเกตค่าตัวเลขของอินดิเคเตอร์ (RSI, MACD, EMA) ที่ปรากฏในภาพจริงถ้ามี แถบหรือตัวเลขเหล่านี้ ถ้าไม่ปรากฏให้ประมาณจากรูปทรงกราฟราคาเท่านั้น และระบุว่าเป็นการประมาณ
+ผลลัพธ์ตัวเลขทั้งหมด (buy_probability, sell_probability, confidence_percent, entry/tp/sl) ต้องแตกต่างกันไปตามภาพแต่ละภาพอย่างมีเหตุผล ห้ามตอบค่าเดิมซ้ำๆ (เช่น 75%) หากภาพมีรายละเอียดต่างกัน
+
 กติกาการให้คะแนน confidence_percent (0-100) ให้พิจารณาจาก "ความสอดคล้องกัน" ของสัญญาณทั้งหมดที่อ่านได้จากภาพ:
 - ถ้า trend, pattern, RSI, MACD, EMA20/50 และ volume ทุกตัวชี้ไปทิศทางเดียวกันอย่างชัดเจน (confluence สูง) ให้ confidence_percent อยู่ในช่วง 90-99
 - ถ้าส่วนใหญ่สอดคล้องกันแต่มี 1 ตัวที่ขัดแย้งหรือไม่ชัดเจน ให้อยู่ในช่วง 70-89
@@ -689,13 +697,15 @@
     tag.className = 'verdict-tag ' + (isBuy ? 'buy' : 'sell');
   }
 
-  document.getElementById('resetLink').addEventListener('click', () => {
+  function goToUpload(){
     fileInput.value = '';
     viewResults.style.display = 'none';
     viewAnalyzing.style.display = 'none';
     viewError.style.display = 'none';
     viewUpload.style.display = 'block';
-  });
+  }
+  document.getElementById('resetLink').addEventListener('click', goToUpload);
+  document.getElementById('newImageBtn').addEventListener('click', goToUpload);
 </script>
 </body>
 </html>
