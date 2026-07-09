@@ -3,8 +3,8 @@ const express = require('express');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const API_KEY = process.env.GROQ_API_KEY;
-const MODEL = 'meta-llama/llama-4-scout-17b-16e-instruct';
+const API_KEY = process.env.GEMINI_API_KEY;
+const MODEL = 'gemini-2.5-flash';
 
 app.use(express.json({ limit: '15mb' }));
 app.use(express.static(__dirname));
@@ -15,7 +15,7 @@ app.get('/', (req, res) => {
 
 app.post('/api/analyze', async (req, res) => {
   if (!API_KEY) {
-    return res.status(500).json({ error: 'ยังไม่ได้ตั้งค่า GROQ_API_KEY บนเซิร์ฟเวอร์' });
+    return res.status(500).json({ error: 'ยังไม่ได้ตั้งค่า GEMINI_API_KEY บนเซิร์ฟเวอร์' });
   }
 
   const { base64, mediaType, prompt } = req.body || {};
@@ -24,34 +24,34 @@ app.post('/api/analyze', async (req, res) => {
   }
 
   try {
-    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${API_KEY}`
-      },
-      body: JSON.stringify({
-        model: MODEL,
-        temperature: 0.3,
-        response_format: { type: 'json_object' },
-        messages: [
-          {
-            role: 'user',
-            content: [
-              { type: 'text', text: prompt },
-              { type: 'image_url', image_url: { url: `data:${mediaType};base64,${base64}` } }
-            ]
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${API_KEY}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [
+                { text: prompt },
+                { inline_data: { mime_type: mediaType, data: base64 } }
+              ]
+            }
+          ],
+          generationConfig: {
+            temperature: 0.3,
+            response_mime_type: 'application/json'
           }
-        ]
-      })
-    });
+        })
+      }
+    );
 
     const data = await response.json();
     if (!response.ok) {
-      return res.status(response.status).json({ error: data?.error?.message || 'เรียก Groq API ไม่สำเร็จ' });
+      return res.status(response.status).json({ error: data?.error?.message || 'เรียก Gemini API ไม่สำเร็จ' });
     }
 
-    const text = data?.choices?.[0]?.message?.content;
+    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
     if (!text) {
       return res.status(502).json({ error: 'ไม่ได้รับข้อความตอบกลับจาก AI' });
     }

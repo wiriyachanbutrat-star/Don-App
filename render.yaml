@@ -6,5 +6,5 @@ services:
     buildCommand: npm install
     startCommand: npm start
     envVars:
-      - key: GROQ_API_KEY
+      - key: GEMINI_API_KEY
         sync: false
