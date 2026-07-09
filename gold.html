@@ -313,21 +313,26 @@
   </div>
 
   <h1>AI วิเคราะห์กราฟ<span class="accent">ทองคำ</span></h1>
-  <p class="subtitle">อัปโหลดภาพกราฟ แล้วให้ Claude อ่านแท่งเทียนและอินดิเคเตอร์ให้คุณ</p>
+  <p class="subtitle">ดึงราคาทองจริงและคำนวณอินดิเคเตอร์ แล้วให้ AI สรุปแนวโน้มให้คุณ</p>
 
-  <!-- STEP 1: UPLOAD -->
+  <!-- STEP 1: START -->
   <div id="view-upload">
     <div class="panel">
-      <div class="step-label">01 · อัปโหลดกราฟ</div>
-      <div class="dropzone" id="dropzone">
+      <div class="step-label">01 · ดึงราคาทองสด</div>
+      <div class="dropzone" id="startZone">
         <div class="candle-icon">
           <span style="height:22px;background:#d14343;opacity:.7"></span><span style="height:34px;background:#3fa36b;opacity:.9"></span><span style="height:16px;background:#d14343;opacity:.7"></span><span style="height:40px;background:#3fa36b"></span><span style="height:26px;background:#3fa36b;opacity:.6"></span>
         </div>
-        <div class="drop-title">ลากรูปภาพมาวางที่นี่</div>
-        <div class="drop-sub">หรือเลือกไฟล์จากเครื่องของคุณ</div>
-        <button class="btn btn-gold" id="pickBtn" type="button">เลือกรูปภาพ</button>
-        <input type="file" id="fileInput" accept="image/png, image/jpeg">
-        <div class="formats">รองรับ JPG · PNG</div>
+        <div class="drop-title">วิเคราะห์ XAU/USD ด้วยราคาจริง</div>
+        <div class="drop-sub">ดึงราคาสด + RSI/MACD/EMA จาก Twelve Data แล้วให้ AI สรุปเหตุผล</div>
+        <label class="drop-sub" for="intervalSelect" style="display:block; margin-bottom:6px;">กรอบเวลา</label>
+        <select id="intervalSelect" class="btn" style="background:var(--bg-panel-raised); color:var(--ink); border:1px solid var(--hairline); margin-bottom:14px;">
+          <option value="15min">15 นาที</option>
+          <option value="1h" selected>1 ชั่วโมง</option>
+          <option value="4h">4 ชั่วโมง</option>
+          <option value="1day">1 วัน</option>
+        </select>
+        <button class="btn btn-gold" id="analyzeBtn" type="button">วิเคราะห์ตอนนี้</button>
       </div>
     </div>
   </div>
@@ -337,22 +342,21 @@
     <div class="panel">
       <div class="step-label">02 · กำลังวิเคราะห์</div>
       <div class="scan-frame">
-        <img id="previewImg" src="" alt="chart preview">
         <div class="sweep"></div>
       </div>
       <div class="checklist" id="checklist">
-        <div class="check-item" data-i="0"><span class="mark"></span>ตรวจจับแท่งเทียน</div>
+        <div class="check-item" data-i="0"><span class="mark"></span>ดึงราคาล่าสุดจากตลาดจริง</div>
         <div class="check-item" data-i="1"><span class="mark"></span>หาแนวรับ-แนวต้าน</div>
-        <div class="check-item" data-i="2"><span class="mark"></span>วิเคราะห์ Trend</div>
-        <div class="check-item" data-i="3"><span class="mark"></span>RSI</div>
-        <div class="check-item" data-i="4"><span class="mark"></span>MACD</div>
-        <div class="check-item" data-i="5"><span class="mark"></span>EMA</div>
-        <div class="check-item" data-i="6"><span class="mark"></span>Price Action</div>
-        <div class="check-item" data-i="7"><span class="mark"></span>Pattern Recognition</div>
+        <div class="check-item" data-i="2"><span class="mark"></span>นับแท่งเทียนขึ้น/ลง</div>
+        <div class="check-item" data-i="3"><span class="mark"></span>คำนวณ RSI</div>
+        <div class="check-item" data-i="4"><span class="mark"></span>คำนวณ MACD</div>
+        <div class="check-item" data-i="5"><span class="mark"></span>คำนวณ EMA20/50</div>
+        <div class="check-item" data-i="6"><span class="mark"></span>ให้ AI สรุปแนวโน้ม</div>
+        <div class="check-item" data-i="7"><span class="mark"></span>สรุปเหตุผลและ Entry/TP/SL</div>
       </div>
       <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
       <div class="progress-pct" id="progressPct">0%</div>
-      <div class="analyzing-note">กำลังส่งภาพให้ Claude อ่านกราฟจริง อาจใช้เวลาสักครู่...</div>
+      <div class="analyzing-note">กำลังดึงราคาจริงและให้ AI วิเคราะห์ อาจใช้เวลาสักครู่...</div>
     </div>
   </div>
 
@@ -368,7 +372,7 @@
   <!-- STEP 3: RESULTS -->
   <div id="view-results">
 
-    <button class="btn btn-gold" id="newImageBtn" type="button" style="width:100%; margin-bottom:18px;">+ วิเคราะห์ภาพใหม่</button>
+    <button class="btn btn-gold" id="newImageBtn" type="button" style="width:100%; margin-bottom:18px;">+ วิเคราะห์ใหม่</button>
 
     <div class="verdict-panel">
       <div class="verdict-header">AI Prediction</div>
@@ -428,10 +432,10 @@
       <div class="verdict-tag" id="verdictTag">—</div>
     </div>
 
-    <a class="reset-link" id="resetLink">← วิเคราะห์กราฟใหม่</a>
+    <a class="reset-link" id="resetLink">← วิเคราะห์ใหม่</a>
   </div>
 
-  <p class="disclaimer">ผลวิเคราะห์นี้มาจาก Claude อ่านภาพกราฟ ซึ่งเป็นการ<b>ประมาณค่า</b>จากลักษณะภาพ ไม่ใช่การคำนวณอินดิเคเตอร์จากราคาจริง ไม่ใช่คำแนะนำการลงทุน โปรดพิจารณาความเสี่ยงก่อนตัดสินใจเทรดทุกครั้ง</p>
+  <p class="disclaimer">ราคา, RSI, MACD, EMA และแนวรับ-แนวต้านคำนวณจากราคาตลาดจริง (Twelve Data) ส่วนแนวโน้ม เหตุผล และจุด Entry/TP/SL มาจากการตีความของ Gemini AI บนตัวเลขดังกล่าว ไม่ใช่คำแนะนำการลงทุน โปรดพิจารณาความเสี่ยงก่อนตัดสินใจเทรดทุกครั้ง</p>
 
 </div>
 
@@ -446,35 +450,15 @@
   const viewAnalyzing = document.getElementById('view-analyzing');
   const viewResults = document.getElementById('view-results');
   const viewError = document.getElementById('view-error');
-  const dropzone = document.getElementById('dropzone');
-  const fileInput = document.getElementById('fileInput');
-  const pickBtn = document.getElementById('pickBtn');
-  const previewImg = document.getElementById('previewImg');
+  const analyzeBtn = document.getElementById('analyzeBtn');
+  const intervalSelect = document.getElementById('intervalSelect');
 
-  pickBtn.addEventListener('click', (e) => { e.stopPropagation(); fileInput.click(); });
-  dropzone.addEventListener('click', (e) => { if(e.target === pickBtn) return; fileInput.click(); });
-  fileInput.addEventListener('change', () => {
-    console.log('file input changed, files:', fileInput.files.length);
-    if(fileInput.files.length) handleFile(fileInput.files[0]);
-  });
-
-  ['dragover','dragenter'].forEach(ev => dropzone.addEventListener(ev, e => { e.preventDefault(); dropzone.classList.add('drag'); }));
-  ['dragleave','drop'].forEach(ev => dropzone.addEventListener(ev, e => { e.preventDefault(); dropzone.classList.remove('drag'); }));
-  dropzone.addEventListener('drop', e => { e.preventDefault(); if(e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]); });
+  analyzeBtn.addEventListener('click', () => handleAnalyze());
 
   document.getElementById('retryBtn').addEventListener('click', () => {
     viewError.style.display = 'none';
     viewUpload.style.display = 'block';
   });
-
-  function fileToBase64(file){
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result.split(',')[1]);
-      reader.onerror = () => reject(new Error('อ่านไฟล์ไม่สำเร็จ'));
-      reader.readAsDataURL(file);
-    });
-  }
 
   window.addEventListener('error', (e) => {
     console.error('Uncaught error:', e.error || e.message);
@@ -485,29 +469,20 @@
     viewAnalyzing.style.display = 'none';
   });
 
-  async function handleFile(file){
-    console.log('handleFile called with', file && file.name);
-    if(!file.type.startsWith('image/')){
-      showError('รองรับเฉพาะไฟล์รูปภาพ JPG หรือ PNG เท่านั้น');
-      return;
-    }
+  async function handleAnalyze(){
+    const interval = intervalSelect.value;
 
     viewUpload.style.display = 'none';
     viewError.style.display = 'none';
     viewResults.style.display = 'none';
     viewAnalyzing.style.display = 'block';
 
-    const objectUrl = URL.createObjectURL(file);
-    previewImg.src = objectUrl;
-
     resetChecklist();
     const progressAnimation = runChecklistAnimation();
 
     try {
-      const base64 = await fileToBase64(file);
-      const mediaType = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
-
-      const analysis = await analyzeChart(base64, mediaType);
+      const marketData = await fetchMarketData(interval);
+      const analysis = await analyzeChart(marketData);
 
       await progressAnimation; // let the checklist finish visually
       renderResults(analysis);
@@ -517,7 +492,7 @@
       console.error(err);
       await progressAnimation.catch(()=>{});
       viewAnalyzing.style.display = 'none';
-      showError('ไม่สามารถวิเคราะห์ภาพได้: ' + (err && err.message ? err.message : 'กรุณาลองใหม่อีกครั้ง'));
+      showError('ไม่สามารถวิเคราะห์ได้: ' + (err && err.message ? err.message : 'กรุณาลองใหม่อีกครั้ง'));
     }
   }
 
@@ -557,47 +532,20 @@
     });
   }
 
-  const ANALYSIS_PROMPT = `คุณคือนักวิเคราะห์เทคนิคที่อ่านภาพกราฟราคาทองคำ (XAUUSD) จากภาพหน้าจอกราฟที่ได้รับ
-ให้ประเมินแนวโน้ม รูปแบบแท่งเทียน แนวรับ-แนวต้าน และประมาณค่าอินดิเคเตอร์ (RSI, MACD, EMA20/50, Volume) จากลักษณะที่ปรากฏในภาพเท่านั้น (เป็นการประมาณค่า ไม่ใช่การคำนวณจากข้อมูลราคาจริง)
+  async function fetchMarketData(interval){
+    const response = await fetch('/api/market-data?interval=' + encodeURIComponent(interval));
+    const data = await response.json();
+    if(!response.ok){
+      throw new Error(data.error || ('ดึงราคาทองไม่สำเร็จ (สถานะ ' + response.status + ')'));
+    }
+    return data;
+  }
 
-ก่อนสรุปผล ให้สังเกตภาพนี้โดยเฉพาะจริงๆ ก่อน (ห้ามใช้คำตอบสำเร็จรูปหรือค่ามาตรฐานที่ไม่ได้มาจากภาพนี้):
-- นับจำนวนแท่งเทียนสีเขียว(ขึ้น)กับสีแดง(ลง)ใน 10-15 แท่งล่าสุดทางขวาของภาพ
-- สังเกตราคาสูงสุด/ต่ำสุดที่ตัวเลขบนแกนราคาจริง (ถ้ามองเห็น) และตำแหน่งแท่งเทียนล่าสุดเทียบกับแนวรับ-แนวต้าน
-- สังเกตค่าตัวเลขของอินดิเคเตอร์ (RSI, MACD, EMA) ที่ปรากฏในภาพจริงถ้ามี แถบหรือตัวเลขเหล่านี้ ถ้าไม่ปรากฏให้ประมาณจากรูปทรงกราฟราคาเท่านั้น และระบุว่าเป็นการประมาณ
-ผลลัพธ์ตัวเลขทั้งหมด (buy_probability, sell_probability, confidence_percent, entry/tp/sl) ต้องแตกต่างกันไปตามภาพแต่ละภาพอย่างมีเหตุผล ห้ามตอบค่าเดิมซ้ำๆ (เช่น 75%) หากภาพมีรายละเอียดต่างกัน
-
-กติกาการให้คะแนน confidence_percent (0-100) ให้พิจารณาจาก "ความสอดคล้องกัน" ของสัญญาณทั้งหมดที่อ่านได้จากภาพ:
-- ถ้า trend, pattern, RSI, MACD, EMA20/50 และ volume ทุกตัวชี้ไปทิศทางเดียวกันอย่างชัดเจน (confluence สูง) ให้ confidence_percent อยู่ในช่วง 90-99
-- ถ้าส่วนใหญ่สอดคล้องกันแต่มี 1 ตัวที่ขัดแย้งหรือไม่ชัดเจน ให้อยู่ในช่วง 70-89
-- ถ้าสัญญาณขัดแย้งกันมากหรือภาพไม่ชัดเจน ให้อยู่ในช่วง 40-69 และควรลดขนาดคำแนะนำ (position size) ใน reasons
-ห้ามให้ confidence_percent สูงเพียงเพราะต้องการดูน่าเชื่อถือ ต้องสะท้อนความสอดคล้องของหลักฐานที่เห็นจริงในภาพเท่านั้น buy_probability/sell_probability ก็ต้องสอดคล้องกับ confidence_percent เช่นกัน (ยิ่ง confidence สูง ส่วนต่างระหว่าง buy/sell probability ยิ่งควรห่างกันมาก)
-
-ตอบกลับเป็น JSON เท่านั้น ห้ามมีข้อความอื่นใดนอกเหนือจาก JSON วัตถุ ห้ามใส่ code fence ใช้โครงสร้างนี้เป๊ะๆ:
-{
-  "recommendation": "BUY หรือ SELL",
-  "buy_probability": ตัวเลข 0-100,
-  "sell_probability": ตัวเลข 0-100 (ต้องรวมกับ buy_probability ได้ 100),
-  "confidence_score": ตัวเลข 0-10 ทศนิยม 1 ตำแหน่ง,
-  "confidence_percent": ตัวเลข 0-100,
-  "trend": "ข้อความสั้นๆ ภาษาไทย เช่น ขาขึ้น (Uptrend)",
-  "pattern": "ชื่อ pattern ที่พบ เช่น Bull Flag",
-  "rsi": "ค่าประมาณ RSI เช่น 61",
-  "macd": "สถานะ MACD เช่น Bullish Cross",
-  "ema_relation": "ความสัมพันธ์ EMA20/50 เช่น EMA20 > EMA50",
-  "volume": "ลักษณะ volume เช่น สูงกว่าค่าเฉลี่ย",
-  "entry": ราคาตัวเลขโดยประมาณจากกราฟ,
-  "tp": ราคาตัวเลข take profit โดยประมาณ,
-  "sl": ราคาตัวเลข stop loss โดยประมาณ,
-  "risk_reward": "อัตราส่วน เช่น 1 : 2.5",
-  "reasons": ["เหตุผลข้อ 1 ภาษาไทย", "เหตุผลข้อ 2", "..."]
-}
-หากภาพไม่ใช่กราฟราคาทองคำหรืออ่านไม่ออก ให้ตอบ {"error": "คำอธิบายสั้นๆ เป็นภาษาไทยว่าทำไมวิเคราะห์ไม่ได้"}`;
-
-  async function analyzeChart(base64, mediaType){
+  async function analyzeChart(marketData){
     const response = await fetch("/api/analyze", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ base64, mediaType, prompt: ANALYSIS_PROMPT })
+      body: JSON.stringify({ marketData })
     });
 
     const data = await response.json();
@@ -629,10 +577,43 @@
     return '★'.repeat(Math.max(0, Math.min(5, full))) + '☆'.repeat(5 - Math.max(0, Math.min(5, full)));
   }
 
+  function normalizeProbabilities(buyRaw, sellRaw){
+    let buy = Number(buyRaw) || 0;
+    let sell = Number(sellRaw) || 0;
+    const sum = buy + sell;
+    if(sum <= 0){ return { buy: 50, sell: 50 }; }
+    return { buy: Math.round((buy/sum)*100), sell: Math.round((sell/sum)*100) };
+  }
+
+  // Recompute R:R from entry/tp/sl instead of trusting the AI's free-text string,
+  // and fix entry/tp/sl ordering if it contradicts the BUY/SELL direction.
+  function reconcileTrade(a, isBuy){
+    let entry = Number(a.entry);
+    let tp = Number(a.tp);
+    let sl = Number(a.sl);
+    if(!isFinite(entry) || !isFinite(tp) || !isFinite(sl)){
+      return { entry: a.entry, tp: a.tp, sl: a.sl, riskReward: a.risk_reward || '—' };
+    }
+    if(isBuy){
+      if(tp < entry) tp = entry + Math.abs(entry - tp || (entry * 0.005));
+      if(sl > entry) sl = entry - Math.abs(entry - sl || (entry * 0.003));
+    } else {
+      if(tp > entry) tp = entry - Math.abs(entry - tp || (entry * 0.005));
+      if(sl < entry) sl = entry + Math.abs(entry - sl || (entry * 0.003));
+    }
+    const reward = Math.abs(tp - entry);
+    const risk = Math.abs(entry - sl);
+    const ratio = risk > 0 ? (reward / risk) : 0;
+    const riskReward = risk > 0 ? ('1 : ' + ratio.toFixed(2)) : (a.risk_reward || '—');
+    return { entry, tp, sl, riskReward };
+  }
+
   function renderResults(a){
     const isBuy = String(a.recommendation).toUpperCase().indexOf('BUY') !== -1;
-    const buyPct = Math.round(a.buy_probability);
-    const sellPct = Math.round(a.sell_probability);
+    const probs = normalizeProbabilities(a.buy_probability, a.sell_probability);
+    const buyPct = probs.buy;
+    const sellPct = probs.sell;
+    const trade = reconcileTrade(a, isBuy);
     const confScore = Number(a.confidence_score).toFixed(1);
     const confPct = Math.round(a.confidence_percent);
 
@@ -675,10 +656,10 @@
     badge.textContent = (isBuy ? '✓ BUY' : '✓ SELL');
     badge.className = 'reco-badge ' + (isBuy ? 'buy' : 'sell');
 
-    document.getElementById('entryVal').textContent = a.entry ?? '—';
-    document.getElementById('tpVal').textContent = a.tp ?? '—';
-    document.getElementById('slVal').textContent = a.sl ?? '—';
-    document.getElementById('rrVal').textContent = a.risk_reward || '—';
+    document.getElementById('entryVal').textContent = trade.entry ?? '—';
+    document.getElementById('tpVal').textContent = trade.tp ?? '—';
+    document.getElementById('slVal').textContent = trade.sl ?? '—';
+    document.getElementById('rrVal').textContent = trade.riskReward || '—';
 
     const reasons = Array.isArray(a.reasons) ? a.reasons : [];
     document.getElementById('reasonList').innerHTML = reasons.map(r => '<li>'+r+'</li>').join('');
@@ -698,7 +679,6 @@
   }
 
   function goToUpload(){
-    fileInput.value = '';
     viewResults.style.display = 'none';
     viewAnalyzing.style.display = 'none';
     viewError.style.display = 'none';
