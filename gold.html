@@ -315,6 +315,18 @@
   <h1>AI วิเคราะห์กราฟ<span class="accent">ทองคำ</span></h1>
   <p class="subtitle">ดึงราคาทองจริงและคำนวณอินดิเคเตอร์ แล้วให้ AI สรุปแนวโน้มให้คุณ</p>
 
+  <!-- HISTORY / WIN-LOSS TRACK RECORD -->
+  <div class="panel" id="historyPanel" style="display:none;">
+    <div class="grid-label">สถิติผลการวิเคราะห์ย้อนหลัง</div>
+    <div class="reco-grid" style="grid-template-columns: repeat(3,1fr);">
+      <div class="reco-cell"><div class="lbl">ชนะ (Win)</div><div class="val" id="winCount" style="color:var(--buy);">0</div></div>
+      <div class="reco-cell"><div class="lbl">แพ้ (Loss)</div><div class="val" id="lossCount" style="color:var(--sell);">0</div></div>
+      <div class="reco-cell"><div class="lbl">รอผล</div><div class="val" id="pendingCount">0</div></div>
+    </div>
+    <div class="rr-line" style="margin-bottom:12px;">อัตราชนะ &nbsp;<b id="winRateVal">—</b></div>
+    <ul class="reason-list" id="historyList" style="gap:8px;"></ul>
+  </div>
+
   <!-- STEP 1: START -->
   <div id="view-upload">
     <div class="panel">
@@ -543,7 +555,86 @@
     if(!response.ok){
       throw new Error(data.error || ('ดึงราคาทองไม่สำเร็จ (สถานะ ' + response.status + ')'));
     }
+    checkHistory(data.currentPrice);
     return data;
+  }
+
+  // ---- Win/Loss track record (stored in localStorage) ----
+  const HISTORY_KEY = 'goldAnalysisHistory';
+
+  function loadHistory(){
+    try { return JSON.parse(localStorage.getItem(HISTORY_KEY)) || []; }
+    catch(e){ return []; }
+  }
+  function saveHistory(list){
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(list.slice(-50)));
+  }
+
+  function addHistoryEntry(a, trade){
+    const isBuy = String(a.recommendation).toUpperCase().indexOf('BUY') !== -1;
+    const entry = Number(trade.entry), tp = Number(trade.tp), sl = Number(trade.sl);
+    if(!isFinite(entry) || !isFinite(tp) || !isFinite(sl)) return;
+    const list = loadHistory();
+    list.push({
+      time: Date.now(),
+      direction: isBuy ? 'BUY' : 'SELL',
+      entry, tp, sl,
+      status: 'pending',
+      closedPrice: null,
+      closedTime: null,
+    });
+    saveHistory(list);
+    renderHistory();
+  }
+
+  // Compare the current market price against every still-open trade and
+  // mark it won/lost the moment price actually reaches TP or SL.
+  function checkHistory(currentPrice){
+    if(!isFinite(currentPrice)) return;
+    const list = loadHistory();
+    let changed = false;
+    list.forEach(rec => {
+      if(rec.status !== 'pending') return;
+      if(rec.direction === 'BUY'){
+        if(currentPrice >= rec.tp){ rec.status = 'win'; changed = true; }
+        else if(currentPrice <= rec.sl){ rec.status = 'loss'; changed = true; }
+      } else {
+        if(currentPrice <= rec.tp){ rec.status = 'win'; changed = true; }
+        else if(currentPrice >= rec.sl){ rec.status = 'loss'; changed = true; }
+      }
+      if(changed && rec.closedPrice == null && rec.status !== 'pending'){
+        rec.closedPrice = currentPrice;
+        rec.closedTime = Date.now();
+      }
+    });
+    if(changed) saveHistory(list);
+    renderHistory();
+  }
+
+  function renderHistory(){
+    const list = loadHistory();
+    const panel = document.getElementById('historyPanel');
+    if(list.length === 0){ panel.style.display = 'none'; return; }
+    panel.style.display = 'block';
+
+    const wins = list.filter(r => r.status === 'win').length;
+    const losses = list.filter(r => r.status === 'loss').length;
+    const pending = list.filter(r => r.status === 'pending').length;
+    const closed = wins + losses;
+    const winRate = closed > 0 ? Math.round((wins/closed)*100) : null;
+
+    document.getElementById('winCount').textContent = wins;
+    document.getElementById('lossCount').textContent = losses;
+    document.getElementById('pendingCount').textContent = pending;
+    document.getElementById('winRateVal').textContent = winRate == null ? '—' : (winRate + '%');
+
+    const recent = list.slice(-8).reverse();
+    document.getElementById('historyList').innerHTML = recent.map(rec => {
+      const dt = new Date(rec.time).toLocaleString('th-TH', { hour:'2-digit', minute:'2-digit', day:'2-digit', month:'2-digit' });
+      const statusLabel = rec.status === 'win' ? '✓ ชนะ' : rec.status === 'loss' ? '✕ แพ้' : '… รอผล';
+      const color = rec.status === 'win' ? 'var(--buy)' : rec.status === 'loss' ? 'var(--sell)' : 'var(--ink-dim)';
+      return '<li>' + dt + ' · ' + rec.direction + ' @ ' + rec.entry + ' → <b style="color:' + color + '">' + statusLabel + '</b></li>';
+    }).join('');
   }
 
   async function analyzeChart(marketData){
@@ -619,6 +710,7 @@
     const buyPct = probs.buy;
     const sellPct = probs.sell;
     const trade = reconcileTrade(a, isBuy);
+    addHistoryEntry(a, trade);
     const confScore = Number(a.confidence_score).toFixed(1);
     const confPct = Math.round(a.confidence_percent);
 
@@ -695,6 +787,9 @@
   }
   document.getElementById('resetLink').addEventListener('click', goToUpload);
   document.getElementById('newImageBtn').addEventListener('click', goToUpload);
+
+  renderHistory();
+  fetch('/api/market-data?interval=1h').then(r => r.json()).then(d => { if(d && d.currentPrice) checkHistory(d.currentPrice); }).catch(()=>{});
 </script>
 </body>
 </html>
