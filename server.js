@@ -6,7 +6,11 @@ const PORT = process.env.PORT || 3000;
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const TWELVE_DATA_API_KEY = process.env.TWELVE_DATA_API_KEY;
 const GEMINI_MODEL = 'gemini-2.5-flash';
-const SYMBOL = 'XAU/USD';
+
+const ASSETS = {
+  XAU: { symbol: 'XAU/USD', label: 'ทองคำ (XAUUSD)' },
+  BTC: { symbol: 'BTC/USD', label: 'บิตคอยน์ (BTCUSD)' },
+};
 
 app.use(express.json({ limit: '15mb' }));
 app.use(express.static(__dirname));
@@ -172,14 +176,16 @@ app.get('/api/market-data', async (req, res) => {
   const interval = ['1min', '5min', '15min', '1h', '4h', '1day'].includes(req.query.interval)
     ? req.query.interval
     : '1h';
+  const assetKey = ASSETS[req.query.asset] ? req.query.asset : 'XAU';
+  const asset = ASSETS[assetKey];
 
   const higherIntervalMap = { '1min': '15min', '5min': '1h', '15min': '4h', '1h': '4h', '4h': '1day', '1day': '1week' };
   const higherInterval = higherIntervalMap[interval] || '4h';
 
   try {
     const [series, higherSeries] = await Promise.all([
-      fetchTwelveData('time_series', { symbol: SYMBOL, interval, outputsize: 100 }),
-      fetchTwelveData('time_series', { symbol: SYMBOL, interval: higherInterval, outputsize: 150 }),
+      fetchTwelveData('time_series', { symbol: asset.symbol, interval, outputsize: 100 }),
+      fetchTwelveData('time_series', { symbol: asset.symbol, interval: higherInterval, outputsize: 150 }),
     ]);
 
     // Twelve Data returns newest-first; put oldest-first for trend reading.
@@ -219,7 +225,9 @@ app.get('/api/market-data', async (req, res) => {
     const higherTrend = higherEma20 > higherEma50 ? 'ขาขึ้น (Uptrend)' : 'ขาลง (Downtrend)';
 
     res.json({
-      symbol: SYMBOL,
+      symbol: asset.symbol,
+      assetKey,
+      assetLabel: asset.label,
       interval,
       currentPrice,
       support,
@@ -244,7 +252,7 @@ app.get('/api/market-data', async (req, res) => {
     });
   } catch (err) {
     console.error(err);
-    res.status(502).json({ error: 'ดึงราคาทองจริงไม่สำเร็จ: ' + err.message });
+    res.status(502).json({ error: 'ดึงราคาจริงไม่สำเร็จ: ' + err.message });
   }
 });
 
@@ -259,7 +267,8 @@ app.post('/api/analyze', async (req, res) => {
   }
 
   const signal = computeSignalScore(marketData);
-  const prompt = buildPrompt(marketData, signal);
+  const assetLabel = marketData.assetLabel || ASSETS[marketData.assetKey]?.label || ASSETS.XAU.label;
+  const prompt = buildPrompt(marketData, signal, assetLabel);
 
   try {
     const response = await fetch(
@@ -318,8 +327,8 @@ app.post('/api/analyze', async (req, res) => {
   }
 });
 
-function buildPrompt(m, signal) {
-  return `คุณคือนักวิเคราะห์เทคนิคทองคำ (XAUUSD) ข้อมูลด้านล่างนี้คือค่าจริงที่คำนวณจากราคาตลาดจริง (ไม่ใช่การประมาณจากภาพ) ให้ใช้ตัวเลขเหล่านี้เป็นหลักฐานหลักในการให้เหตุผล ห้ามสร้างตัวเลขราคาหรืออินดิเคเตอร์ขึ้นใหม่เอง:
+function buildPrompt(m, signal, assetLabel) {
+  return `คุณคือนักวิเคราะห์เทคนิค ${assetLabel} ข้อมูลด้านล่างนี้คือค่าจริงที่คำนวณจากราคาตลาดจริง (ไม่ใช่การประมาณจากภาพ) ให้ใช้ตัวเลขเหล่านี้เป็นหลักฐานหลักในการให้เหตุผล ห้ามสร้างตัวเลขราคาหรืออินดิเคเตอร์ขึ้นใหม่เอง:
 
 สัญญาณเชิงปริมาณเบื้องต้น (คำนวณจากอินดิเคเตอร์ล้วนๆ ไม่ใช่ความเห็น AI): score=${signal.score} จาก -6 ถึง +6 (บวก=เอนไปทาง BUY, ลบ=เอนไปทาง SELL) → ${signal.direction ? `เอนไปทาง ${signal.direction}` : 'ก้ำกึ่ง'}${signal.strong ? ' (สัญญาณชัดเจนมาก ควรให้คำแนะนำสอดคล้องกับทิศทางนี้เป็นหลัก)' : ''}
 รายละเอียด: ${signal.reasons.join(', ')}

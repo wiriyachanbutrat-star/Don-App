@@ -308,12 +308,12 @@
 <div class="app">
 
   <div class="ticker">
-    <span><span class="dot"></span>XAUUSD LIVE</span>
+    <span><span class="dot"></span><span id="tickerLabel">XAUUSD LIVE</span></span>
     <span id="clock">--:--:--</span>
   </div>
 
-  <h1>AI วิเคราะห์กราฟ<span class="accent">ทองคำ</span></h1>
-  <p class="subtitle">ดึงราคาทองจริงและคำนวณอินดิเคเตอร์ แล้วให้ AI สรุปแนวโน้มให้คุณ</p>
+  <h1>AI วิเคราะห์กราฟ<span class="accent" id="assetTitle">ทองคำ</span></h1>
+  <p class="subtitle">ดึงราคาจริงและคำนวณอินดิเคเตอร์ แล้วให้ AI สรุปแนวโน้มให้คุณ</p>
 
   <!-- HISTORY / WIN-LOSS TRACK RECORD -->
   <div class="panel" id="historyPanel" style="display:none;">
@@ -330,13 +330,18 @@
   <!-- STEP 1: START -->
   <div id="view-upload">
     <div class="panel">
-      <div class="step-label">01 · ดึงราคาทองสด</div>
+      <div class="step-label">01 · ดึงราคาสด</div>
       <div class="dropzone" id="startZone">
         <div class="candle-icon">
           <span style="height:22px;background:#d14343;opacity:.7"></span><span style="height:34px;background:#3fa36b;opacity:.9"></span><span style="height:16px;background:#d14343;opacity:.7"></span><span style="height:40px;background:#3fa36b"></span><span style="height:26px;background:#3fa36b;opacity:.6"></span>
         </div>
-        <div class="drop-title">วิเคราะห์ XAU/USD ด้วยราคาจริง</div>
+        <div class="drop-title" id="dropTitle">วิเคราะห์ XAU/USD ด้วยราคาจริง</div>
         <div class="drop-sub">ดึงราคาสด + RSI/MACD/EMA จาก Twelve Data แล้วให้ AI สรุปเหตุผล</div>
+        <label class="drop-sub" for="assetSelect" style="display:block; margin-bottom:6px;">สินทรัพย์</label>
+        <select id="assetSelect" class="btn" style="background:var(--bg-panel-raised); color:var(--ink); border:1px solid var(--hairline); margin-bottom:14px;">
+          <option value="XAU" selected>ทองคำ (XAU/USD)</option>
+          <option value="BTC">บิตคอยน์ (BTC/USD)</option>
+        </select>
         <label class="drop-sub" for="intervalSelect" style="display:block; margin-bottom:6px;">กรอบเวลา</label>
         <select id="intervalSelect" class="btn" style="background:var(--bg-panel-raised); color:var(--ink); border:1px solid var(--hairline); margin-bottom:14px;">
           <option value="15min">15 นาที</option>
@@ -469,6 +474,24 @@
   const viewError = document.getElementById('view-error');
   const analyzeBtn = document.getElementById('analyzeBtn');
   const intervalSelect = document.getElementById('intervalSelect');
+  const assetSelect = document.getElementById('assetSelect');
+
+  const ASSET_META = {
+    XAU: { ticker: 'XAUUSD LIVE', title: 'ทองคำ', dropTitle: 'วิเคราะห์ XAU/USD ด้วยราคาจริง' },
+    BTC: { ticker: 'BTCUSD LIVE', title: 'บิตคอยน์', dropTitle: 'วิเคราะห์ BTC/USD ด้วยราคาจริง' },
+  };
+  let currentAsset = assetSelect.value;
+
+  function applyAssetUI(){
+    currentAsset = assetSelect.value;
+    const meta = ASSET_META[currentAsset] || ASSET_META.XAU;
+    document.getElementById('tickerLabel').textContent = meta.ticker;
+    document.getElementById('assetTitle').textContent = meta.title;
+    document.getElementById('dropTitle').textContent = meta.dropTitle;
+    renderHistory();
+  }
+  assetSelect.addEventListener('change', applyAssetUI);
+  applyAssetUI();
 
   analyzeBtn.addEventListener('click', () => handleAnalyze());
 
@@ -550,24 +573,26 @@
   }
 
   async function fetchMarketData(interval){
-    const response = await fetch('/api/market-data?interval=' + encodeURIComponent(interval));
+    const response = await fetch('/api/market-data?interval=' + encodeURIComponent(interval) + '&asset=' + encodeURIComponent(currentAsset));
     const data = await response.json();
     if(!response.ok){
-      throw new Error(data.error || ('ดึงราคาทองไม่สำเร็จ (สถานะ ' + response.status + ')'));
+      throw new Error(data.error || ('ดึงราคาไม่สำเร็จ (สถานะ ' + response.status + ')'));
     }
     checkHistory(data.currentPrice);
     return data;
   }
 
-  // ---- Win/Loss track record (stored in localStorage) ----
-  const HISTORY_KEY = 'goldAnalysisHistory';
+  // ---- Win/Loss track record (stored in localStorage, per asset) ----
+  function historyKey(){
+    return 'goldAnalysisHistory_' + currentAsset;
+  }
 
   function loadHistory(){
-    try { return JSON.parse(localStorage.getItem(HISTORY_KEY)) || []; }
+    try { return JSON.parse(localStorage.getItem(historyKey())) || []; }
     catch(e){ return []; }
   }
   function saveHistory(list){
-    localStorage.setItem(HISTORY_KEY, JSON.stringify(list.slice(-50)));
+    localStorage.setItem(historyKey(), JSON.stringify(list.slice(-50)));
   }
 
   function addHistoryEntry(a, trade){
