@@ -420,6 +420,11 @@
     </div>
 
     <div class="panel">
+      <div class="grid-label">วิเคราะห์เชิงลึก</div>
+      <p class="error-text" id="detailedAnalysis" style="margin-bottom:0;"></p>
+    </div>
+
+    <div class="panel">
       <div class="grid-label">เหตุผลที่ AI วิเคราะห์</div>
       <ul class="reason-list" id="reasonList"></ul>
     </div>
@@ -645,7 +650,10 @@
       ['RSI', a.rsi||'—', ''],
       ['MACD', a.macd||'—', isBuy?'up':'down'],
       ['EMA', a.ema_relation||'—', isBuy?'up':'down'],
-      ['Volume', a.volume||'—', '']
+      ['Volume', a.volume||'—', ''],
+      ['Bollinger', a.bollinger||'—', ''],
+      ['Stochastic', a.stochastic||'—', ''],
+      ['กรอบเวลาใหญ่', a.higher_timeframe||'—', '']
     ];
     const grid = document.getElementById('indicatorGrid');
     grid.innerHTML = indicators.map(([name,val,cls]) =>
@@ -663,6 +671,7 @@
 
     const reasons = Array.isArray(a.reasons) ? a.reasons : [];
     document.getElementById('reasonList').innerHTML = reasons.map(r => '<li>'+r+'</li>').join('');
+    document.getElementById('detailedAnalysis').textContent = a.detailed_analysis || '—';
 
     const confBig = document.getElementById('confBig');
     let n = 0;

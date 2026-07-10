@@ -70,6 +70,72 @@ function macd(closes) {
   return { macd: macdNow, signal, histogram: macdNow - signal };
 }
 
+function sma(values, period) {
+  const out = new Array(values.length).fill(null);
+  for (let i = period - 1; i < values.length; i++) {
+    let sum = 0;
+    for (let j = i - period + 1; j <= i; j++) sum += values[j];
+    out[i] = sum / period;
+  }
+  return out;
+}
+
+function bollingerBands(closes, period = 20, mult = 2) {
+  const middle = sma(closes, period);
+  const idx = closes.length - 1;
+  const mid = middle[idx];
+  const slice = closes.slice(idx - period + 1, idx + 1);
+  const variance = slice.reduce((acc, v) => acc + Math.pow(v - mid, 2), 0) / period;
+  const stdDev = Math.sqrt(variance);
+  return { middle: mid, upper: mid + mult * stdDev, lower: mid - mult * stdDev, stdDev };
+}
+
+function atr(candles, period = 14) {
+  const trs = [];
+  for (let i = 1; i < candles.length; i++) {
+    const cur = candles[i];
+    const prevClose = candles[i - 1].close;
+    const tr = Math.max(
+      cur.high - cur.low,
+      Math.abs(cur.high - prevClose),
+      Math.abs(cur.low - prevClose)
+    );
+    trs.push(tr);
+  }
+  const relevant = trs.slice(-period);
+  return relevant.reduce((a, b) => a + b, 0) / relevant.length;
+}
+
+function stochasticOscillator(candles, period = 14, smoothK = 3) {
+  const kValues = [];
+  for (let i = period - 1; i < candles.length; i++) {
+    const window = candles.slice(i - period + 1, i + 1);
+    const highest = Math.max(...window.map(c => c.high));
+    const lowest = Math.min(...window.map(c => c.low));
+    const close = candles[i].close;
+    const k = highest === lowest ? 50 : ((close - lowest) / (highest - lowest)) * 100;
+    kValues.push(k);
+  }
+  const kSmoothed = sma(kValues, smoothK);
+  const validK = kSmoothed.filter(v => v != null);
+  const dValues = sma(validK, smoothK);
+  const k = validK[validK.length - 1];
+  const d = dValues[dValues.length - 1];
+  return { k, d };
+}
+
+function volatilityStats(candles, period = 20) {
+  const recent = candles.slice(-period);
+  const ranges = recent.map(c => c.high - c.low);
+  const avgRange = ranges.reduce((a, b) => a + b, 0) / ranges.length;
+  const bodyRatios = recent.map(c => {
+    const range = c.high - c.low;
+    return range > 0 ? Math.abs(c.close - c.open) / range : 0;
+  });
+  const avgBodyRatio = bodyRatios.reduce((a, b) => a + b, 0) / bodyRatios.length;
+  return { avgRange, avgBodyRatio };
+}
+
 app.get('/api/market-data', async (req, res) => {
   if (!TWELVE_DATA_API_KEY) {
     return res.status(500).json({ error: 'ยังไม่ได้ตั้งค่า TWELVE_DATA_API_KEY บนเซิร์ฟเวอร์' });
@@ -78,11 +144,24 @@ app.get('/api/market-data', async (req, res) => {
     ? req.query.interval
     : '1h';
 
+  const higherIntervalMap = { '1min': '15min', '5min': '1h', '15min': '4h', '1h': '4h', '4h': '1day', '1day': '1week' };
+  const higherInterval = higherIntervalMap[interval] || '4h';
+
   try {
-    const series = await fetchTwelveData('time_series', { symbol: SYMBOL, interval, outputsize: 100 });
+    const [series, higherSeries] = await Promise.all([
+      fetchTwelveData('time_series', { symbol: SYMBOL, interval, outputsize: 100 }),
+      fetchTwelveData('time_series', { symbol: SYMBOL, interval: higherInterval, outputsize: 60 }),
+    ]);
 
     // Twelve Data returns newest-first; put oldest-first for trend reading.
     const candles = series.values.slice().reverse().map(c => ({
+      time: c.datetime,
+      open: Number(c.open),
+      high: Number(c.high),
+      low: Number(c.low),
+      close: Number(c.close),
+    }));
+    const higherCandles = higherSeries.values.slice().reverse().map(c => ({
       time: c.datetime,
       open: Number(c.open),
       high: Number(c.high),
@@ -101,6 +180,14 @@ app.get('/api/market-data', async (req, res) => {
 
     const ema20Series = ema(closes, 20);
     const ema50Series = ema(closes, 50);
+    const ema200Series = closes.length >= 200 ? ema(closes, 200) : null;
+
+    const higherCloses = higherCandles.map(c => c.close);
+    const higherEma20Series = ema(higherCloses, 20);
+    const higherEma50Series = ema(higherCloses, 50);
+    const higherEma20 = higherEma20Series[higherEma20Series.length - 1];
+    const higherEma50 = higherEma50Series[higherEma50Series.length - 1];
+    const higherTrend = higherEma20 > higherEma50 ? 'ขาขึ้น (Uptrend)' : 'ขาลง (Downtrend)';
 
     res.json({
       symbol: SYMBOL,
@@ -114,6 +201,17 @@ app.get('/api/market-data', async (req, res) => {
       macd: macd(closes),
       ema20: ema20Series[ema20Series.length - 1],
       ema50: ema50Series[ema50Series.length - 1],
+      ema200: ema200Series ? ema200Series[ema200Series.length - 1] : null,
+      bollinger: bollingerBands(closes),
+      atr: atr(candles),
+      stochastic: stochasticOscillator(candles),
+      volatility: volatilityStats(candles),
+      higherTimeframe: {
+        interval: higherInterval,
+        trend: higherTrend,
+        ema20: higherEma20,
+        ema50: higherEma50,
+      },
     });
   } catch (err) {
     console.error(err);
@@ -178,11 +276,20 @@ RSI (14): ${m.rsi.toFixed(2)}
 MACD: macd=${m.macd.macd.toFixed(4)}, signal=${m.macd.signal.toFixed(4)}, histogram=${m.macd.histogram.toFixed(4)}
 EMA20: ${m.ema20.toFixed(2)}
 EMA50: ${m.ema50.toFixed(2)}
+${m.ema200 != null ? `EMA200: ${m.ema200.toFixed(2)}\n` : ''}Bollinger Bands (20,2): upper=${m.bollinger.upper.toFixed(2)}, middle=${m.bollinger.middle.toFixed(2)}, lower=${m.bollinger.lower.toFixed(2)}
+ATR (14): ${m.atr.toFixed(2)} (วัดความผันผวนเฉลี่ยต่อแท่ง)
+Stochastic Oscillator: %K=${m.stochastic.k.toFixed(2)}, %D=${m.stochastic.d.toFixed(2)}
+ความผันผวน 20 แท่งล่าสุด: ช่วงราคาเฉลี่ย/แท่ง=${m.volatility.avgRange.toFixed(2)}, สัดส่วนตัวแท่งเทียนเฉลี่ย=${(m.volatility.avgBodyRatio*100).toFixed(1)}%
+แนวโน้มกรอบเวลาใหญ่กว่า (${m.higherTimeframe.interval}): ${m.higherTimeframe.trend} (EMA20=${m.higherTimeframe.ema20.toFixed(2)}, EMA50=${m.higherTimeframe.ema50.toFixed(2)})
 
 หน้าที่ของคุณ:
-- สรุปแนวโน้ม (trend) และ pattern จากข้อมูลข้างต้นเท่านั้น
-- กำหนด entry ใกล้ราคาปัจจุบัน, tp และ sl โดยอ้างอิงแนวรับ-แนวต้านที่ให้มาจริง (ห้ามให้ tp/sl ขัดกับทิศทางคำแนะนำ)
+- สรุปแนวโน้ม (trend) และ pattern จากข้อมูลข้างต้นเท่านั้น โดยพิจารณาแนวโน้มกรอบเวลาใหญ่กว่าประกอบด้วยเสมอ (ถ้าแนวโน้มเล็กสวนทางกับแนวโน้มใหญ่ ถือเป็นสัญญาณขัดแย้งที่ต้องลด confidence)
+- ใช้ Bollinger Bands ประเมินว่าราคาอยู่ใกล้ขอบบน/ล่าง/กลาง (โซน overbought/oversold หรือ breakout)
+- ใช้ ATR และความผันผวนเฉลี่ยประกอบการประเมินความเสี่ยง และช่วยกำหนดระยะ tp/sl ให้สมเหตุสมผลกับความผันผวนจริง (อย่าตั้ง sl แคบกว่า ATR มากเกินไป)
+- ใช้ Stochastic Oscillator (%K, %D) ยืนยันโซน overbought (>80) / oversold (<20) และสัญญาณ crossover
+- กำหนด entry ใกล้ราคาปัจจุบัน, tp และ sl โดยอ้างอิงแนวรับ-แนวต้านและ ATR ที่ให้มาจริง (ห้ามให้ tp/sl ขัดกับทิศทางคำแนะนำ)
 - risk_reward ต้องคำนวณจาก |tp-entry| ต่อ |entry-sl| ให้ตรงกับตัวเลข entry/tp/sl ที่คุณให้จริง
+- เขียน detailed_analysis เป็นย่อหน้าภาษาไทยอย่างละเอียด (อย่างน้อย 4-6 ประโยค) อธิบายภาพรวมทั้งหมด: โครงสร้างแนวโน้มหลัก/รอง, ตำแหน่งราคาเทียบ Bollinger Bands, โมเมนตัมจาก RSI/MACD/Stochastic, ความผันผวนจาก ATR, และเหตุผลเชิงลึกว่าทำไมจึงให้คำแนะนำ BUY/SELL นี้พร้อมความเสี่ยงที่ควรระวัง
 
 กติกาการให้คะแนน confidence_percent (0-100) พิจารณาจาก "ความสอดคล้องกัน" ของสัญญาณทั้งหมดข้างต้น:
 - ถ้า trend, RSI, MACD, EMA20/50 และแท่งเทียนขึ้น/ลง ทุกตัวชี้ไปทิศทางเดียวกันอย่างชัดเจน (confluence สูง) ให้ confidence_percent อยู่ในช่วง 90-99
@@ -203,11 +310,15 @@ buy_probability/sell_probability ต้องรวมกันได้ 100 แ
   "macd": "สถานะ MACD เช่น Bullish Cross",
   "ema_relation": "ความสัมพันธ์ EMA20/50 เช่น EMA20 > EMA50",
   "volume": "ลักษณะ momentum จากแท่งเทียนขึ้น/ลง",
+  "bollinger": "ตำแหน่งราคาเทียบ Bollinger Bands เช่น ราคาใกล้ขอบบน (overbought zone)",
+  "stochastic": "สถานะ Stochastic เช่น %K ตัดขึ้นเหนือ %D ในโซน oversold",
+  "higher_timeframe": "สรุปแนวโน้มกรอบเวลาใหญ่กว่าและว่าสอดคล้องหรือขัดแย้งกับกรอบเวลาปัจจุบัน",
   "entry": ราคาตัวเลข,
   "tp": ราคาตัวเลข,
   "sl": ราคาตัวเลข,
   "risk_reward": "อัตราส่วน เช่น 1 : 2.5",
-  "reasons": ["เหตุผลข้อ 1 ภาษาไทย อ้างอิงตัวเลขจริงข้างต้น", "เหตุผลข้อ 2", "..."]
+  "reasons": ["เหตุผลข้อ 1 ภาษาไทย อ้างอิงตัวเลขจริงข้างต้น", "เหตุผลข้อ 2", "..."],
+  "detailed_analysis": "ย่อหน้าวิเคราะห์เชิงลึกภาษาไทย อย่างน้อย 4-6 ประโยค ตามที่อธิบายไว้ข้างต้น"
 }`;
 }
 
