@@ -327,6 +327,17 @@
     <ul class="reason-list" id="historyList" style="gap:8px;"></ul>
   </div>
 
+  <!-- GOOGLE SHEET SYNC SETTINGS -->
+  <div class="panel">
+    <div class="grid-label">ซิงก์สถิติไป Google Sheet</div>
+    <div style="display:flex; gap:6px; align-items:center;">
+      <input id="sheetUrlInput" type="text" placeholder="วาง Google Apps Script Web App URL ที่นี่"
+        style="flex:1; min-width:0; background:var(--bg-panel-raised); color:var(--ink); border:1px solid var(--hairline); border-radius:6px; padding:9px 10px; font-family:var(--font-mono); font-size:11px;">
+      <button class="btn btn-gold" id="saveSheetUrlBtn" type="button" style="padding:9px 14px; font-size:12px; white-space:nowrap;">บันทึก</button>
+    </div>
+    <div class="analyzing-note" id="sheetSyncStatus" style="text-align:left; margin-top:8px;">ยังไม่ได้ตั้งค่า — ผลแพ้/ชนะจะถูกเก็บในเบราว์เซอร์นี้เท่านั้น</div>
+  </div>
+
   <!-- STEP 1: START -->
   <div id="view-upload">
     <div class="panel">
@@ -349,6 +360,21 @@
           <option value="4h">4 ชั่วโมง</option>
           <option value="1day">1 วัน</option>
         </select>
+        <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:6px;">
+          <div>
+            <label class="drop-sub" for="lotInput" style="display:block; margin-bottom:6px;">Lot</label>
+            <input id="lotInput" type="number" step="0.01" min="0.01" value="0.01" class="btn" style="width:100%; background:var(--bg-panel-raised); color:var(--ink); border:1px solid var(--hairline); text-align:center;">
+          </div>
+          <div>
+            <label class="drop-sub" for="tpUsdInput" style="display:block; margin-bottom:6px;">TP ($)</label>
+            <input id="tpUsdInput" type="number" step="1" min="1" value="15" class="btn" style="width:100%; background:var(--bg-panel-raised); color:var(--ink); border:1px solid var(--hairline); text-align:center;">
+          </div>
+          <div>
+            <label class="drop-sub" for="slUsdInput" style="display:block; margin-bottom:6px;">SL ($)</label>
+            <input id="slUsdInput" type="number" step="1" min="1" value="10" class="btn" style="width:100%; background:var(--bg-panel-raised); color:var(--ink); border:1px solid var(--hairline); text-align:center;">
+          </div>
+        </div>
+        <div class="drop-sub" style="margin-bottom:14px;">คำนวณ TP/SL จากขนาด lot จริง (ทอง 1 lot = 100 oz, บิตคอยน์ 1 lot = 1 BTC — ปรับตามสเปคโบรกเกอร์ของคุณถ้าไม่ตรง)</div>
         <button class="btn btn-gold" id="analyzeBtn" type="button">วิเคราะห์ตอนนี้</button>
       </div>
     </div>
@@ -433,6 +459,7 @@
           <div class="reco-cell sl"><div class="lbl">SL</div><div class="val" id="slVal">—</div></div>
         </div>
         <div class="rr-line">Risk / Reward &nbsp;<b id="rrVal">—</b></div>
+        <div class="rr-line" style="border-top:none; padding-top:6px;" id="lotInfoVal">—</div>
       </div>
     </div>
 
@@ -480,6 +507,10 @@
     XAU: { ticker: 'XAUUSD LIVE', title: 'ทองคำ', dropTitle: 'วิเคราะห์ XAU/USD ด้วยราคาจริง' },
     BTC: { ticker: 'BTCUSD LIVE', title: 'บิตคอยน์', dropTitle: 'วิเคราะห์ BTC/USD ด้วยราคาจริง' },
   };
+  // Units per 1.00 lot, i.e. $ profit/loss per $1 price move at lot=1.
+  // Standard XAUUSD CFD spec is 100oz/lot; BTCUSD is commonly 1 BTC/lot.
+  // Adjust if your broker's contract size differs.
+  const CONTRACT_SIZE = { XAU: 100, BTC: 1 };
   let currentAsset = assetSelect.value;
 
   function applyAssetUI(){
@@ -492,6 +523,12 @@
   }
   assetSelect.addEventListener('change', applyAssetUI);
   applyAssetUI();
+
+  (function initSheetSync(){
+    const saved = getWebhookUrl();
+    document.getElementById('sheetUrlInput').value = saved;
+    if(saved) document.getElementById('sheetSyncStatus').textContent = 'ตั้งค่าซิงก์ไว้แล้ว จะอัปเดตอัตโนมัติทุกครั้งที่มีผลใหม่';
+  })();
 
   analyzeBtn.addEventListener('click', () => handleAnalyze());
 
@@ -592,8 +629,43 @@
     catch(e){ return []; }
   }
   function saveHistory(list){
-    localStorage.setItem(historyKey(), JSON.stringify(list.slice(-50)));
+    const trimmed = list.slice(-50);
+    localStorage.setItem(historyKey(), JSON.stringify(trimmed));
+    syncHistoryToSheet(trimmed);
   }
+
+  // ---- Optional Google Sheet sync (Apps Script Web App) ----
+  function getWebhookUrl(){
+    return localStorage.getItem('goldSheetWebhookUrl') || '';
+  }
+
+  function syncHistoryToSheet(list){
+    const url = getWebhookUrl();
+    if(!url) return;
+    const statusEl = document.getElementById('sheetSyncStatus');
+    // text/plain avoids a CORS preflight against the Apps Script endpoint.
+    fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ asset: currentAsset, rows: list }),
+    }).then(() => {
+      if(statusEl) statusEl.textContent = 'ซิงก์ล่าสุด ' + new Date().toLocaleTimeString('th-TH');
+    }).catch(() => {
+      if(statusEl) statusEl.textContent = 'ซิงก์ไป Google Sheet ไม่สำเร็จ (เช็ค URL หรือการเชื่อมต่อ)';
+    });
+  }
+
+  document.getElementById('saveSheetUrlBtn').addEventListener('click', () => {
+    const v = document.getElementById('sheetUrlInput').value.trim();
+    localStorage.setItem('goldSheetWebhookUrl', v);
+    const statusEl = document.getElementById('sheetSyncStatus');
+    if(!v){
+      statusEl.textContent = 'ยังไม่ได้ตั้งค่า — ผลแพ้/ชนะจะถูกเก็บในเบราว์เซอร์นี้เท่านั้น';
+      return;
+    }
+    statusEl.textContent = 'กำลังซิงก์...';
+    syncHistoryToSheet(loadHistory());
+  });
 
   function addHistoryEntry(a, trade){
     const isBuy = String(a.recommendation).toUpperCase().indexOf('BUY') !== -1;
@@ -742,27 +814,30 @@
     return { buy: Math.round((buy/sum)*100), sell: Math.round((sell/sum)*100) };
   }
 
-  // Recompute R:R from entry/tp/sl instead of trusting the AI's free-text string,
-  // and fix entry/tp/sl ordering if it contradicts the BUY/SELL direction.
+  // TP/SL are derived from the user's lot size and $ target/stop, not from the
+  // AI's free-text price guess — only entry (near current market price) comes
+  // from the AI. This gives a fixed, predictable risk per trade in real money.
   function reconcileTrade(a, isBuy){
     let entry = Number(a.entry);
-    let tp = Number(a.tp);
-    let sl = Number(a.sl);
-    if(!isFinite(entry) || !isFinite(tp) || !isFinite(sl)){
+    if(!isFinite(entry)){
       return { entry: a.entry, tp: a.tp, sl: a.sl, riskReward: a.risk_reward || '—' };
     }
-    if(isBuy){
-      if(tp < entry) tp = entry + Math.abs(entry - tp || (entry * 0.005));
-      if(sl > entry) sl = entry - Math.abs(entry - sl || (entry * 0.003));
-    } else {
-      if(tp > entry) tp = entry - Math.abs(entry - tp || (entry * 0.005));
-      if(sl < entry) sl = entry + Math.abs(entry - sl || (entry * 0.003));
-    }
+    const lot = Math.max(Number(document.getElementById('lotInput').value) || 0.01, 0.01);
+    const tpUsd = Math.max(Number(document.getElementById('tpUsdInput').value) || 15, 0);
+    const slUsd = Math.max(Number(document.getElementById('slUsdInput').value) || 10, 0);
+    const contractSize = CONTRACT_SIZE[currentAsset] || 100;
+    const unitValue = lot * contractSize; // $ P/L per $1 price move at this lot size
+
+    const tpDistance = unitValue > 0 ? tpUsd / unitValue : 0;
+    const slDistance = unitValue > 0 ? slUsd / unitValue : 0;
+    const tp = isBuy ? entry + tpDistance : entry - tpDistance;
+    const sl = isBuy ? entry - slDistance : entry + slDistance;
+
     const reward = Math.abs(tp - entry);
     const risk = Math.abs(entry - sl);
     const ratio = risk > 0 ? (reward / risk) : 0;
-    const riskReward = risk > 0 ? ('1 : ' + ratio.toFixed(2)) : (a.risk_reward || '—');
-    return { entry, tp, sl, riskReward };
+    const riskReward = risk > 0 ? ('1 : ' + ratio.toFixed(2)) : '—';
+    return { entry, tp, sl, riskReward, lot, tpUsd, slUsd };
   }
 
   function renderResults(a){
@@ -817,10 +892,13 @@
     badge.textContent = (isBuy ? '✓ BUY' : '✓ SELL');
     badge.className = 'reco-badge ' + (isBuy ? 'buy' : 'sell');
 
-    document.getElementById('entryVal').textContent = trade.entry ?? '—';
-    document.getElementById('tpVal').textContent = trade.tp ?? '—';
-    document.getElementById('slVal').textContent = trade.sl ?? '—';
+    document.getElementById('entryVal').textContent = isFinite(trade.entry) ? Number(trade.entry).toFixed(2) : '—';
+    document.getElementById('tpVal').textContent = isFinite(trade.tp) ? Number(trade.tp).toFixed(2) : '—';
+    document.getElementById('slVal').textContent = isFinite(trade.sl) ? Number(trade.sl).toFixed(2) : '—';
     document.getElementById('rrVal').textContent = trade.riskReward || '—';
+    document.getElementById('lotInfoVal').textContent = trade.lot
+      ? ('Lot ' + trade.lot + ' · TP $' + trade.tpUsd + ' · SL $' + trade.slUsd)
+      : '—';
 
     const reasons = Array.isArray(a.reasons) ? a.reasons : [];
     document.getElementById('reasonList').innerHTML = reasons.map(r => '<li>'+r+'</li>').join('');
