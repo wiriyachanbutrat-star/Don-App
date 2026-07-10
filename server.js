@@ -124,6 +124,35 @@ function stochasticOscillator(candles, period = 14, smoothK = 3) {
   return { k, d };
 }
 
+function computeSignalScore(m) {
+  const reasons = [];
+  let score = 0;
+
+  if (m.ema20 > m.ema50) { score += 1; reasons.push('EMA20>EMA50 (+1 buy)'); }
+  else { score -= 1; reasons.push('EMA20<EMA50 (+1 sell)'); }
+
+  if (m.macd.histogram > 0) { score += 1; reasons.push('MACD histogram>0 (+1 buy)'); }
+  else { score -= 1; reasons.push('MACD histogram<0 (+1 sell)'); }
+
+  if (m.rsi >= 55) { score += 1; reasons.push('RSI>=55 (+1 buy)'); }
+  else if (m.rsi <= 45) { score -= 1; reasons.push('RSI<=45 (+1 sell)'); }
+  else { reasons.push('RSI neutral (0)'); }
+
+  if (m.stochastic.k > m.stochastic.d && m.stochastic.k < 80) { score += 1; reasons.push('Stoch %K>%D not overbought (+1 buy)'); }
+  else if (m.stochastic.k < m.stochastic.d && m.stochastic.k > 20) { score -= 1; reasons.push('Stoch %K<%D not oversold (+1 sell)'); }
+  else { reasons.push('Stochastic neutral (0)'); }
+
+  if (m.higherTimeframe.trend.includes('Uptrend')) { score += 1; reasons.push('Higher timeframe uptrend (+1 buy)'); }
+  else { score -= 1; reasons.push('Higher timeframe downtrend (+1 sell)'); }
+
+  if (m.candleCounts.up > m.candleCounts.down) { score += 1; reasons.push('More up candles recently (+1 buy)'); }
+  else { score -= 1; reasons.push('More down candles recently (+1 sell)'); }
+
+  const direction = score > 0 ? 'BUY' : score < 0 ? 'SELL' : null;
+  const strong = Math.abs(score) >= 4;
+  return { score, direction, strong, reasons };
+}
+
 function volatilityStats(candles, period = 20) {
   const recent = candles.slice(-period);
   const ranges = recent.map(c => c.high - c.low);
@@ -150,7 +179,7 @@ app.get('/api/market-data', async (req, res) => {
   try {
     const [series, higherSeries] = await Promise.all([
       fetchTwelveData('time_series', { symbol: SYMBOL, interval, outputsize: 100 }),
-      fetchTwelveData('time_series', { symbol: SYMBOL, interval: higherInterval, outputsize: 60 }),
+      fetchTwelveData('time_series', { symbol: SYMBOL, interval: higherInterval, outputsize: 150 }),
     ]);
 
     // Twelve Data returns newest-first; put oldest-first for trend reading.
@@ -229,7 +258,8 @@ app.post('/api/analyze', async (req, res) => {
     return res.status(400).json({ error: 'ไม่มีข้อมูลราคาทองส่งมาให้วิเคราะห์' });
   }
 
-  const prompt = buildPrompt(marketData);
+  const signal = computeSignalScore(marketData);
+  const prompt = buildPrompt(marketData, signal);
 
   try {
     const response = await fetch(
@@ -240,7 +270,7 @@ app.post('/api/analyze', async (req, res) => {
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: {
-            temperature: 0.3,
+            temperature: 0,
             response_mime_type: 'application/json',
           },
         }),
@@ -252,9 +282,33 @@ app.post('/api/analyze', async (req, res) => {
       return res.status(response.status).json({ error: data?.error?.message || 'เรียก Gemini API ไม่สำเร็จ' });
     }
 
-    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+    let text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
     if (!text) {
       return res.status(502).json({ error: 'ไม่ได้รับข้อความตอบกลับจาก AI' });
+    }
+
+    // Server-side veto: if the deterministic indicator score strongly disagrees
+    // with the AI's call, the AI's answer is contradicting the actual data —
+    // flip the recommendation and cap confidence instead of trusting free text blindly.
+    try {
+      const parsed = JSON.parse(text);
+      const aiIsBuy = String(parsed.recommendation).toUpperCase().indexOf('BUY') !== -1;
+      const aiDirection = aiIsBuy ? 'BUY' : 'SELL';
+      if (signal.strong && signal.direction && signal.direction !== aiDirection) {
+        parsed.recommendation = signal.direction;
+        const flippedIsBuy = signal.direction === 'BUY';
+        parsed.buy_probability = flippedIsBuy ? 65 : 35;
+        parsed.sell_probability = flippedIsBuy ? 35 : 65;
+        parsed.confidence_percent = Math.min(Number(parsed.confidence_percent) || 70, 70);
+        parsed.confidence_score = Math.round((parsed.confidence_percent / 10) * 10) / 10;
+        parsed.reasons = [
+          `ระบบตรวจพบว่าคำตอบของ AI ขัดแย้งกับสัญญาณอินดิเคเตอร์เชิงปริมาณ (score=${signal.score}) จึงปรับคำแนะนำเป็น ${signal.direction} ตามข้อมูลจริง`,
+          ...(Array.isArray(parsed.reasons) ? parsed.reasons : []),
+        ];
+        text = JSON.stringify(parsed);
+      }
+    } catch (parseErr) {
+      console.error('veto check failed to parse AI response', parseErr);
     }
 
     res.json({ content: [{ type: 'text', text }] });
@@ -264,8 +318,11 @@ app.post('/api/analyze', async (req, res) => {
   }
 });
 
-function buildPrompt(m) {
+function buildPrompt(m, signal) {
   return `คุณคือนักวิเคราะห์เทคนิคทองคำ (XAUUSD) ข้อมูลด้านล่างนี้คือค่าจริงที่คำนวณจากราคาตลาดจริง (ไม่ใช่การประมาณจากภาพ) ให้ใช้ตัวเลขเหล่านี้เป็นหลักฐานหลักในการให้เหตุผล ห้ามสร้างตัวเลขราคาหรืออินดิเคเตอร์ขึ้นใหม่เอง:
+
+สัญญาณเชิงปริมาณเบื้องต้น (คำนวณจากอินดิเคเตอร์ล้วนๆ ไม่ใช่ความเห็น AI): score=${signal.score} จาก -6 ถึง +6 (บวก=เอนไปทาง BUY, ลบ=เอนไปทาง SELL) → ${signal.direction ? `เอนไปทาง ${signal.direction}` : 'ก้ำกึ่ง'}${signal.strong ? ' (สัญญาณชัดเจนมาก ควรให้คำแนะนำสอดคล้องกับทิศทางนี้เป็นหลัก)' : ''}
+รายละเอียด: ${signal.reasons.join(', ')}
 
 ราคาปัจจุบัน: ${m.currentPrice}
 กรอบเวลา: ${m.interval}
