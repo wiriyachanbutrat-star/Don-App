@@ -130,13 +130,25 @@ function stochasticOscillator(candles, period = 14, smoothK = 3) {
 
 function computeSignalScore(m) {
   const reasons = [];
+
+  // EMA20/50, MACD histogram and higher-timeframe trend are all trend-following
+  // and tend to move together, so counting each separately inflates the score
+  // during ordinary trending markets (exactly when trend indicators lag a reversal
+  // the most). Collapse them into a single trend vote instead.
+  let trendVotes = 0;
+  if (m.ema20 > m.ema50) { trendVotes += 1; reasons.push('EMA20>EMA50 (trend vote buy)'); }
+  else { trendVotes -= 1; reasons.push('EMA20<EMA50 (trend vote sell)'); }
+
+  if (m.macd.histogram > 0) { trendVotes += 1; reasons.push('MACD histogram>0 (trend vote buy)'); }
+  else { trendVotes -= 1; reasons.push('MACD histogram<0 (trend vote sell)'); }
+
+  if (m.higherTimeframe.trend.includes('Uptrend')) { trendVotes += 1; reasons.push('Higher timeframe uptrend (trend vote buy)'); }
+  else { trendVotes -= 1; reasons.push('Higher timeframe downtrend (trend vote sell)'); }
+
   let score = 0;
-
-  if (m.ema20 > m.ema50) { score += 1; reasons.push('EMA20>EMA50 (+1 buy)'); }
-  else { score -= 1; reasons.push('EMA20<EMA50 (+1 sell)'); }
-
-  if (m.macd.histogram > 0) { score += 1; reasons.push('MACD histogram>0 (+1 buy)'); }
-  else { score -= 1; reasons.push('MACD histogram<0 (+1 sell)'); }
+  if (trendVotes >= 2) { score += 1; reasons.push('=> Trend confluence BUY (+1)'); }
+  else if (trendVotes <= -2) { score -= 1; reasons.push('=> Trend confluence SELL (+1)'); }
+  else { reasons.push('=> Trend confluence mixed (0)'); }
 
   if (m.rsi >= 55) { score += 1; reasons.push('RSI>=55 (+1 buy)'); }
   else if (m.rsi <= 45) { score -= 1; reasons.push('RSI<=45 (+1 sell)'); }
@@ -146,15 +158,12 @@ function computeSignalScore(m) {
   else if (m.stochastic.k < m.stochastic.d && m.stochastic.k > 20) { score -= 1; reasons.push('Stoch %K<%D not oversold (+1 sell)'); }
   else { reasons.push('Stochastic neutral (0)'); }
 
-  if (m.higherTimeframe.trend.includes('Uptrend')) { score += 1; reasons.push('Higher timeframe uptrend (+1 buy)'); }
-  else { score -= 1; reasons.push('Higher timeframe downtrend (+1 sell)'); }
-
   if (m.candleCounts.up > m.candleCounts.down) { score += 1; reasons.push('More up candles recently (+1 buy)'); }
   else { score -= 1; reasons.push('More down candles recently (+1 sell)'); }
 
   const direction = score > 0 ? 'BUY' : score < 0 ? 'SELL' : null;
-  const strong = Math.abs(score) >= 4;
-  return { score, direction, strong, reasons };
+  const strong = Math.abs(score) >= 3;
+  return { score, direction, strong, reasons, maxScore: 4 };
 }
 
 function volatilityStats(candles, period = 20) {
@@ -184,7 +193,7 @@ app.get('/api/market-data', async (req, res) => {
 
   try {
     const [series, higherSeries] = await Promise.all([
-      fetchTwelveData('time_series', { symbol: asset.symbol, interval, outputsize: 100 }),
+      fetchTwelveData('time_series', { symbol: asset.symbol, interval, outputsize: 210 }),
       fetchTwelveData('time_series', { symbol: asset.symbol, interval: higherInterval, outputsize: 150 }),
     ]);
 
@@ -306,9 +315,14 @@ app.post('/api/analyze', async (req, res) => {
       if (signal.strong && signal.direction && signal.direction !== aiDirection) {
         parsed.recommendation = signal.direction;
         const flippedIsBuy = signal.direction === 'BUY';
-        parsed.buy_probability = flippedIsBuy ? 65 : 35;
-        parsed.sell_probability = flippedIsBuy ? 35 : 65;
-        parsed.confidence_percent = Math.min(Number(parsed.confidence_percent) || 70, 70);
+        // Scale the overridden probability/confidence with how many indicators
+        // actually agree (score 3 of 4 vs. all 4) instead of a flat 65/35 for
+        // every override regardless of signal strength.
+        const magnitude = Math.abs(signal.score); // 3 or 4 given strong threshold
+        const skew = 60 + (magnitude - 3) * 10; // 3 -> 60, 4 -> 70
+        parsed.buy_probability = flippedIsBuy ? skew : 100 - skew;
+        parsed.sell_probability = flippedIsBuy ? 100 - skew : skew;
+        parsed.confidence_percent = Math.min(Number(parsed.confidence_percent) || skew, skew);
         parsed.confidence_score = Math.round((parsed.confidence_percent / 10) * 10) / 10;
         parsed.reasons = [
           `ระบบตรวจพบว่าคำตอบของ AI ขัดแย้งกับสัญญาณอินดิเคเตอร์เชิงปริมาณ (score=${signal.score}) จึงปรับคำแนะนำเป็น ${signal.direction} ตามข้อมูลจริง`,
@@ -330,7 +344,7 @@ app.post('/api/analyze', async (req, res) => {
 function buildPrompt(m, signal, assetLabel) {
   return `คุณคือนักวิเคราะห์เทคนิค ${assetLabel} ข้อมูลด้านล่างนี้คือค่าจริงที่คำนวณจากราคาตลาดจริง (ไม่ใช่การประมาณจากภาพ) ให้ใช้ตัวเลขเหล่านี้เป็นหลักฐานหลักในการให้เหตุผล ห้ามสร้างตัวเลขราคาหรืออินดิเคเตอร์ขึ้นใหม่เอง:
 
-สัญญาณเชิงปริมาณเบื้องต้น (คำนวณจากอินดิเคเตอร์ล้วนๆ ไม่ใช่ความเห็น AI): score=${signal.score} จาก -6 ถึง +6 (บวก=เอนไปทาง BUY, ลบ=เอนไปทาง SELL) → ${signal.direction ? `เอนไปทาง ${signal.direction}` : 'ก้ำกึ่ง'}${signal.strong ? ' (สัญญาณชัดเจนมาก ควรให้คำแนะนำสอดคล้องกับทิศทางนี้เป็นหลัก)' : ''}
+สัญญาณเชิงปริมาณเบื้องต้น (คำนวณจากอินดิเคเตอร์ล้วนๆ ไม่ใช่ความเห็น AI): score=${signal.score} จาก -${signal.maxScore} ถึง +${signal.maxScore} (บวก=เอนไปทาง BUY, ลบ=เอนไปทาง SELL, เทรนด์จาก EMA/MACD/กรอบเวลาใหญ่นับรวมเป็น 1 คะแนนเดียวเพราะสัมพันธ์กันสูง) → ${signal.direction ? `เอนไปทาง ${signal.direction}` : 'ก้ำกึ่ง'}${signal.strong ? ' (สัญญาณชัดเจนมาก ควรให้คำแนะนำสอดคล้องกับทิศทางนี้เป็นหลัก)' : ''}
 รายละเอียด: ${signal.reasons.join(', ')}
 
 ราคาปัจจุบัน: ${m.currentPrice}

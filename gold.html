@@ -578,7 +578,7 @@
     if(!response.ok){
       throw new Error(data.error || ('ดึงราคาไม่สำเร็จ (สถานะ ' + response.status + ')'));
     }
-    checkHistory(data.currentPrice);
+    checkHistory(data.currentPrice, data.recentCandles);
     return data;
   }
 
@@ -600,6 +600,13 @@
     const entry = Number(trade.entry), tp = Number(trade.tp), sl = Number(trade.sl);
     if(!isFinite(entry) || !isFinite(tp) || !isFinite(sl)) return;
     const list = loadHistory();
+    // Skip if the same direction/entry is still open from a very recent analysis —
+    // re-analyzing (timeframe switch, page reload) shouldn't double-count one trade.
+    const last = list[list.length - 1];
+    if(last && last.status === 'pending' && last.direction === (isBuy ? 'BUY' : 'SELL')){
+      const priceDiffPct = Math.abs(entry - last.entry) / last.entry;
+      if(priceDiffPct < 0.001) return;
+    }
     list.push({
       time: Date.now(),
       direction: isBuy ? 'BUY' : 'SELL',
@@ -612,24 +619,53 @@
     renderHistory();
   }
 
-  // Compare the current market price against every still-open trade and
-  // mark it won/lost the moment price actually reaches TP or SL.
-  function checkHistory(currentPrice){
+  function parseCandleTime(t){
+    const ts = Date.parse(String(t).replace(' ', 'T'));
+    return isFinite(ts) ? ts : null;
+  }
+
+  // Compare each still-open trade against the actual candle highs/lows since it
+  // was opened (not just the latest snapshot price), so a TP/SL touch that
+  // happened between page visits is still detected correctly and in the right
+  // order. Falls back to the snapshot price when candle data isn't available.
+  function checkHistory(currentPrice, candles){
     if(!isFinite(currentPrice)) return;
     const list = loadHistory();
     let changed = false;
     list.forEach(rec => {
       if(rec.status !== 'pending') return;
-      if(rec.direction === 'BUY'){
-        if(currentPrice >= rec.tp){ rec.status = 'win'; changed = true; }
-        else if(currentPrice <= rec.sl){ rec.status = 'loss'; changed = true; }
-      } else {
-        if(currentPrice <= rec.tp){ rec.status = 'win'; changed = true; }
-        else if(currentPrice >= rec.sl){ rec.status = 'loss'; changed = true; }
+      let hit = null;
+      if(Array.isArray(candles) && candles.length){
+        for(const c of candles){
+          const ct = parseCandleTime(c.time);
+          if(ct == null || ct < rec.time) continue;
+          if(rec.direction === 'BUY'){
+            const hitSl = c.low <= rec.sl;
+            const hitTp = c.high >= rec.tp;
+            if(hitSl){ hit = 'loss'; break; } // conservative: SL wins ties within the same candle
+            if(hitTp){ hit = 'win'; break; }
+          } else {
+            const hitSl = c.high >= rec.sl;
+            const hitTp = c.low <= rec.tp;
+            if(hitSl){ hit = 'loss'; break; }
+            if(hitTp){ hit = 'win'; break; }
+          }
+        }
       }
-      if(changed && rec.closedPrice == null && rec.status !== 'pending'){
+      if(!hit){
+        if(rec.direction === 'BUY'){
+          if(currentPrice >= rec.tp) hit = 'win';
+          else if(currentPrice <= rec.sl) hit = 'loss';
+        } else {
+          if(currentPrice <= rec.tp) hit = 'win';
+          else if(currentPrice >= rec.sl) hit = 'loss';
+        }
+      }
+      if(hit){
+        rec.status = hit;
         rec.closedPrice = currentPrice;
         rec.closedTime = Date.now();
+        changed = true;
       }
     });
     if(changed) saveHistory(list);
@@ -814,7 +850,7 @@
   document.getElementById('newImageBtn').addEventListener('click', goToUpload);
 
   renderHistory();
-  fetch('/api/market-data?interval=1h').then(r => r.json()).then(d => { if(d && d.currentPrice) checkHistory(d.currentPrice); }).catch(()=>{});
+  fetch('/api/market-data?interval=1h').then(r => r.json()).then(d => { if(d && d.currentPrice) checkHistory(d.currentPrice, d.recentCandles); }).catch(()=>{});
 </script>
 </body>
 </html>
