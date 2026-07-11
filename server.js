@@ -158,8 +158,10 @@ function computeSignalScore(m) {
   else if (m.stochastic.k < m.stochastic.d && m.stochastic.k > 20) { score -= 1; reasons.push('Stoch %K<%D not oversold (+1 sell)'); }
   else { reasons.push('Stochastic neutral (0)'); }
 
-  if (m.candleCounts.up > m.candleCounts.down) { score += 1; reasons.push('More up candles recently (+1 buy)'); }
-  else { score -= 1; reasons.push('More down candles recently (+1 sell)'); }
+  const candleDiff = m.candleCounts.up - m.candleCounts.down;
+  if (candleDiff >= 3) { score += 1; reasons.push('More up candles recently (+1 buy)'); }
+  else if (candleDiff <= -3) { score -= 1; reasons.push('More down candles recently (+1 sell)'); }
+  else { reasons.push('Candle count neutral (0)'); }
 
   const direction = score > 0 ? 'BUY' : score < 0 ? 'SELL' : null;
   const strong = Math.abs(score) >= 3;
@@ -324,6 +326,23 @@ app.post('/api/analyze', async (req, res) => {
         parsed.sell_probability = flippedIsBuy ? 100 - skew : skew;
         parsed.confidence_percent = Math.min(Number(parsed.confidence_percent) || skew, skew);
         parsed.confidence_score = Math.round((parsed.confidence_percent / 10) * 10) / 10;
+
+        // The AI's tp/sl were structured for its original (now-overridden) direction
+        // (tp beyond entry in the old direction, sl on the opposite side). Flipping
+        // recommendation without flipping the trade levels leaves tp/sl backwards for
+        // the new direction — swapping them mirrors the same entry/risk distances onto
+        // the corrected side instead of shipping a structurally broken trade.
+        const entry = Number(parsed.entry);
+        const oldTp = Number(parsed.tp);
+        const oldSl = Number(parsed.sl);
+        if (isFinite(entry) && isFinite(oldTp) && isFinite(oldSl)) {
+          parsed.tp = oldSl;
+          parsed.sl = oldTp;
+          const reward = Math.abs(parsed.tp - entry);
+          const risk = Math.abs(entry - parsed.sl);
+          parsed.risk_reward = risk > 0 ? `1 : ${(reward / risk).toFixed(2)}` : parsed.risk_reward;
+        }
+
         parsed.reasons = [
           `ระบบตรวจพบว่าคำตอบของ AI ขัดแย้งกับสัญญาณอินดิเคเตอร์เชิงปริมาณ (score=${signal.score}) จึงปรับคำแนะนำเป็น ${signal.direction} ตามข้อมูลจริง`,
           ...(Array.isArray(parsed.reasons) ? parsed.reasons : []),
