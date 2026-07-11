@@ -145,6 +145,13 @@ function computeSignalScore(m) {
   if (m.higherTimeframe.trend.includes('Uptrend')) { trendVotes += 1; reasons.push('Higher timeframe uptrend (trend vote buy)'); }
   else { trendVotes -= 1; reasons.push('Higher timeframe downtrend (trend vote sell)'); }
 
+  // EMA200 is the standard long-term trend filter; only vote when we have
+  // enough history (200 candles) to compute it.
+  if (m.ema200 != null) {
+    if (m.currentPrice > m.ema200) { trendVotes += 1; reasons.push('Price>EMA200 (trend vote buy)'); }
+    else { trendVotes -= 1; reasons.push('Price<EMA200 (trend vote sell)'); }
+  }
+
   let score = 0;
   if (trendVotes >= 2) { score += 1; reasons.push('=> Trend confluence BUY (+1)'); }
   else if (trendVotes <= -2) { score -= 1; reasons.push('=> Trend confluence SELL (+1)'); }
@@ -408,6 +415,7 @@ buy_probability/sell_probability ต้องรวมกันได้ 100 แ
   "rsi": "${m.rsi.toFixed(1)}",
   "macd": "สถานะ MACD เช่น Bullish Cross",
   "ema_relation": "ความสัมพันธ์ EMA20/50 เช่น EMA20 > EMA50",
+  "ema200_relation": "${m.ema200 != null ? 'ตำแหน่งราคาเทียบ EMA200 เช่น ราคาอยู่เหนือ EMA200 (ขาขึ้นระยะยาว)' : 'ไม่มีข้อมูลเพียงพอ'}",
   "volume": "ลักษณะ momentum จากแท่งเทียนขึ้น/ลง",
   "bollinger": "ตำแหน่งราคาเทียบ Bollinger Bands เช่น ราคาใกล้ขอบบน (overbought zone)",
   "stochastic": "สถานะ Stochastic เช่น %K ตัดขึ้นเหนือ %D ในโซน oversold",

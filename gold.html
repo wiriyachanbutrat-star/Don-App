@@ -327,17 +327,6 @@
     <ul class="reason-list" id="historyList" style="gap:8px;"></ul>
   </div>
 
-  <!-- GOOGLE SHEET SYNC SETTINGS -->
-  <div class="panel">
-    <div class="grid-label">ซิงก์สถิติไป Google Sheet</div>
-    <div style="display:flex; gap:6px; align-items:center;">
-      <input id="sheetUrlInput" type="text" placeholder="วาง Google Apps Script Web App URL ที่นี่"
-        style="flex:1; min-width:0; background:var(--bg-panel-raised); color:var(--ink); border:1px solid var(--hairline); border-radius:6px; padding:9px 10px; font-family:var(--font-mono); font-size:11px;">
-      <button class="btn btn-gold" id="saveSheetUrlBtn" type="button" style="padding:9px 14px; font-size:12px; white-space:nowrap;">บันทึก</button>
-    </div>
-    <div class="analyzing-note" id="sheetSyncStatus" style="text-align:left; margin-top:8px;">ยังไม่ได้ตั้งค่า — ผลแพ้/ชนะจะถูกเก็บในเบราว์เซอร์นี้เท่านั้น</div>
-  </div>
-
   <!-- STEP 1: START -->
   <div id="view-upload">
     <div class="panel">
@@ -524,12 +513,6 @@
   assetSelect.addEventListener('change', applyAssetUI);
   applyAssetUI();
 
-  (function initSheetSync(){
-    const saved = getWebhookUrl();
-    document.getElementById('sheetUrlInput').value = saved;
-    if(saved) document.getElementById('sheetSyncStatus').textContent = 'ตั้งค่าซิงก์ไว้แล้ว จะอัปเดตอัตโนมัติทุกครั้งที่มีผลใหม่';
-  })();
-
   analyzeBtn.addEventListener('click', () => handleAnalyze());
 
   document.getElementById('retryBtn').addEventListener('click', () => {
@@ -634,38 +617,17 @@
     syncHistoryToSheet(trimmed);
   }
 
-  // ---- Optional Google Sheet sync (Apps Script Web App) ----
-  function getWebhookUrl(){
-    return localStorage.getItem('goldSheetWebhookUrl') || '';
-  }
+  // ---- Google Sheet sync (Apps Script Web App) ----
+  const SHEET_WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbxiPj9PBqUrF0eCnT7keL5By2kVIUqrA30RGXEbDVtsyL-cblwV8vBeXfp6atkLbXma/exec';
 
   function syncHistoryToSheet(list){
-    const url = getWebhookUrl();
-    if(!url) return;
-    const statusEl = document.getElementById('sheetSyncStatus');
     // text/plain avoids a CORS preflight against the Apps Script endpoint.
-    fetch(url, {
+    fetch(SHEET_WEBHOOK_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify({ asset: currentAsset, rows: list }),
-    }).then(() => {
-      if(statusEl) statusEl.textContent = 'ซิงก์ล่าสุด ' + new Date().toLocaleTimeString('th-TH');
-    }).catch(() => {
-      if(statusEl) statusEl.textContent = 'ซิงก์ไป Google Sheet ไม่สำเร็จ (เช็ค URL หรือการเชื่อมต่อ)';
-    });
+    }).catch(() => {});
   }
-
-  document.getElementById('saveSheetUrlBtn').addEventListener('click', () => {
-    const v = document.getElementById('sheetUrlInput').value.trim();
-    localStorage.setItem('goldSheetWebhookUrl', v);
-    const statusEl = document.getElementById('sheetSyncStatus');
-    if(!v){
-      statusEl.textContent = 'ยังไม่ได้ตั้งค่า — ผลแพ้/ชนะจะถูกเก็บในเบราว์เซอร์นี้เท่านั้น';
-      return;
-    }
-    statusEl.textContent = 'กำลังซิงก์...';
-    syncHistoryToSheet(loadHistory());
-  });
 
   function addHistoryEntry(a, trade){
     const isBuy = String(a.recommendation).toUpperCase().indexOf('BUY') !== -1;
@@ -878,6 +840,7 @@
       ['RSI', a.rsi||'—', ''],
       ['MACD', a.macd||'—', isBuy?'up':'down'],
       ['EMA', a.ema_relation||'—', isBuy?'up':'down'],
+      ['EMA200', a.ema200_relation||'—', ''],
       ['Volume', a.volume||'—', ''],
       ['Bollinger', a.bollinger||'—', ''],
       ['Stochastic', a.stochastic||'—', ''],
