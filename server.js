@@ -5,6 +5,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const TWELVE_DATA_API_KEY = process.env.TWELVE_DATA_API_KEY;
+const MARKETAUX_API_KEY = process.env.MARKETAUX_API_KEY;
 const GEMINI_MODEL = 'gemini-2.5-flash';
 
 const ASSETS = {
@@ -29,6 +30,45 @@ async function fetchTwelveData(path, params) {
     throw new Error(data.message || `เรียกข้อมูล ${path} ไม่สำเร็จ`);
   }
   return data;
+}
+
+// Marketaux free tier is rate-limited, and gold-moving news doesn't change
+// minute-to-minute, so cache per asset for a few minutes instead of calling
+// on every /api/analyze request.
+const newsCache = new Map();
+const NEWS_CACHE_MS = 5 * 60 * 1000;
+
+async function fetchGoldNews(assetKey) {
+  if (!MARKETAUX_API_KEY) return [];
+
+  const cached = newsCache.get(assetKey);
+  if (cached && Date.now() - cached.time < NEWS_CACHE_MS) return cached.articles;
+
+  const symbols = assetKey === 'BTC' ? 'BTC/USD' : 'XAU/USD';
+  const search = assetKey === 'BTC' ? 'bitcoin OR crypto' : 'gold OR XAUUSD OR "Federal Reserve"';
+  const url = new URL('https://api.marketaux.com/v1/news/all');
+  url.searchParams.set('search', search);
+  url.searchParams.set('filter_entities', 'true');
+  url.searchParams.set('language', 'en');
+  url.searchParams.set('limit', '8');
+  url.searchParams.set('sort', 'published_desc');
+  url.searchParams.set('api_token', MARKETAUX_API_KEY);
+
+  try {
+    const res = await fetch(url);
+    const data = await res.json();
+    const articles = (data.data || []).map(a => ({
+      title: a.title,
+      published: a.published_at,
+      source: a.source,
+      sentiment: a.entities?.find(e => e.symbol === symbols)?.sentiment_score ?? null,
+    }));
+    newsCache.set(assetKey, { time: Date.now(), articles });
+    return articles;
+  } catch (err) {
+    console.error('fetchGoldNews failed', err);
+    return cached ? cached.articles : [];
+  }
 }
 
 function ema(values, period) {
@@ -286,7 +326,9 @@ app.post('/api/analyze', async (req, res) => {
 
   const signal = computeSignalScore(marketData);
   const assetLabel = marketData.assetLabel || ASSETS[marketData.assetKey]?.label || ASSETS.XAU.label;
-  const prompt = buildPrompt(marketData, signal, assetLabel);
+  const news = await fetchGoldNews(marketData.assetKey || 'XAU');
+  const lossPatterns = Array.isArray(req.body.lossPatterns) ? req.body.lossPatterns : [];
+  const prompt = buildPrompt(marketData, signal, assetLabel, news, lossPatterns);
 
   try {
     const response = await fetch(
@@ -321,6 +363,9 @@ app.post('/api/analyze', async (req, res) => {
       const parsed = JSON.parse(text);
       const aiIsBuy = String(parsed.recommendation).toUpperCase().indexOf('BUY') !== -1;
       const aiDirection = aiIsBuy ? 'BUY' : 'SELL';
+      // Expose the deterministic signal so the client can snapshot it alongside
+      // each trade in its win/loss history for later loss-pattern analysis.
+      parsed._signal = { score: signal.score, direction: signal.direction, strong: signal.strong };
       if (signal.strong && signal.direction && signal.direction !== aiDirection) {
         parsed.recommendation = signal.direction;
         const flippedIsBuy = signal.direction === 'BUY';
@@ -354,8 +399,8 @@ app.post('/api/analyze', async (req, res) => {
           `ระบบตรวจพบว่าคำตอบของ AI ขัดแย้งกับสัญญาณอินดิเคเตอร์เชิงปริมาณ (score=${signal.score}) จึงปรับคำแนะนำเป็น ${signal.direction} ตามข้อมูลจริง`,
           ...(Array.isArray(parsed.reasons) ? parsed.reasons : []),
         ];
-        text = JSON.stringify(parsed);
       }
+      text = JSON.stringify(parsed);
     } catch (parseErr) {
       console.error('veto check failed to parse AI response', parseErr);
     }
@@ -367,9 +412,20 @@ app.post('/api/analyze', async (req, res) => {
   }
 });
 
-function buildPrompt(m, signal, assetLabel) {
+function buildPrompt(m, signal, assetLabel, news, lossPatterns) {
+  const newsBlock = news && news.length
+    ? news.map(a => `- [${a.published}] ${a.title}${a.sentiment != null ? ` (sentiment=${a.sentiment.toFixed(2)})` : ''}`).join('\n')
+    : 'ไม่มีข้อมูลข่าวล่าสุด';
+
+  const lossPatternBlock = lossPatterns && lossPatterns.length
+    ? lossPatterns.map(p => `- ${p}`).join('\n')
+    : null;
+
   return `คุณคือนักวิเคราะห์เทคนิค ${assetLabel} ข้อมูลด้านล่างนี้คือค่าจริงที่คำนวณจากราคาตลาดจริง (ไม่ใช่การประมาณจากภาพ) ให้ใช้ตัวเลขเหล่านี้เป็นหลักฐานหลักในการให้เหตุผล ห้ามสร้างตัวเลขราคาหรืออินดิเคเตอร์ขึ้นใหม่เอง:
 
+ข่าวล่าสุดที่เกี่ยวข้อง (เรียงใหม่สุดก่อน, sentiment_score จาก -1 ลบ=ข่าวลบ ถึง +1 บวก=ข่าวบวก):
+${newsBlock}
+${lossPatternBlock ? `\nสถิติจุดที่ระบบนี้เคย "แพ้" บ่อยจากประวัติเทรดจริง (ใช้ประกอบการลด confidence ถ้าสถานการณ์ปัจจุบันตรงกับรูปแบบเหล่านี้):\n${lossPatternBlock}\n` : ''}
 สัญญาณเชิงปริมาณเบื้องต้น (คำนวณจากอินดิเคเตอร์ล้วนๆ ไม่ใช่ความเห็น AI): score=${signal.score} จาก -${signal.maxScore} ถึง +${signal.maxScore} (บวก=เอนไปทาง BUY, ลบ=เอนไปทาง SELL, เทรนด์จาก EMA/MACD/กรอบเวลาใหญ่นับรวมเป็น 1 คะแนนเดียวเพราะสัมพันธ์กันสูง) → ${signal.direction ? `เอนไปทาง ${signal.direction}` : 'ก้ำกึ่ง'}${signal.strong ? ' (สัญญาณชัดเจนมาก ควรให้คำแนะนำสอดคล้องกับทิศทางนี้เป็นหลัก)' : ''}
 รายละเอียด: ${signal.reasons.join(', ')}
 
@@ -389,6 +445,8 @@ Stochastic Oscillator: %K=${m.stochastic.k.toFixed(2)}, %D=${m.stochastic.d.toFi
 แนวโน้มกรอบเวลาใหญ่กว่า (${m.higherTimeframe.interval}): ${m.higherTimeframe.trend} (EMA20=${m.higherTimeframe.ema20.toFixed(2)}, EMA50=${m.higherTimeframe.ema50.toFixed(2)})
 
 หน้าที่ของคุณ:
+- พิจารณาข่าวล่าสุดข้างต้นประกอบด้วย ถ้าข่าวมีผลกระทบสูงต่อทองคำ/สินทรัพย์นี้ (เช่น ผลการประชุม Fed, ตัวเลขเงินเฟ้อ, ความตึงเครียดภูมิรัฐศาสตร์) และ sentiment ขัดแย้งกับสัญญาณทางเทคนิค ให้ลด confidence_percent ลงและระบุความขัดแย้งนี้ใน reasons ห้ามให้ข่าวมีน้ำหนักเกินกว่าข้อมูลราคาจริง แต่ใช้เป็นปัจจัยเสริมความเสี่ยง
+- ถ้ามีสถิติจุดที่เคยแพ้บ่อยด้านบน และสถานการณ์ปัจจุบันเข้าเงื่อนไขเดียวกัน ให้ลด confidence_percent ลงและเตือนไว้ใน reasons อย่างชัดเจน
 - สรุปแนวโน้ม (trend) และ pattern จากข้อมูลข้างต้นเท่านั้น โดยพิจารณาแนวโน้มกรอบเวลาใหญ่กว่าประกอบด้วยเสมอ (ถ้าแนวโน้มเล็กสวนทางกับแนวโน้มใหญ่ ถือเป็นสัญญาณขัดแย้งที่ต้องลด confidence)
 - ใช้ Bollinger Bands ประเมินว่าราคาอยู่ใกล้ขอบบน/ล่าง/กลาง (โซน overbought/oversold หรือ breakout)
 - ใช้ ATR และความผันผวนเฉลี่ยประกอบการประเมินความเสี่ยง และช่วยกำหนดระยะ tp/sl ให้สมเหตุสมผลกับความผันผวนจริง (อย่าตั้ง sl แคบกว่า ATR มากเกินไป)
@@ -420,6 +478,7 @@ buy_probability/sell_probability ต้องรวมกันได้ 100 แ
   "bollinger": "ตำแหน่งราคาเทียบ Bollinger Bands เช่น ราคาใกล้ขอบบน (overbought zone)",
   "stochastic": "สถานะ Stochastic เช่น %K ตัดขึ้นเหนือ %D ในโซน oversold",
   "higher_timeframe": "สรุปแนวโน้มกรอบเวลาใหญ่กว่าและว่าสอดคล้องหรือขัดแย้งกับกรอบเวลาปัจจุบัน",
+  "news_summary": "สรุปข่าวสำคัญที่มีผลต่อการตัดสินใจสั้นๆ ภาษาไทย และว่าสอดคล้องหรือขัดแย้งกับสัญญาณเทคนิค (ถ้าไม่มีข่าวสำคัญ ให้ตอบว่า \\"ไม่มีข่าวสำคัญ\\")",
   "entry": ราคาตัวเลข,
   "tp": ราคาตัวเลข,
   "sl": ราคาตัวเลข,

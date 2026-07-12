@@ -28,10 +28,14 @@ function doPost(e) {
     }
     sheet.clearContents();
 
-    var header = ['Time', 'Direction', 'Entry', 'TP', 'SL', 'Status', 'Closed Price', 'Closed Time'];
+    var header = [
+      'Time', 'Direction', 'Entry', 'TP', 'SL', 'Status', 'Closed Price', 'Closed Time',
+      'RSI', 'EMA Aligned', 'Counter Higher Trend', 'Signal Score', 'Signal Strong',
+    ];
     sheet.appendRow(header);
 
     rows.forEach(function (r) {
+      var snap = r.snapshot || {};
       sheet.appendRow([
         r.time ? new Date(r.time) : '',
         r.direction || '',
@@ -41,6 +45,11 @@ function doPost(e) {
         r.status || '',
         r.closedPrice != null ? r.closedPrice : '',
         r.closedTime ? new Date(r.closedTime) : '',
+        snap.rsi != null ? snap.rsi : '',
+        snap.emaAligned != null ? snap.emaAligned : '',
+        snap.counterHigherTrend != null ? snap.counterHigherTrend : '',
+        snap.signalScore != null ? snap.signalScore : '',
+        snap.signalStrong != null ? snap.signalStrong : '',
       ]);
     });
 
@@ -50,11 +59,14 @@ function doPost(e) {
     var closed = wins + losses;
     var winRate = closed > 0 ? Math.round((wins / closed) * 100) + '%' : '-';
 
-    sheet.getRange(1, 10).setValue('Win');       sheet.getRange(1, 11).setValue(wins);
-    sheet.getRange(2, 10).setValue('Loss');      sheet.getRange(2, 11).setValue(losses);
-    sheet.getRange(3, 10).setValue('Pending');   sheet.getRange(3, 11).setValue(pending);
-    sheet.getRange(4, 10).setValue('Win Rate');  sheet.getRange(4, 11).setValue(winRate);
-    sheet.getRange(5, 10).setValue('Updated');   sheet.getRange(5, 11).setValue(new Date());
+    // Columns A-M are now used by the row data (including the snapshot fields
+    // added above), so the summary block lives further out at O/P to avoid
+    // overlapping them.
+    sheet.getRange(1, 15).setValue('Win');       sheet.getRange(1, 16).setValue(wins);
+    sheet.getRange(2, 15).setValue('Loss');      sheet.getRange(2, 16).setValue(losses);
+    sheet.getRange(3, 15).setValue('Pending');   sheet.getRange(3, 16).setValue(pending);
+    sheet.getRange(4, 15).setValue('Win Rate');  sheet.getRange(4, 16).setValue(winRate);
+    sheet.getRange(5, 15).setValue('Updated');   sheet.getRange(5, 16).setValue(new Date());
 
     return ContentService
       .createTextOutput(JSON.stringify({ ok: true, wins: wins, losses: losses, pending: pending, winRate: winRate }))
