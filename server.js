@@ -197,6 +197,11 @@ function computeSignalScore(m) {
   else if (trendVotes <= -2) { score -= 1; reasons.push('=> Trend confluence SELL (+1)'); }
   else { reasons.push('=> Trend confluence mixed (0)'); }
 
+  // EMA200 is the long-term trend filter and is meant to be a hard veto, not
+  // just one vote among several correlated trend indicators — otherwise a
+  // "strong" score can still fire straight into the dominant long-term trend.
+  const ema200Direction = m.ema200 != null ? (m.currentPrice > m.ema200 ? 'BUY' : 'SELL') : null;
+
   if (m.rsi >= 55) { score += 1; reasons.push('RSI>=55 (+1 buy)'); }
   else if (m.rsi <= 45) { score -= 1; reasons.push('RSI<=45 (+1 sell)'); }
   else { reasons.push('RSI neutral (0)'); }
@@ -211,8 +216,12 @@ function computeSignalScore(m) {
   else { reasons.push('Candle count neutral (0)'); }
 
   const direction = score > 0 ? 'BUY' : score < 0 ? 'SELL' : null;
-  const strong = Math.abs(score) >= 3;
-  return { score, direction, strong, reasons, maxScore: 4 };
+  const against200 = ema200Direction != null && direction != null && direction !== ema200Direction;
+  if (against200) { reasons.push(`=> ทิศทาง ${direction} สวนทาง EMA200 (long-term trend) — ต้องใช้ threshold สูงขึ้นจึงจะถือว่าสัญญาณแรง`); }
+  // Require a higher bar (all 4 points) to call a signal "strong" when it goes
+  // against EMA200, instead of the normal 3-of-4 threshold.
+  const strong = against200 ? Math.abs(score) >= 4 : Math.abs(score) >= 3;
+  return { score, direction, strong, against200, reasons, maxScore: 4 };
 }
 
 function volatilityStats(candles, period = 20) {
@@ -314,6 +323,29 @@ app.get('/api/market-data', async (req, res) => {
   }
 });
 
+// Mirrors the bucket definitions in gold.html's analyzeLossPatterns so a
+// historically bad setup (sent from the client as lossPatternKeys) can be
+// enforced deterministically here, instead of only hinted to the AI as prose
+// that it may or may not act on.
+function matchesLossPatternKey(key, direction, m, signal) {
+  switch (key) {
+    case 'counterTrend':
+      return m.higherTimeframe
+        ? (direction === 'BUY' ? m.higherTimeframe.trend.includes('Downtrend') : m.higherTimeframe.trend.includes('Uptrend'))
+        : false;
+    case 'rsiNeutral':
+      return isFinite(m.rsi) && m.rsi > 45 && m.rsi < 55;
+    case 'weakScore':
+      return Math.abs(signal.score) <= 1;
+    case 'emaMisaligned':
+      return m.ema20 != null && m.ema50 != null
+        ? (direction === 'BUY' ? m.ema20 < m.ema50 : m.ema20 > m.ema50)
+        : false;
+    default:
+      return false;
+  }
+}
+
 app.post('/api/analyze', async (req, res) => {
   if (!GEMINI_API_KEY) {
     return res.status(500).json({ error: 'ยังไม่ได้ตั้งค่า GEMINI_API_KEY บนเซิร์ฟเวอร์' });
@@ -404,6 +436,29 @@ app.post('/api/analyze', async (req, res) => {
           ...(Array.isArray(parsed.reasons) ? parsed.reasons : []),
         ];
       }
+
+      // Deterministic loss-pattern enforcement: if the current setup matches a
+      // bucket the client's own trade history flagged as a recurring loser,
+      // cap confidence instead of just hoping the AI honors the prose hint.
+      const lossPatternKeys = Array.isArray(req.body.lossPatternKeys) ? req.body.lossPatternKeys : [];
+      const finalIsBuy = String(parsed.recommendation).toUpperCase().indexOf('BUY') !== -1;
+      const finalDirection = finalIsBuy ? 'BUY' : 'SELL';
+      const matchedKeys = lossPatternKeys.filter(key => matchesLossPatternKey(key, finalDirection, marketData, signal));
+      if (matchedKeys.length) {
+        // Each matched bad-pattern bucket knocks the confidence ceiling down further.
+        const cap = Math.max(70 - matchedKeys.length * 15, 25);
+        const currentConf = Number(parsed.confidence_percent) || cap;
+        parsed.confidence_percent = Math.min(currentConf, cap);
+        parsed.confidence_score = Math.round((parsed.confidence_percent / 10) * 10) / 10;
+        const skew = Math.max(parsed.confidence_percent, 50);
+        parsed.buy_probability = finalIsBuy ? Math.max(Number(parsed.buy_probability) || skew, 100 - skew) : Math.min(Number(parsed.buy_probability) || (100 - skew), 100 - skew);
+        parsed.sell_probability = 100 - parsed.buy_probability;
+        parsed.reasons = [
+          `⚠ สถานการณ์ปัจจุบันตรงกับจุดที่ระบบนี้เคยแพ้บ่อย (${matchedKeys.join(', ')}) — จำกัด confidence ไม่เกิน ${cap}%`,
+          ...(Array.isArray(parsed.reasons) ? parsed.reasons : []),
+        ];
+      }
+
       text = JSON.stringify(parsed);
     } catch (parseErr) {
       console.error('veto check failed to parse AI response', parseErr);

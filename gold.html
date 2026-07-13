@@ -711,21 +711,27 @@
     if(closed.length < 6) return [];
     const overallLossRate = closed.filter(r => r.status === 'loss').length / closed.length;
 
+    // Keys must match the current-setup flags computed server-side (see
+    // buildLossPatternFlags in server.js) so a matched bad pattern can be
+    // enforced deterministically instead of only hinted to the AI as text.
     const buckets = {
-      'เข้าเทรดสวนแนวโน้มกรอบเวลาใหญ่ (counter-trend)': r => r.snapshot.counterHigherTrend === true,
-      'RSI อยู่โซนกลางๆ ไม่ชัดเจน (45-55) ตอนเข้าเทรด': r => isFinite(r.snapshot.rsi) && r.snapshot.rsi > 45 && r.snapshot.rsi < 55,
-      'สัญญาณเชิงปริมาณอ่อน (|score|<=1) ตอนเข้าเทรด': r => r.snapshot.signalScore != null && Math.abs(r.snapshot.signalScore) <= 1,
-      'EMA20/EMA50 ไม่สอดคล้องกับทิศทางที่เข้าเทรด': r => r.snapshot.emaAligned === false,
+      counterTrend: { label: 'เข้าเทรดสวนแนวโน้มกรอบเวลาใหญ่ (counter-trend)', match: r => r.snapshot.counterHigherTrend === true },
+      rsiNeutral: { label: 'RSI อยู่โซนกลางๆ ไม่ชัดเจน (45-55) ตอนเข้าเทรด', match: r => isFinite(r.snapshot.rsi) && r.snapshot.rsi > 45 && r.snapshot.rsi < 55 },
+      weakScore: { label: 'สัญญาณเชิงปริมาณอ่อน (|score|<=1) ตอนเข้าเทรด', match: r => r.snapshot.signalScore != null && Math.abs(r.snapshot.signalScore) <= 1 },
+      emaMisaligned: { label: 'EMA20/EMA50 ไม่สอดคล้องกับทิศทางที่เข้าเทรด', match: r => r.snapshot.emaAligned === false },
     };
 
     const patterns = [];
-    for (const [label, match] of Object.entries(buckets)) {
+    for (const [key, { label, match }] of Object.entries(buckets)) {
       const subset = closed.filter(match);
       if(subset.length < 3) continue;
       const lossRate = subset.filter(r => r.status === 'loss').length / subset.length;
       // Only flag buckets that lose noticeably more often than the baseline.
       if(lossRate - overallLossRate >= 0.15){
-        patterns.push(`${label}: แพ้ ${Math.round(lossRate*100)}% (${subset.length} เทรด) เทียบกับค่าเฉลี่ยแพ้ ${Math.round(overallLossRate*100)}%`);
+        patterns.push({
+          key,
+          text: `${label}: แพ้ ${Math.round(lossRate*100)}% (${subset.length} เทรด) เทียบกับค่าเฉลี่ยแพ้ ${Math.round(overallLossRate*100)}%`,
+        });
       }
     }
     return patterns;
@@ -806,7 +812,7 @@
     if(patterns.length){
       patternEl.style.display = 'block';
       patternEl.innerHTML = '<li style="color:var(--ink-dim);">⚠ จุดที่ระบบนี้เคยแพ้บ่อย:</li>' +
-        patterns.map(p => '<li style="color:var(--sell);">' + p + '</li>').join('');
+        patterns.map(p => '<li style="color:var(--sell);">' + p.text + '</li>').join('');
     } else {
       patternEl.style.display = 'none';
       patternEl.innerHTML = '';
@@ -826,7 +832,11 @@
     const response = await fetch("/api/analyze", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ marketData, lossPatterns })
+      body: JSON.stringify({
+        marketData,
+        lossPatterns: lossPatterns.map(p => p.text),
+        lossPatternKeys: lossPatterns.map(p => p.key),
+      })
     });
 
     const data = await response.json();
@@ -869,7 +879,7 @@
   // TP/SL are derived from the user's lot size and $ target/stop, not from the
   // AI's free-text price guess — only entry (near current market price) comes
   // from the AI. This gives a fixed, predictable risk per trade in real money.
-  function reconcileTrade(a, isBuy){
+  function reconcileTrade(a, isBuy, atr){
     let entry = Number(a.entry);
     if(!isFinite(entry)){
       return { entry: a.entry, tp: a.tp, sl: a.sl, riskReward: a.risk_reward || '—' };
@@ -880,8 +890,19 @@
     const contractSize = CONTRACT_SIZE[currentAsset] || 100;
     const unitValue = lot * contractSize; // $ P/L per $1 price move at this lot size
 
-    const tpDistance = unitValue > 0 ? tpUsd / unitValue : 0;
-    const slDistance = unitValue > 0 ? slUsd / unitValue : 0;
+    let tpDistance = unitValue > 0 ? tpUsd / unitValue : 0;
+    let slDistance = unitValue > 0 ? slUsd / unitValue : 0;
+    // A fixed $ stop can be tighter than the market's current average candle
+    // range, which gets it stopped out by ordinary noise regardless of whether
+    // the direction call was right. Widen SL (and TP proportionally, to keep
+    // the original risk/reward ratio) to at least one ATR when that happens.
+    let atrWidened = false;
+    if(isFinite(atr) && atr > 0 && slDistance > 0 && slDistance < atr){
+      const ratio = tpDistance / slDistance;
+      slDistance = atr;
+      tpDistance = atr * ratio;
+      atrWidened = true;
+    }
     const tp = isBuy ? entry + tpDistance : entry - tpDistance;
     const sl = isBuy ? entry - slDistance : entry + slDistance;
 
@@ -889,7 +910,7 @@
     const risk = Math.abs(entry - sl);
     const ratio = risk > 0 ? (reward / risk) : 0;
     const riskReward = risk > 0 ? ('1 : ' + ratio.toFixed(2)) : '—';
-    return { entry, tp, sl, riskReward, lot, tpUsd, slUsd };
+    return { entry, tp, sl, riskReward, lot, tpUsd, slUsd, atrWidened };
   }
 
   function renderResults(a, marketData){
@@ -897,7 +918,7 @@
     const probs = normalizeProbabilities(a.buy_probability, a.sell_probability);
     const buyPct = probs.buy;
     const sellPct = probs.sell;
-    const trade = reconcileTrade(a, isBuy);
+    const trade = reconcileTrade(a, isBuy, marketData ? marketData.atr : null);
     addHistoryEntry(a, trade, marketData);
     const confScore = Number(a.confidence_score).toFixed(1);
     const confPct = Math.round(a.confidence_percent);
@@ -950,7 +971,7 @@
     document.getElementById('slVal').textContent = isFinite(trade.sl) ? Number(trade.sl).toFixed(2) : '—';
     document.getElementById('rrVal').textContent = trade.riskReward || '—';
     document.getElementById('lotInfoVal').textContent = trade.lot
-      ? ('Lot ' + trade.lot + ' · TP $' + trade.tpUsd + ' · SL $' + trade.slUsd)
+      ? ('Lot ' + trade.lot + ' · TP $' + trade.tpUsd + ' · SL $' + trade.slUsd + (trade.atrWidened ? ' · ⚠ ขยาย SL/TP ตาม ATR (SL เดิมแคบกว่าความผันผวนตลาด)' : ''))
       : '—';
 
     const reasons = Array.isArray(a.reasons) ? a.reasons : [];
