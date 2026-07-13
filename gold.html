@@ -381,11 +381,11 @@
           </div>
           <div>
             <label class="drop-sub" for="tpUsdInput" style="display:block; margin-bottom:6px;">TP ($)</label>
-            <input id="tpUsdInput" type="number" step="1" min="1" value="15" class="btn" style="width:100%; background:var(--bg-panel-raised); color:var(--ink); border:1px solid var(--hairline); text-align:center;">
+            <input id="tpUsdInput" type="number" step="1" min="1" value="30" class="btn" style="width:100%; background:var(--bg-panel-raised); color:var(--ink); border:1px solid var(--hairline); text-align:center;">
           </div>
           <div>
             <label class="drop-sub" for="slUsdInput" style="display:block; margin-bottom:6px;">SL ($)</label>
-            <input id="slUsdInput" type="number" step="1" min="1" value="10" class="btn" style="width:100%; background:var(--bg-panel-raised); color:var(--ink); border:1px solid var(--hairline); text-align:center;">
+            <input id="slUsdInput" type="number" step="1" min="1" value="20" class="btn" style="width:100%; background:var(--bg-panel-raised); color:var(--ink); border:1px solid var(--hairline); text-align:center;">
           </div>
         </div>
         <div class="drop-sub" style="margin-bottom:14px;">คำนวณ TP/SL จากขนาด lot จริง (ทอง 1 lot = 100 oz, บิตคอยน์ 1 lot = 1 BTC — ปรับตามสเปคโบรกเกอร์ของคุณถ้าไม่ตรง)</div>
@@ -875,8 +875,8 @@
       return { entry: a.entry, tp: a.tp, sl: a.sl, riskReward: a.risk_reward || '—' };
     }
     const lot = Math.max(Number(document.getElementById('lotInput').value) || 0.01, 0.01);
-    const tpUsd = Math.max(Number(document.getElementById('tpUsdInput').value) || 15, 0);
-    const slUsd = Math.max(Number(document.getElementById('slUsdInput').value) || 10, 0);
+    const tpUsd = Math.max(Number(document.getElementById('tpUsdInput').value) || 30, 0);
+    const slUsd = Math.max(Number(document.getElementById('slUsdInput').value) || 20, 0);
     const contractSize = CONTRACT_SIZE[currentAsset] || 100;
     const unitValue = lot * contractSize; // $ P/L per $1 price move at this lot size
 

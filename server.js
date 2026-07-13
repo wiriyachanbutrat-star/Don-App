@@ -379,17 +379,21 @@ app.post('/api/analyze', async (req, res) => {
         parsed.confidence_percent = Math.min(Number(parsed.confidence_percent) || skew, skew);
         parsed.confidence_score = Math.round((parsed.confidence_percent / 10) * 10) / 10;
 
-        // The AI's tp/sl were structured for its original (now-overridden) direction
-        // (tp beyond entry in the old direction, sl on the opposite side). Flipping
-        // recommendation without flipping the trade levels leaves tp/sl backwards for
-        // the new direction — swapping them mirrors the same entry/risk distances onto
-        // the corrected side instead of shipping a structurally broken trade.
-        const entry = Number(parsed.entry);
+        // The AI's entry/tp/sl were all structured for its original (now-overridden)
+        // direction — e.g. a SELL entry placed up near resistance is a bad BUY entry.
+        // Re-anchor entry to the live market price for the corrected direction instead
+        // of reusing a price level that was chosen for the opposite trade, then rebuild
+        // tp/sl the same distance from that new entry so risk/reward stays intact.
+        const oldEntry = Number(parsed.entry);
         const oldTp = Number(parsed.tp);
         const oldSl = Number(parsed.sl);
-        if (isFinite(entry) && isFinite(oldTp) && isFinite(oldSl)) {
-          parsed.tp = oldSl;
-          parsed.sl = oldTp;
+        if (isFinite(oldEntry) && isFinite(oldTp) && isFinite(oldSl) && isFinite(marketData.currentPrice)) {
+          const tpDistance = Math.abs(oldTp - oldEntry);
+          const slDistance = Math.abs(oldEntry - oldSl);
+          const entry = marketData.currentPrice;
+          parsed.entry = entry;
+          parsed.tp = flippedIsBuy ? entry + tpDistance : entry - tpDistance;
+          parsed.sl = flippedIsBuy ? entry - slDistance : entry + slDistance;
           const reward = Math.abs(parsed.tp - entry);
           const risk = Math.abs(entry - parsed.sl);
           parsed.risk_reward = risk > 0 ? `1 : ${(reward / risk).toFixed(2)}` : parsed.risk_reward;
