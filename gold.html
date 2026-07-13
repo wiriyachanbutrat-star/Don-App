@@ -285,6 +285,7 @@
   }
   .reco-badge.buy{ background: var(--buy-dim); color: var(--buy-bright); box-shadow: 0 0 0 1px rgba(55,181,120,0.3) inset; }
   .reco-badge.sell{ background: var(--sell-dim); color: var(--sell-bright); box-shadow: 0 0 0 1px rgba(224,80,90,0.3) inset; }
+  .reco-badge.wait{ background: rgba(139,139,139,0.15); color: var(--ink-dim); box-shadow: 0 0 0 1px rgba(139,139,139,0.3) inset; }
   .reco-grid{ display:grid; grid-template-columns: repeat(3, 1fr); gap:10px; margin-bottom:14px; }
   .reco-cell .lbl{ font-family: var(--font-mono); font-size:10px; color: var(--ink-dim); letter-spacing:0.06em; text-transform:uppercase; margin-bottom:4px; }
   .reco-cell .val{ font-family: var(--font-mono); font-weight:600; font-size:15px; }
@@ -308,6 +309,7 @@
   }
   .verdict-tag.buy{ color: var(--buy); border: 1px solid var(--buy-dim); background: var(--buy-dim); }
   .verdict-tag.sell{ color: var(--sell); border: 1px solid var(--sell-dim); background: var(--sell-dim); }
+  .verdict-tag.wait{ color: var(--ink-dim); border: 1px solid rgba(139,139,139,0.3); background: rgba(139,139,139,0.12); }
 
   .reset-link{
     display:block; text-align:center; margin-top: 22px;
@@ -665,6 +667,7 @@
   }
 
   function addHistoryEntry(a, trade, marketData){
+    if(String(a.recommendation).toUpperCase() === 'WAIT') return; // no trade taken, nothing to log
     const isBuy = String(a.recommendation).toUpperCase().indexOf('BUY') !== -1;
     const entry = Number(trade.entry), tp = Number(trade.tp), sl = Number(trade.sl);
     if(!isFinite(entry) || !isFinite(tp) || !isFinite(sl)) return;
@@ -914,19 +917,20 @@
   }
 
   function renderResults(a, marketData){
-    const isBuy = String(a.recommendation).toUpperCase().indexOf('BUY') !== -1;
+    const isWait = String(a.recommendation).toUpperCase() === 'WAIT';
+    const isBuy = !isWait && String(a.recommendation).toUpperCase().indexOf('BUY') !== -1;
     const probs = normalizeProbabilities(a.buy_probability, a.sell_probability);
     const buyPct = probs.buy;
     const sellPct = probs.sell;
-    const trade = reconcileTrade(a, isBuy, marketData ? marketData.atr : null);
+    const trade = isWait ? { entry: null, tp: null, sl: null, riskReward: '—' } : reconcileTrade(a, isBuy, marketData ? marketData.atr : null);
     addHistoryEntry(a, trade, marketData);
     const confScore = Number(a.confidence_score).toFixed(1);
     const confPct = Math.round(a.confidence_percent);
 
     const verdictEl = document.getElementById('gaugeVerdict');
-    verdictEl.textContent = isBuy ? 'BUY' : 'SELL';
-    verdictEl.style.color = isBuy ? 'var(--buy)' : 'var(--sell)';
-    document.getElementById('gaugeConf').textContent = 'โอกาสชนะ ' + (isBuy ? buyPct : sellPct) + '%';
+    verdictEl.textContent = isWait ? 'WAIT' : (isBuy ? 'BUY' : 'SELL');
+    verdictEl.style.color = isWait ? 'var(--ink-dim)' : (isBuy ? 'var(--buy)' : 'var(--sell)');
+    document.getElementById('gaugeConf').textContent = isWait ? 'สัญญาณไม่ชัดเจน แนะนำรอ' : ('โอกาสชนะ ' + (isBuy ? buyPct : sellPct) + '%');
 
     document.getElementById('buyPct').textContent = buyPct + '%';
     document.getElementById('sellPct').textContent = sellPct + '%';
@@ -937,8 +941,8 @@
 
     const arc = document.getElementById('gaugeArc');
     const circumference = 301.6;
-    const winPct = isBuy ? buyPct : sellPct;
-    arc.setAttribute('stroke', isBuy ? '#4fd691' : '#f2727b');
+    const winPct = isWait ? 50 : (isBuy ? buyPct : sellPct);
+    arc.setAttribute('stroke', isWait ? '#8b8b8b' : (isBuy ? '#4fd691' : '#f2727b'));
     const target = circumference * (1 - winPct/100);
     requestAnimationFrame(() => {
       arc.style.transition = 'stroke-dashoffset 1.1s ease-out';
@@ -963,16 +967,18 @@
     ).join('');
 
     const badge = document.getElementById('recoBadge');
-    badge.textContent = (isBuy ? '✓ BUY' : '✓ SELL');
-    badge.className = 'reco-badge ' + (isBuy ? 'buy' : 'sell');
+    badge.textContent = isWait ? '⏸ WAIT' : (isBuy ? '✓ BUY' : '✓ SELL');
+    badge.className = 'reco-badge ' + (isWait ? 'wait' : (isBuy ? 'buy' : 'sell'));
 
     document.getElementById('entryVal').textContent = isFinite(trade.entry) ? Number(trade.entry).toFixed(2) : '—';
     document.getElementById('tpVal').textContent = isFinite(trade.tp) ? Number(trade.tp).toFixed(2) : '—';
     document.getElementById('slVal').textContent = isFinite(trade.sl) ? Number(trade.sl).toFixed(2) : '—';
     document.getElementById('rrVal').textContent = trade.riskReward || '—';
-    document.getElementById('lotInfoVal').textContent = trade.lot
-      ? ('Lot ' + trade.lot + ' · TP $' + trade.tpUsd + ' · SL $' + trade.slUsd + (trade.atrWidened ? ' · ⚠ ขยาย SL/TP ตาม ATR (SL เดิมแคบกว่าความผันผวนตลาด)' : ''))
-      : '—';
+    document.getElementById('lotInfoVal').textContent = isWait
+      ? 'ไม่มีการเข้าเทรดรอบนี้'
+      : (trade.lot
+        ? ('Lot ' + trade.lot + ' · TP $' + trade.tpUsd + ' · SL $' + trade.slUsd + (trade.atrWidened ? ' · ⚠ ขยาย SL/TP ตาม ATR (SL เดิมแคบกว่าความผันผวนตลาด)' : ''))
+        : '—');
 
     const reasons = Array.isArray(a.reasons) ? a.reasons : [];
     document.getElementById('reasonList').innerHTML = reasons.map(r => '<li>'+r+'</li>').join('');
@@ -988,8 +994,8 @@
 
     document.getElementById('starsRow2').textContent = starString(confScore);
     const tag = document.getElementById('verdictTag');
-    tag.textContent = isBuy ? 'STRONG BUY' : 'STRONG SELL';
-    tag.className = 'verdict-tag ' + (isBuy ? 'buy' : 'sell');
+    tag.textContent = isWait ? 'รอสัญญาณชัดเจนกว่านี้' : (isBuy ? 'STRONG BUY' : 'STRONG SELL');
+    tag.className = 'verdict-tag ' + (isWait ? 'wait' : (isBuy ? 'buy' : 'sell'));
   }
 
   function goToUpload(){

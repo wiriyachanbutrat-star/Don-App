@@ -150,6 +150,38 @@ function atr(candles, period = 14) {
   return relevant.reduce((a, b) => a + b, 0) / relevant.length;
 }
 
+// ADX measures trend *strength* (not direction) — low ADX means the market is
+// choppy/sideways, which is exactly when trend-following indicators (EMA/MACD/
+// HTF trend, all used above) whipsaw and produce losing signals.
+function adx(candles, period = 14) {
+  if (candles.length < period * 2) return null;
+  const trs = [], plusDMs = [], minusDMs = [];
+  for (let i = 1; i < candles.length; i++) {
+    const cur = candles[i], prev = candles[i - 1];
+    const upMove = cur.high - prev.high;
+    const downMove = prev.low - cur.low;
+    plusDMs.push(upMove > downMove && upMove > 0 ? upMove : 0);
+    minusDMs.push(downMove > upMove && downMove > 0 ? downMove : 0);
+    trs.push(Math.max(cur.high - cur.low, Math.abs(cur.high - prev.close), Math.abs(cur.low - prev.close)));
+  }
+  let trSum = trs.slice(0, period).reduce((a, b) => a + b, 0);
+  let plusDMSum = plusDMs.slice(0, period).reduce((a, b) => a + b, 0);
+  let minusDMSum = minusDMs.slice(0, period).reduce((a, b) => a + b, 0);
+  const dxValues = [];
+  for (let i = period; i < trs.length; i++) {
+    trSum = trSum - trSum / period + trs[i];
+    plusDMSum = plusDMSum - plusDMSum / period + plusDMs[i];
+    minusDMSum = minusDMSum - minusDMSum / period + minusDMs[i];
+    const plusDI = trSum > 0 ? (plusDMSum / trSum) * 100 : 0;
+    const minusDI = trSum > 0 ? (minusDMSum / trSum) * 100 : 0;
+    const diSum = plusDI + minusDI;
+    dxValues.push(diSum > 0 ? (Math.abs(plusDI - minusDI) / diSum) * 100 : 0);
+  }
+  if (dxValues.length < period) return null;
+  const recentDx = dxValues.slice(-period);
+  return recentDx.reduce((a, b) => a + b, 0) / recentDx.length;
+}
+
 function stochasticOscillator(candles, period = 14, smoothK = 3) {
   const kValues = [];
   for (let i = period - 1; i < candles.length; i++) {
@@ -221,7 +253,26 @@ function computeSignalScore(m) {
   // Require a higher bar (all 4 points) to call a signal "strong" when it goes
   // against EMA200, instead of the normal 3-of-4 threshold.
   const strong = against200 ? Math.abs(score) >= 4 : Math.abs(score) >= 3;
-  return { score, direction, strong, against200, reasons, maxScore: 4 };
+
+  // ADX < 18 means the market has no real trend (choppy/sideways) — trading
+  // trend-following signals here is where this system loses most, regardless
+  // of which direction it picks. Combined with a weak confluence score
+  // (|score|<=1), there's no real edge, so mark the setup as not tradable
+  // instead of forcing a BUY/SELL call.
+  const choppy = m.adx != null && m.adx < 18;
+  const weakScore = Math.abs(score) <= 1;
+  let tradable = true;
+  let waitReason = null;
+  if (choppy && weakScore) {
+    tradable = false;
+    waitReason = `ADX=${m.adx.toFixed(1)} (<18, ตลาดไม่มีเทรนด์ชัดเจน) และสัญญาณอ่อน (score=${score}) — ไม่มี edge เพียงพอให้เข้าเทรด`;
+  } else if (m.adx != null && m.adx < 12) {
+    tradable = false;
+    waitReason = `ADX=${m.adx.toFixed(1)} (<12, ตลาดไซด์เวย์ชัดเจน) — ไม่แนะนำเข้าเทรดไม่ว่าสัญญาณจะชี้ทางไหน`;
+  }
+  if (waitReason) reasons.push(`=> WAIT: ${waitReason}`);
+
+  return { score, direction, strong, against200, reasons, maxScore: 4, tradable, waitReason, adx: m.adx };
 }
 
 function volatilityStats(candles, period = 20) {
@@ -308,6 +359,7 @@ app.get('/api/market-data', async (req, res) => {
       ema200: ema200Series ? ema200Series[ema200Series.length - 1] : null,
       bollinger: bollingerBands(closes),
       atr: atr(candles),
+      adx: adx(candles),
       stochastic: stochasticOscillator(candles),
       volatility: volatilityStats(candles),
       higherTimeframe: {
@@ -459,6 +511,46 @@ app.post('/api/analyze', async (req, res) => {
         ];
       }
 
+      // Deterministic news-sentiment weighting: Marketaux gives a per-article
+      // sentiment score, but the prompt only asked the AI to "consider" it as
+      // prose, which it may or may not actually act on. Average the real
+      // sentiment scores and cap confidence when they clearly contradict the
+      // final call, the same way the loss-pattern check does.
+      const sentimentScores = news.filter(a => a.sentiment != null).map(a => a.sentiment);
+      if (sentimentScores.length) {
+        const avgSentiment = sentimentScores.reduce((a, b) => a + b, 0) / sentimentScores.length;
+        const opposesFinal = (finalDirection === 'BUY' && avgSentiment <= -0.2) || (finalDirection === 'SELL' && avgSentiment >= 0.2);
+        if (opposesFinal) {
+          const newsCap = 65;
+          const currentConf = Number(parsed.confidence_percent) || newsCap;
+          parsed.confidence_percent = Math.min(currentConf, newsCap);
+          parsed.confidence_score = Math.round((parsed.confidence_percent / 10) * 10) / 10;
+          parsed.reasons = [
+            `⚠ ข่าวล่าสุดมี sentiment เฉลี่ย ${avgSentiment.toFixed(2)} ขัดแย้งกับทิศทาง ${finalDirection} — จำกัด confidence ไม่เกิน ${newsCap}%`,
+            ...(Array.isArray(parsed.reasons) ? parsed.reasons : []),
+          ];
+        }
+      }
+
+      // Deterministic no-trade veto: when the quantitative signal says there's
+      // no real edge (choppy market / weak confluence, see computeSignalScore),
+      // override to WAIT instead of letting the AI force a BUY/SELL call.
+      if (!signal.tradable) {
+        parsed.recommendation = 'WAIT';
+        parsed.buy_probability = 50;
+        parsed.sell_probability = 50;
+        parsed.confidence_percent = Math.min(Number(parsed.confidence_percent) || 35, 35);
+        parsed.confidence_score = Math.round((parsed.confidence_percent / 10) * 10) / 10;
+        parsed.entry = null;
+        parsed.tp = null;
+        parsed.sl = null;
+        parsed.risk_reward = '—';
+        parsed.reasons = [
+          `⏸ ระบบแนะนำ "รอ" ไม่เข้าเทรดรอบนี้: ${signal.waitReason}`,
+          ...(Array.isArray(parsed.reasons) ? parsed.reasons : []),
+        ];
+      }
+
       text = JSON.stringify(parsed);
     } catch (parseErr) {
       console.error('veto check failed to parse AI response', parseErr);
@@ -499,6 +591,7 @@ EMA20: ${m.ema20.toFixed(2)}
 EMA50: ${m.ema50.toFixed(2)}
 ${m.ema200 != null ? `EMA200: ${m.ema200.toFixed(2)}\n` : ''}Bollinger Bands (20,2): upper=${m.bollinger.upper.toFixed(2)}, middle=${m.bollinger.middle.toFixed(2)}, lower=${m.bollinger.lower.toFixed(2)}
 ATR (14): ${m.atr.toFixed(2)} (วัดความผันผวนเฉลี่ยต่อแท่ง)
+${m.adx != null ? `ADX (14): ${m.adx.toFixed(1)} (<18 = ไม่มีเทรนด์ชัดเจน/ไซด์เวย์, >25 = เทรนด์แข็งแรง)\n` : ''}
 Stochastic Oscillator: %K=${m.stochastic.k.toFixed(2)}, %D=${m.stochastic.d.toFixed(2)}
 ความผันผวน 20 แท่งล่าสุด: ช่วงราคาเฉลี่ย/แท่ง=${m.volatility.avgRange.toFixed(2)}, สัดส่วนตัวแท่งเทียนเฉลี่ย=${(m.volatility.avgBodyRatio*100).toFixed(1)}%
 แนวโน้มกรอบเวลาใหญ่กว่า (${m.higherTimeframe.interval}): ${m.higherTimeframe.trend} (EMA20=${m.higherTimeframe.ema20.toFixed(2)}, EMA50=${m.higherTimeframe.ema50.toFixed(2)})
