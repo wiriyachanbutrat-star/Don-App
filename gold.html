@@ -23,6 +23,9 @@
     --sell: #e0505a;
     --sell-bright: #f2727b;
     --sell-dim: #3d1e22;
+    --wait: #e0a83c;
+    --wait-bright: #f2c661;
+    --wait-dim: #3d2f14;
     --font-display: 'Space Grotesk', sans-serif;
     --font-body: 'Sarabun', sans-serif;
     --font-mono: 'IBM Plex Mono', monospace;
@@ -285,7 +288,7 @@
   }
   .reco-badge.buy{ background: var(--buy-dim); color: var(--buy-bright); box-shadow: 0 0 0 1px rgba(55,181,120,0.3) inset; }
   .reco-badge.sell{ background: var(--sell-dim); color: var(--sell-bright); box-shadow: 0 0 0 1px rgba(224,80,90,0.3) inset; }
-  .reco-badge.wait{ background: rgba(139,139,139,0.15); color: var(--ink-dim); box-shadow: 0 0 0 1px rgba(139,139,139,0.3) inset; }
+  .reco-badge.wait{ background: var(--wait-dim); color: var(--wait-bright); box-shadow: 0 0 0 1px rgba(224,168,60,0.35) inset; animation: pulse 2s ease-in-out infinite; }
   .reco-grid{ display:grid; grid-template-columns: repeat(3, 1fr); gap:10px; margin-bottom:14px; }
   .reco-cell .lbl{ font-family: var(--font-mono); font-size:10px; color: var(--ink-dim); letter-spacing:0.06em; text-transform:uppercase; margin-bottom:4px; }
   .reco-cell .val{ font-family: var(--font-mono); font-weight:600; font-size:15px; }
@@ -309,7 +312,7 @@
   }
   .verdict-tag.buy{ color: var(--buy); border: 1px solid var(--buy-dim); background: var(--buy-dim); }
   .verdict-tag.sell{ color: var(--sell); border: 1px solid var(--sell-dim); background: var(--sell-dim); }
-  .verdict-tag.wait{ color: var(--ink-dim); border: 1px solid rgba(139,139,139,0.3); background: rgba(139,139,139,0.12); }
+  .verdict-tag.wait{ color: var(--wait-bright); border: 1px solid rgba(224,168,60,0.35); background: var(--wait-dim); }
 
   .reset-link{
     display:block; text-align:center; margin-top: 22px;
@@ -928,9 +931,11 @@
     const confPct = Math.round(a.confidence_percent);
 
     const verdictEl = document.getElementById('gaugeVerdict');
-    verdictEl.textContent = isWait ? 'WAIT' : (isBuy ? 'BUY' : 'SELL');
-    verdictEl.style.color = isWait ? 'var(--ink-dim)' : (isBuy ? 'var(--buy)' : 'var(--sell)');
-    document.getElementById('gaugeConf').textContent = isWait ? 'สัญญาณไม่ชัดเจน แนะนำรอ' : ('โอกาสชนะ ' + (isBuy ? buyPct : sellPct) + '%');
+    verdictEl.textContent = isWait ? '⏸ WAIT' : (isBuy ? 'BUY' : 'SELL');
+    verdictEl.style.color = isWait ? 'var(--wait-bright)' : (isBuy ? 'var(--buy)' : 'var(--sell)');
+    const gaugeConfEl = document.getElementById('gaugeConf');
+    gaugeConfEl.textContent = isWait ? '⚠ สัญญาณไม่ชัดเจน แนะนำ "รอ" ก่อนเข้าเทรด' : ('โอกาสชนะ ' + (isBuy ? buyPct : sellPct) + '%');
+    gaugeConfEl.style.color = isWait ? 'var(--wait-bright)' : '';
 
     document.getElementById('buyPct').textContent = buyPct + '%';
     document.getElementById('sellPct').textContent = sellPct + '%';
@@ -942,7 +947,7 @@
     const arc = document.getElementById('gaugeArc');
     const circumference = 301.6;
     const winPct = isWait ? 50 : (isBuy ? buyPct : sellPct);
-    arc.setAttribute('stroke', isWait ? '#8b8b8b' : (isBuy ? '#4fd691' : '#f2727b'));
+    arc.setAttribute('stroke', isWait ? '#f2c661' : (isBuy ? '#4fd691' : '#f2727b'));
     const target = circumference * (1 - winPct/100);
     requestAnimationFrame(() => {
       arc.style.transition = 'stroke-dashoffset 1.1s ease-out';

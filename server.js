@@ -259,16 +259,19 @@ function computeSignalScore(m) {
   // of which direction it picks. Combined with a weak confluence score
   // (|score|<=1), there's no real edge, so mark the setup as not tradable
   // instead of forcing a BUY/SELL call.
-  const choppy = m.adx != null && m.adx < 18;
-  const weakScore = Math.abs(score) <= 1;
+  const choppy = m.adx != null && m.adx < 20;
+  const weakScore = Math.abs(score) <= 2;
   let tradable = true;
   let waitReason = null;
   if (choppy && weakScore) {
     tradable = false;
-    waitReason = `ADX=${m.adx.toFixed(1)} (<18, ตลาดไม่มีเทรนด์ชัดเจน) และสัญญาณอ่อน (score=${score}) — ไม่มี edge เพียงพอให้เข้าเทรด`;
+    waitReason = `ADX=${m.adx.toFixed(1)} (<20, ตลาดไม่มีเทรนด์ชัดเจน) และสัญญาณอ่อน/กลางๆ (score=${score}) — ไม่มี edge เพียงพอให้เข้าเทรด`;
   } else if (m.adx != null && m.adx < 12) {
     tradable = false;
     waitReason = `ADX=${m.adx.toFixed(1)} (<12, ตลาดไซด์เวย์ชัดเจน) — ไม่แนะนำเข้าเทรดไม่ว่าสัญญาณจะชี้ทางไหน`;
+  } else if (score === 0) {
+    tradable = false;
+    waitReason = `สัญญาณ BUY/SELL หักล้างกันพอดี (score=0) — ไม่มีทิศทางที่ชัดเจนพอให้เข้าเทรด`;
   }
   if (waitReason) reasons.push(`=> WAIT: ${waitReason}`);
 
