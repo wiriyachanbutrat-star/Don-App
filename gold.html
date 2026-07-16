@@ -413,8 +413,9 @@
         <div class="check-item" data-i="3"><span class="mark"></span>คำนวณ RSI</div>
         <div class="check-item" data-i="4"><span class="mark"></span>คำนวณ MACD</div>
         <div class="check-item" data-i="5"><span class="mark"></span>คำนวณ EMA20/50</div>
-        <div class="check-item" data-i="6"><span class="mark"></span>ให้ AI สรุปแนวโน้ม</div>
-        <div class="check-item" data-i="7"><span class="mark"></span>สรุปเหตุผลและ Entry/TP/SL</div>
+        <div class="check-item" data-i="6"><span class="mark"></span>หา Swing High/Low</div>
+        <div class="check-item" data-i="7"><span class="mark"></span>ให้ AI สรุปแนวโน้ม</div>
+        <div class="check-item" data-i="8"><span class="mark"></span>สรุปเหตุผลและ Entry/TP/SL</div>
       </div>
       <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
       <div class="progress-pct" id="progressPct">0%</div>
@@ -964,6 +965,7 @@
       ['Volume', a.volume||'—', ''],
       ['Bollinger', a.bollinger||'—', ''],
       ['Stochastic', a.stochastic||'—', ''],
+      ['Swing High/Low', a.swing_structure||'—', ''],
       ['กรอบเวลาใหญ่', a.higher_timeframe||'—', '']
     ];
     const grid = document.getElementById('indicatorGrid');

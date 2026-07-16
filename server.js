@@ -182,6 +182,29 @@ function adx(candles, period = 14) {
   return recentDx.reduce((a, b) => a + b, 0) / recentDx.length;
 }
 
+// Swing high/low (fractal pivots): a candle whose high/low is the most extreme
+// among `wing` candles on either side. Distinct from resistance/support (which
+// is just the 30-candle max/min) because it tracks confirmed turning points
+// used for reading market structure (HH/HL/LH/LL) rather than a flat range.
+function swingPoints(candles, wing = 3) {
+  let swingHigh = null, swingLow = null;
+  for (let i = candles.length - 1 - wing; i >= wing; i--) {
+    const c = candles[i];
+    if (swingHigh === null) {
+      const isHigh = candles.slice(i - wing, i).every(o => o.high <= c.high)
+        && candles.slice(i + 1, i + wing + 1).every(o => o.high <= c.high);
+      if (isHigh) swingHigh = { price: c.high, time: c.time, barsAgo: candles.length - 1 - i };
+    }
+    if (swingLow === null) {
+      const isLow = candles.slice(i - wing, i).every(o => o.low >= c.low)
+        && candles.slice(i + 1, i + wing + 1).every(o => o.low >= c.low);
+      if (isLow) swingLow = { price: c.low, time: c.time, barsAgo: candles.length - 1 - i };
+    }
+    if (swingHigh !== null && swingLow !== null) break;
+  }
+  return { high: swingHigh, low: swingLow };
+}
+
 function stochasticOscillator(candles, period = 14, smoothK = 3) {
   const kValues = [];
   for (let i = period - 1; i < candles.length; i++) {
@@ -364,6 +387,7 @@ app.get('/api/market-data', async (req, res) => {
       atr: atr(candles),
       adx: adx(candles),
       stochastic: stochasticOscillator(candles),
+      swing: swingPoints(candles),
       volatility: volatilityStats(candles),
       higherTimeframe: {
         interval: higherInterval,
@@ -596,6 +620,7 @@ ${m.ema200 != null ? `EMA200: ${m.ema200.toFixed(2)}\n` : ''}Bollinger Bands (20
 ATR (14): ${m.atr.toFixed(2)} (วัดความผันผวนเฉลี่ยต่อแท่ง)
 ${m.adx != null ? `ADX (14): ${m.adx.toFixed(1)} (<18 = ไม่มีเทรนด์ชัดเจน/ไซด์เวย์, >25 = เทรนด์แข็งแรง)\n` : ''}
 Stochastic Oscillator: %K=${m.stochastic.k.toFixed(2)}, %D=${m.stochastic.d.toFixed(2)}
+${m.swing ? `Swing High ล่าสุด (จุดกลับตัวขาขึ้น→ลง): ${m.swing.high ? `${m.swing.high.price} (${m.swing.high.barsAgo} แท่งก่อนหน้า)` : 'ไม่พบในช่วงข้อมูล'}\nSwing Low ล่าสุด (จุดกลับตัวขาลง→ขึ้น): ${m.swing.low ? `${m.swing.low.price} (${m.swing.low.barsAgo} แท่งก่อนหน้า)` : 'ไม่พบในช่วงข้อมูล'}\n` : ''}
 ความผันผวน 20 แท่งล่าสุด: ช่วงราคาเฉลี่ย/แท่ง=${m.volatility.avgRange.toFixed(2)}, สัดส่วนตัวแท่งเทียนเฉลี่ย=${(m.volatility.avgBodyRatio*100).toFixed(1)}%
 แนวโน้มกรอบเวลาใหญ่กว่า (${m.higherTimeframe.interval}): ${m.higherTimeframe.trend} (EMA20=${m.higherTimeframe.ema20.toFixed(2)}, EMA50=${m.higherTimeframe.ema50.toFixed(2)})
 
@@ -606,6 +631,7 @@ Stochastic Oscillator: %K=${m.stochastic.k.toFixed(2)}, %D=${m.stochastic.d.toFi
 - ใช้ Bollinger Bands ประเมินว่าราคาอยู่ใกล้ขอบบน/ล่าง/กลาง (โซน overbought/oversold หรือ breakout)
 - ใช้ ATR และความผันผวนเฉลี่ยประกอบการประเมินความเสี่ยง และช่วยกำหนดระยะ tp/sl ให้สมเหตุสมผลกับความผันผวนจริง (อย่าตั้ง sl แคบกว่า ATR มากเกินไป)
 - ใช้ Stochastic Oscillator (%K, %D) ยืนยันโซน overbought (>80) / oversold (<20) และสัญญาณ crossover
+- ใช้ Swing High/Low ประเมินโครงสร้างตลาด (higher high/higher low = ขาขึ้น, lower high/lower low = ขาลง) และใช้เป็นแนวรับ-แนวต้านระยะสั้นประกอบการวาง tp/sl
 - กำหนด entry ใกล้ราคาปัจจุบัน, tp และ sl โดยอ้างอิงแนวรับ-แนวต้านและ ATR ที่ให้มาจริง (ห้ามให้ tp/sl ขัดกับทิศทางคำแนะนำ)
 - risk_reward ต้องคำนวณจาก |tp-entry| ต่อ |entry-sl| ให้ตรงกับตัวเลข entry/tp/sl ที่คุณให้จริง
 - เขียน detailed_analysis เป็นย่อหน้าภาษาไทยอย่างละเอียด (อย่างน้อย 4-6 ประโยค) อธิบายภาพรวมทั้งหมด: โครงสร้างแนวโน้มหลัก/รอง, ตำแหน่งราคาเทียบ Bollinger Bands, โมเมนตัมจาก RSI/MACD/Stochastic, ความผันผวนจาก ATR, และเหตุผลเชิงลึกว่าทำไมจึงให้คำแนะนำ BUY/SELL นี้พร้อมความเสี่ยงที่ควรระวัง
@@ -632,6 +658,7 @@ buy_probability/sell_probability ต้องรวมกันได้ 100 แ
   "volume": "ลักษณะ momentum จากแท่งเทียนขึ้น/ลง",
   "bollinger": "ตำแหน่งราคาเทียบ Bollinger Bands เช่น ราคาใกล้ขอบบน (overbought zone)",
   "stochastic": "สถานะ Stochastic เช่น %K ตัดขึ้นเหนือ %D ในโซน oversold",
+  "swing_structure": "โครงสร้างตลาดจาก Swing High/Low เช่น Higher High / Higher Low (ขาขึ้น) พร้อมระบุราคา swing high/low ล่าสุด",
   "higher_timeframe": "สรุปแนวโน้มกรอบเวลาใหญ่กว่าและว่าสอดคล้องหรือขัดแย้งกับกรอบเวลาปัจจุบัน",
   "news_summary": "สรุปข่าวสำคัญที่มีผลต่อการตัดสินใจสั้นๆ ภาษาไทย และว่าสอดคล้องหรือขัดแย้งกับสัญญาณเทคนิค (ถ้าไม่มีข่าวสำคัญ ให้ตอบว่า \\"ไม่มีข่าวสำคัญ\\")",
   "entry": ราคาตัวเลข,
