@@ -966,7 +966,12 @@
       ['Bollinger', a.bollinger||'—', ''],
       ['Stochastic', a.stochastic||'—', ''],
       ['Swing High/Low', a.swing_structure||'—', ''],
-      ['กรอบเวลาใหญ่', a.higher_timeframe||'—', '']
+      ['กรอบเวลาใหญ่', a.higher_timeframe||'—', ''],
+      ['Pivot Point', a.pivot_point||'—', ''],
+      ['VWAP', a.vwap_relation||'—', ''],
+      ['Volume Profile', a.volume_profile||'—', ''],
+      ['Divergence', a.divergence||'—', ''],
+      ['Smart Money (OB/FVG)', a.smart_money||'—', '']
     ];
     const grid = document.getElementById('indicatorGrid');
     grid.innerHTML = indicators.map(([name,val,cls]) =>

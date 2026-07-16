@@ -270,6 +270,14 @@ function computeSignalScore(m) {
   else if (candleDiff <= -3) { score -= 1; reasons.push('More down candles recently (+1 sell)'); }
   else { reasons.push('Candle count neutral (0)'); }
 
+  // RSI divergence is a reversal signal that trend-following votes above can't
+  // see (price and momentum are actively disagreeing), so it gets its own point.
+  if (m.divergence) {
+    if (m.divergence.bullish) { score += 1; reasons.push('Bullish RSI divergence (+1 buy)'); }
+    else if (m.divergence.bearish) { score -= 1; reasons.push('Bearish RSI divergence (+1 sell)'); }
+    else { reasons.push('No RSI divergence (0)'); }
+  }
+
   const direction = score > 0 ? 'BUY' : score < 0 ? 'SELL' : null;
   const against200 = ema200Direction != null && direction != null && direction !== ema200Direction;
   if (against200) { reasons.push(`=> ทิศทาง ${direction} สวนทาง EMA200 (long-term trend) — ต้องใช้ threshold สูงขึ้นจึงจะถือว่าสัญญาณแรง`); }
@@ -298,7 +306,119 @@ function computeSignalScore(m) {
   }
   if (waitReason) reasons.push(`=> WAIT: ${waitReason}`);
 
-  return { score, direction, strong, against200, reasons, maxScore: 4, tradable, waitReason, adx: m.adx };
+  return { score, direction, strong, against200, reasons, maxScore: m.divergence ? 5 : 4, tradable, waitReason, adx: m.adx };
+}
+
+// Classical (Floor Trader) pivot points computed from the prior period's H/L/C.
+// Gives static support/resistance levels independent of the lookback-window
+// max/min used elsewhere, useful for day-trading style entries.
+function pivotPoints(candles) {
+  if (candles.length < 2) return null;
+  const prev = candles[candles.length - 2];
+  const pivot = (prev.high + prev.low + prev.close) / 3;
+  const r1 = 2 * pivot - prev.low;
+  const s1 = 2 * pivot - prev.high;
+  const r2 = pivot + (prev.high - prev.low);
+  const s2 = pivot - (prev.high - prev.low);
+  return { pivot, r1, r2, s1, s2 };
+}
+
+// VWAP anchored to the visible window. Twelve Data doesn't return real volume
+// for spot FX/metals, so when volume is missing/zero for every candle we fall
+// back to an unweighted typical-price average and flag it as an approximation
+// rather than silently pretending it's volume-weighted.
+function vwap(candles) {
+  const hasVolume = candles.some(c => c.volume > 0);
+  let cumPV = 0, cumV = 0;
+  for (const c of candles) {
+    const typical = (c.high + c.low + c.close) / 3;
+    const w = hasVolume ? c.volume : 1;
+    cumPV += typical * w;
+    cumV += w;
+  }
+  return { value: cumV > 0 ? cumPV / cumV : null, approx: !hasVolume };
+}
+
+// Volume Profile Point of Control: the price bucket with the most traded
+// volume (or, without real volume data, the most time spent) over the window.
+// Falls back to a time-at-price proxy for the same reason as vwap() above.
+function volumeProfile(candles, buckets = 20) {
+  const hasVolume = candles.some(c => c.volume > 0);
+  const highs = candles.map(c => c.high);
+  const lows = candles.map(c => c.low);
+  const max = Math.max(...highs);
+  const min = Math.min(...lows);
+  if (!(max > min)) return null;
+  const bucketSize = (max - min) / buckets;
+  const weights = new Array(buckets).fill(0);
+  for (const c of candles) {
+    const typical = (c.high + c.low + c.close) / 3;
+    const idx = Math.min(buckets - 1, Math.max(0, Math.floor((typical - min) / bucketSize)));
+    weights[idx] += hasVolume ? c.volume : 1;
+  }
+  let pocIdx = 0;
+  for (let i = 1; i < buckets; i++) if (weights[i] > weights[pocIdx]) pocIdx = i;
+  const poc = min + bucketSize * (pocIdx + 0.5);
+  return { poc, approx: !hasVolume };
+}
+
+// Regular divergence: price makes a lower low / higher high while the
+// oscillator (RSI here) makes the opposite, using the two most recent swing
+// points from swingPoints(). Signals a likely reversal that trend-following
+// indicators (EMA/MACD) won't see coming.
+function detectDivergence(candles, closes, wing = 3) {
+  const swingLows = [], swingHighs = [];
+  for (let i = candles.length - 1 - wing; i >= wing; i--) {
+    const c = candles[i];
+    const isLow = candles.slice(i - wing, i).every(o => o.low >= c.low) && candles.slice(i + 1, i + wing + 1).every(o => o.low >= c.low);
+    if (isLow) swingLows.push({ idx: i, price: c.low });
+    const isHigh = candles.slice(i - wing, i).every(o => o.high <= c.high) && candles.slice(i + 1, i + wing + 1).every(o => o.high <= c.high);
+    if (isHigh) swingHighs.push({ idx: i, price: c.high });
+    if (swingLows.length >= 2 && swingHighs.length >= 2) break;
+  }
+  const rsiAt = (idx) => rsi(closes.slice(0, idx + 1));
+  let bullish = null, bearish = null;
+  if (swingLows.length >= 2) {
+    const [recent, prior] = swingLows;
+    if (recent.price < prior.price && rsiAt(recent.idx) > rsiAt(prior.idx)) {
+      bullish = { recentPrice: recent.price, priorPrice: prior.price };
+    }
+  }
+  if (swingHighs.length >= 2) {
+    const [recent, prior] = swingHighs;
+    if (recent.price > prior.price && rsiAt(recent.idx) < rsiAt(prior.idx)) {
+      bearish = { recentPrice: recent.price, priorPrice: prior.price };
+    }
+  }
+  return { bullish, bearish };
+}
+
+// Order Block: last opposite-colour candle before a strong impulsive move
+// (Smart Money Concepts). Fair Value Gap: a 3-candle imbalance where candle 1's
+// high/low doesn't overlap candle 3's low/high, leaving a gap price tends to
+// revisit. Both scanned over the recent window, most recent unmitigated one wins.
+function orderBlocksAndFvg(candles, lookback = 30) {
+  const recent = candles.slice(-lookback);
+  let bullishOB = null, bearishOB = null;
+  for (let i = recent.length - 2; i >= 1; i--) {
+    const c = recent[i], next = recent[i + 1];
+    const impulsive = Math.abs(next.close - next.open) > (next.high - next.low) * 0.6;
+    if (!bullishOB && c.close < c.open && next.close > next.open && impulsive && next.close > c.high) {
+      bullishOB = { low: c.low, high: c.high, time: c.time };
+    }
+    if (!bearishOB && c.close > c.open && next.close < next.open && impulsive && next.close < c.low) {
+      bearishOB = { low: c.low, high: c.high, time: c.time };
+    }
+    if (bullishOB && bearishOB) break;
+  }
+  let bullishFvg = null, bearishFvg = null;
+  for (let i = recent.length - 1; i >= 2; i--) {
+    const a = recent[i - 2], b = recent[i];
+    if (!bullishFvg && b.low > a.high) bullishFvg = { gapLow: a.high, gapHigh: b.low, time: b.time };
+    if (!bearishFvg && b.high < a.low) bearishFvg = { gapLow: b.high, gapHigh: a.low, time: b.time };
+    if (bullishFvg && bearishFvg) break;
+  }
+  return { bullishOB, bearishOB, bullishFvg, bearishFvg };
 }
 
 function volatilityStats(candles, period = 20) {
@@ -339,6 +459,7 @@ app.get('/api/market-data', async (req, res) => {
       high: Number(c.high),
       low: Number(c.low),
       close: Number(c.close),
+      volume: Number(c.volume) || 0,
     }));
     const higherCandles = higherSeries.values.slice().reverse().map(c => ({
       time: c.datetime,
@@ -389,6 +510,11 @@ app.get('/api/market-data', async (req, res) => {
       stochastic: stochasticOscillator(candles),
       swing: swingPoints(candles),
       volatility: volatilityStats(candles),
+      pivot: pivotPoints(candles),
+      vwap: vwap(candles.slice(-30)),
+      volumeProfile: volumeProfile(candles.slice(-60)),
+      divergence: detectDivergence(candles, closes),
+      smc: orderBlocksAndFvg(candles),
       higherTimeframe: {
         interval: higherInterval,
         trend: higherTrend,
@@ -623,6 +749,7 @@ Stochastic Oscillator: %K=${m.stochastic.k.toFixed(2)}, %D=${m.stochastic.d.toFi
 ${m.swing ? `Swing High ล่าสุด (จุดกลับตัวขาขึ้น→ลง): ${m.swing.high ? `${m.swing.high.price} (${m.swing.high.barsAgo} แท่งก่อนหน้า)` : 'ไม่พบในช่วงข้อมูล'}\nSwing Low ล่าสุด (จุดกลับตัวขาลง→ขึ้น): ${m.swing.low ? `${m.swing.low.price} (${m.swing.low.barsAgo} แท่งก่อนหน้า)` : 'ไม่พบในช่วงข้อมูล'}\n` : ''}
 ความผันผวน 20 แท่งล่าสุด: ช่วงราคาเฉลี่ย/แท่ง=${m.volatility.avgRange.toFixed(2)}, สัดส่วนตัวแท่งเทียนเฉลี่ย=${(m.volatility.avgBodyRatio*100).toFixed(1)}%
 แนวโน้มกรอบเวลาใหญ่กว่า (${m.higherTimeframe.interval}): ${m.higherTimeframe.trend} (EMA20=${m.higherTimeframe.ema20.toFixed(2)}, EMA50=${m.higherTimeframe.ema50.toFixed(2)})
+${m.pivot ? `Pivot Point: P=${m.pivot.pivot.toFixed(2)}, R1=${m.pivot.r1.toFixed(2)}, R2=${m.pivot.r2.toFixed(2)}, S1=${m.pivot.s1.toFixed(2)}, S2=${m.pivot.s2.toFixed(2)}\n` : ''}${m.vwap && m.vwap.value != null ? `VWAP${m.vwap.approx ? ' (โดยประมาณ ไม่มีข้อมูล volume จริง)' : ''}: ${m.vwap.value.toFixed(2)} (ราคาปัจจุบัน${m.currentPrice > m.vwap.value ? 'อยู่เหนือ' : 'อยู่ใต้'} VWAP)\n` : ''}${m.volumeProfile ? `Volume Profile POC${m.volumeProfile.approx ? ' (โดยประมาณจากเวลาที่ราคาพักอยู่ เพราะไม่มี volume จริง)' : ''}: ${m.volumeProfile.poc.toFixed(2)}\n` : ''}${m.divergence && (m.divergence.bullish || m.divergence.bearish) ? `Divergence: ${m.divergence.bullish ? `Bullish (ราคาทำ low ใหม่ต่ำกว่าเดิมที่ ${m.divergence.bullish.recentPrice} แต่ RSI สูงขึ้น)` : `Bearish (ราคาทำ high ใหม่สูงกว่าเดิมที่ ${m.divergence.bearish.recentPrice} แต่ RSI ต่ำลง)`}\n` : ''}${m.smc ? `Order Block: ${m.smc.bullishOB ? `Bullish OB ${m.smc.bullishOB.low.toFixed(2)}-${m.smc.bullishOB.high.toFixed(2)}` : 'ไม่พบ'} / ${m.smc.bearishOB ? `Bearish OB ${m.smc.bearishOB.low.toFixed(2)}-${m.smc.bearishOB.high.toFixed(2)}` : 'ไม่พบ'}\nFair Value Gap: ${m.smc.bullishFvg ? `Bullish FVG ${m.smc.bullishFvg.gapLow.toFixed(2)}-${m.smc.bullishFvg.gapHigh.toFixed(2)}` : 'ไม่พบ'} / ${m.smc.bearishFvg ? `Bearish FVG ${m.smc.bearishFvg.gapLow.toFixed(2)}-${m.smc.bearishFvg.gapHigh.toFixed(2)}` : 'ไม่พบ'}\n` : ''}
 
 หน้าที่ของคุณ:
 - พิจารณาข่าวล่าสุดข้างต้นประกอบด้วย ถ้าข่าวมีผลกระทบสูงต่อทองคำ/สินทรัพย์นี้ (เช่น ผลการประชุม Fed, ตัวเลขเงินเฟ้อ, ความตึงเครียดภูมิรัฐศาสตร์) และ sentiment ขัดแย้งกับสัญญาณทางเทคนิค ให้ลด confidence_percent ลงและระบุความขัดแย้งนี้ใน reasons ห้ามให้ข่าวมีน้ำหนักเกินกว่าข้อมูลราคาจริง แต่ใช้เป็นปัจจัยเสริมความเสี่ยง
@@ -632,6 +759,11 @@ ${m.swing ? `Swing High ล่าสุด (จุดกลับตัวขา
 - ใช้ ATR และความผันผวนเฉลี่ยประกอบการประเมินความเสี่ยง และช่วยกำหนดระยะ tp/sl ให้สมเหตุสมผลกับความผันผวนจริง (อย่าตั้ง sl แคบกว่า ATR มากเกินไป)
 - ใช้ Stochastic Oscillator (%K, %D) ยืนยันโซน overbought (>80) / oversold (<20) และสัญญาณ crossover
 - ใช้ Swing High/Low ประเมินโครงสร้างตลาด (higher high/higher low = ขาขึ้น, lower high/lower low = ขาลง) และใช้เป็นแนวรับ-แนวต้านระยะสั้นประกอบการวาง tp/sl
+- ใช้ Pivot Point (P/R1/R2/S1/S2) เป็นแนวรับ-แนวต้านอ้างอิงเพิ่มเติมสำหรับวาง entry/tp/sl แบบ day trading
+- ใช้ VWAP ประเมินว่าราคาปัจจุบันอยู่เหนือหรือใต้ราคาเฉลี่ยถ่วงน้ำหนักของตลาด (เหนือ VWAP=โน้มเอียงฝั่งซื้อ, ใต้ VWAP=โน้มเอียงฝั่งขาย)
+- ใช้ Volume Profile POC เป็นแนวรับ/แนวต้านที่ราคามีการซื้อขาย/พักตัวมากที่สุด
+- ถ้ามี Divergence (RSI) ให้ถือเป็นสัญญาณเตือนการกลับตัวที่สำคัญ และอธิบายไว้ใน reasons อย่างชัดเจนถ้าขัดแย้งกับ trend หลัก
+- ถ้ามี Order Block หรือ Fair Value Gap ให้ใช้ระดับราคานั้นประกอบการวาง entry/tp/sl (โซนที่ราคามักย้อนกลับไปทดสอบ)
 - กำหนด entry ใกล้ราคาปัจจุบัน, tp และ sl โดยอ้างอิงแนวรับ-แนวต้านและ ATR ที่ให้มาจริง (ห้ามให้ tp/sl ขัดกับทิศทางคำแนะนำ)
 - risk_reward ต้องคำนวณจาก |tp-entry| ต่อ |entry-sl| ให้ตรงกับตัวเลข entry/tp/sl ที่คุณให้จริง
 - เขียน detailed_analysis เป็นย่อหน้าภาษาไทยอย่างละเอียด (อย่างน้อย 4-6 ประโยค) อธิบายภาพรวมทั้งหมด: โครงสร้างแนวโน้มหลัก/รอง, ตำแหน่งราคาเทียบ Bollinger Bands, โมเมนตัมจาก RSI/MACD/Stochastic, ความผันผวนจาก ATR, และเหตุผลเชิงลึกว่าทำไมจึงให้คำแนะนำ BUY/SELL นี้พร้อมความเสี่ยงที่ควรระวัง
@@ -660,6 +792,11 @@ buy_probability/sell_probability ต้องรวมกันได้ 100 แ
   "stochastic": "สถานะ Stochastic เช่น %K ตัดขึ้นเหนือ %D ในโซน oversold",
   "swing_structure": "โครงสร้างตลาดจาก Swing High/Low เช่น Higher High / Higher Low (ขาขึ้น) พร้อมระบุราคา swing high/low ล่าสุด",
   "higher_timeframe": "สรุปแนวโน้มกรอบเวลาใหญ่กว่าและว่าสอดคล้องหรือขัดแย้งกับกรอบเวลาปัจจุบัน",
+  "pivot_point": "สรุประดับ pivot/R1/R2/S1/S2 ที่เกี่ยวข้องกับการวาง entry/tp/sl",
+  "vwap_relation": "ตำแหน่งราคาปัจจุบันเทียบ VWAP เช่น ราคาอยู่เหนือ VWAP (โน้มเอียงฝั่งซื้อ)",
+  "volume_profile": "สรุประดับ POC (Volume Profile) และนัยสำคัญต่อแนวรับ-แนวต้าน",
+  "divergence": "สรุป divergence ที่พบ (bullish/bearish) หรือ \\"ไม่พบ divergence\\"",
+  "smart_money": "สรุป Order Block และ Fair Value Gap ที่พบและนัยต่อ entry/tp/sl หรือ \\"ไม่พบ\\"",
   "news_summary": "สรุปข่าวสำคัญที่มีผลต่อการตัดสินใจสั้นๆ ภาษาไทย และว่าสอดคล้องหรือขัดแย้งกับสัญญาณเทคนิค (ถ้าไม่มีข่าวสำคัญ ให้ตอบว่า \\"ไม่มีข่าวสำคัญ\\")",
   "entry": ราคาตัวเลข,
   "tp": ราคาตัวเลข,
