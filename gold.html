@@ -372,6 +372,28 @@
     <button class="btn" id="clearHistoryBtn" type="button" style="width:100%; background:var(--sell-dim); color:var(--sell-bright);">ล้างประวัติทั้งหมด (เครื่อง + ชีต)</button>
   </div>
 
+  <!-- TRADE JOURNAL -->
+  <div class="panel" id="journalPanel">
+    <div class="grid-label">บันทึกการเทรด</div>
+    <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:10px;">
+      <div>
+        <label class="drop-sub" for="journalDate" style="display:block; margin-bottom:6px;">วันที่เทรด</label>
+        <input id="journalDate" type="date" class="btn" style="width:100%; background:var(--bg-panel-raised); color:var(--ink); border:1px solid var(--hairline); text-align:center;">
+      </div>
+      <div>
+        <label class="drop-sub" for="journalCapital" style="display:block; margin-bottom:6px;">ทุนการเทรด ($)</label>
+        <input id="journalCapital" type="number" step="0.01" class="btn" style="width:100%; background:var(--bg-panel-raised); color:var(--ink); border:1px solid var(--hairline); text-align:center;">
+      </div>
+      <div>
+        <label class="drop-sub" for="journalProfit" style="display:block; margin-bottom:6px;">กำไร/ขาดทุน ($)</label>
+        <input id="journalProfit" type="number" step="0.01" class="btn" style="width:100%; background:var(--bg-panel-raised); color:var(--ink); border:1px solid var(--hairline); text-align:center;">
+      </div>
+    </div>
+    <button class="btn btn-gold" id="saveJournalBtn" type="button" style="width:100%; margin-bottom:14px;">บันทึกลงชีต</button>
+    <ul class="reason-list" id="journalList" style="gap:8px; margin-bottom:14px;"></ul>
+    <button class="btn" id="clearJournalBtn" type="button" style="width:100%; background:var(--sell-dim); color:var(--sell-bright);">ล้างบันทึกการเทรดทั้งหมด (เครื่อง + ชีต)</button>
+  </div>
+
   <!-- STEP 1: START -->
   <div id="view-upload">
     <div class="panel">
@@ -549,6 +571,7 @@
   const CONTRACT_SIZE = { XAU: 100, BTC: 1 };
   let currentAsset = assetSelect.value;
   let lastMarketData = null;
+  let quickCheckSeq = 0;
 
   function applyAssetUI(){
     currentAsset = assetSelect.value;
@@ -570,7 +593,6 @@
   // Free pre-check (no AI call, just the deterministic indicator gate) so
   // someone can glance at "เทรดได้ตอนนี้"/"รอก่อน" before spending a Claude
   // call on a full analysis that would likely come back WAIT anyway.
-  let quickCheckSeq = 0;
   async function runQuickCheck(){
     const seq = ++quickCheckSeq;
     const asset = currentAsset, interval = intervalSelect.value;
@@ -621,6 +643,28 @@
     saveHistory([]); // empty list also overwrites the Google Sheet tab via syncHistoryToSheet
     renderHistory();
     alert('ล้างประวัติเรียบร้อยแล้ว');
+  });
+
+  document.getElementById('saveJournalBtn').addEventListener('click', () => {
+    const date = document.getElementById('journalDate').value || new Date().toISOString().slice(0, 10);
+    const capital = Number(document.getElementById('journalCapital').value);
+    const profit = Number(document.getElementById('journalProfit').value);
+    if(!isFinite(capital) || !isFinite(profit)){
+      alert('กรุณากรอกทุนการเทรดและกำไร/ขาดทุนให้ถูกต้อง');
+      return;
+    }
+    const list = loadJournal();
+    list.push({ date, capital, profit, time: Date.now() });
+    saveJournal(list);
+    renderJournal();
+    document.getElementById('journalProfit').value = '';
+  });
+
+  document.getElementById('clearJournalBtn').addEventListener('click', () => {
+    if(!confirm('ล้างบันทึกการเทรดทั้งหมด (ทั้งในเครื่องนี้และในชีต Google) ใช่ไหม?')) return;
+    saveJournal([]);
+    renderJournal();
+    alert('ล้างบันทึกเรียบร้อยแล้ว');
   });
 
   window.addEventListener('error', (e) => {
@@ -749,6 +793,49 @@
       }
     } catch(e){ /* offline or webhook unreachable — fall back to local cache */ }
     return false;
+  }
+
+  // ---- Manual trade journal (date / capital / profit), synced to its own
+  // Google Sheet tab ("TradeJournal") via the same Apps Script webhook used
+  // for the win/loss history above, distinguished by a "type" field.
+  const JOURNAL_KEY = 'goldTradeJournal';
+
+  function loadJournal(){
+    try { return JSON.parse(localStorage.getItem(JOURNAL_KEY)) || []; }
+    catch(e){ return []; }
+  }
+  function saveJournal(list){
+    const trimmed = list.slice(-200);
+    localStorage.setItem(JOURNAL_KEY, JSON.stringify(trimmed));
+    syncJournalToSheet(trimmed);
+  }
+  function syncJournalToSheet(list){
+    fetch(SHEET_WEBHOOK_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ type: 'journal', rows: list }),
+    }).catch(() => {});
+  }
+  async function loadJournalFromSheet(){
+    try {
+      const res = await fetch(SHEET_WEBHOOK_URL + '?type=journal');
+      const data = await res.json();
+      if(data && data.ok && Array.isArray(data.rows)){
+        localStorage.setItem(JOURNAL_KEY, JSON.stringify(data.rows.slice(-200)));
+        return true;
+      }
+    } catch(e){ /* offline or webhook unreachable — fall back to local cache */ }
+    return false;
+  }
+  function renderJournal(){
+    const list = loadJournal();
+    const recent = list.slice(-10).reverse();
+    document.getElementById('journalList').innerHTML = recent.length ? recent.map(r => {
+      const profit = Number(r.profit);
+      const color = profit > 0 ? 'var(--buy)' : profit < 0 ? 'var(--sell)' : 'var(--ink-dim)';
+      return '<li>' + r.date + ' · ทุน $' + Number(r.capital).toFixed(2) + ' → <b style="color:' + color + '">' +
+        (profit >= 0 ? '+' : '') + profit.toFixed(2) + '</b></li>';
+    }).join('') : '<li style="color:var(--ink-dim);">ยังไม่มีบันทึก</li>';
   }
 
   function addHistoryEntry(a, trade, marketData){
@@ -1111,6 +1198,10 @@
 
   renderHistory();
   fetch('/api/market-data?interval=1h').then(r => r.json()).then(d => { if(d && d.currentPrice) checkHistory(d.currentPrice, d.recentCandles); }).catch(()=>{});
+
+  document.getElementById('journalDate').value = new Date().toISOString().slice(0, 10);
+  renderJournal();
+  loadJournalFromSheet().then(() => renderJournal());
 </script>
 </body>
 </html>
