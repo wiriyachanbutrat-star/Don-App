@@ -713,7 +713,10 @@ app.post('/api/analyze', async (req, res) => {
       return res.status(response.status).json({ error: data?.error?.message || 'เรียก Claude API ไม่สำเร็จ' });
     }
 
-    let text = data?.content?.[0]?.text;
+    // Don't assume content[0] is the text block — newer models can prepend
+    // other block types (e.g. a "thinking" block) before the actual text.
+    const textBlock = Array.isArray(data?.content) ? data.content.find(b => b.type === 'text') : null;
+    let text = textBlock?.text;
     if (!text) {
       return res.status(502).json({ error: 'ไม่ได้รับข้อความตอบกลับจาก AI' });
     }
