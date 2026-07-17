@@ -510,6 +510,10 @@ function orderBlocksAndFvg(candles, lookback = 30) {
   return { bullishOB, bearishOB, bullishFvg, bearishFvg };
 }
 
+function isValidJson(str) {
+  try { JSON.parse(str); return true; } catch { return false; }
+}
+
 function volatilityStats(candles, period = 20) {
   const recent = candles.slice(-period);
   const ranges = recent.map(c => c.high - c.low);
@@ -703,7 +707,7 @@ app.post('/api/analyze', async (req, res) => {
       },
       body: JSON.stringify({
         model: CLAUDE_MODEL,
-        max_tokens: 4096,
+        max_tokens: 8192,
         messages: [{ role: 'user', content: prompt }],
       }),
     });
@@ -721,9 +725,22 @@ app.post('/api/analyze', async (req, res) => {
       return res.status(502).json({ error: 'ไม่ได้รับข้อความตอบกลับจาก AI' });
     }
     // Claude isn't given a hard JSON-only response mode like Gemini's
-    // response_mime_type, so it may wrap the JSON in a ```json code fence
-    // despite being told not to — strip that before JSON.parse below.
+    // response_mime_type, so it may wrap the JSON in a ```json code fence, or
+    // add stray prose before/after it, despite being told not to — strip
+    // fences, then fall back to slicing out the outermost {...} block if the
+    // text still isn't valid JSON on its own.
     text = text.trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '');
+    if (!isValidJson(text)) {
+      const first = text.indexOf('{');
+      const last = text.lastIndexOf('}');
+      if (first !== -1 && last > first) {
+        const sliced = text.slice(first, last + 1);
+        if (isValidJson(sliced)) text = sliced;
+      }
+    }
+    if (!isValidJson(text)) {
+      console.error('Claude returned non-JSON analysis response (stop_reason=' + data.stop_reason + '):', text.slice(0, 2000));
+    }
 
     // Server-side veto: if the deterministic indicator score strongly disagrees
     // with the AI's call, the AI's answer is contradicting the actual data —
