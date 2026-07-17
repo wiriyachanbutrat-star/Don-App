@@ -83,7 +83,7 @@ function ema(values, period) {
   return out;
 }
 
-function rsi(closes, period = 14) {
+function rsi(closes, period = 21) {
   let gains = 0, losses = 0;
   for (let i = 1; i <= period; i++) {
     const diff = closes[i] - closes[i - 1];
@@ -111,7 +111,15 @@ function macd(closes) {
   const signalSeries = ema(macdValues, 9);
   const signal = signalSeries[signalSeries.length - 1];
   const macdNow = macdValues[macdValues.length - 1];
-  return { macd: macdNow, signal, histogram: macdNow - signal };
+  const histogram = macdNow - signal;
+  // Crossover (not just sign) needs the previous bar's histogram — a signal
+  // that's been positive for 20 bars isn't a "cross up", it's just trending.
+  const signalPrev = signalSeries[signalSeries.length - 2];
+  const macdPrev = macdValues[macdValues.length - 2];
+  const histogramPrev = (macdPrev != null && signalPrev != null) ? macdPrev - signalPrev : null;
+  const crossUp = histogramPrev != null && histogramPrev <= 0 && histogram > 0;
+  const crossDown = histogramPrev != null && histogramPrev >= 0 && histogram < 0;
+  return { macd: macdNow, signal, histogram, crossUp, crossDown };
 }
 
 function sma(values, period) {
@@ -220,54 +228,141 @@ function stochasticOscillator(candles, period = 14, smoothK = 3) {
   const dValues = sma(validK, smoothK);
   const k = validK[validK.length - 1];
   const d = dValues[dValues.length - 1];
-  return { k, d };
+  const kPrev = validK[validK.length - 2];
+  const dPrev = dValues[dValues.length - 2];
+  // "Crossed up from oversold" needs the crossover to actually happen near the
+  // <20 zone, not just %K>%D anywhere in the 20-80 range.
+  const crossUpFromOversold = kPrev != null && dPrev != null && kPrev <= dPrev && k > d && kPrev < 25;
+  const crossDownFromOverbought = kPrev != null && dPrev != null && kPrev >= dPrev && k < d && kPrev > 75;
+  return { k, d, crossUpFromOversold, crossDownFromOverbought };
+}
+
+// Supertrend: ATR-banded trend flip indicator. Flips to "up" when close closes
+// above the running upper band, "down" when it closes below the running lower
+// band; otherwise the previous trend and band carry forward.
+function supertrend(candles, period = 10, multiplier = 3) {
+  if (candles.length < period + 2) return null;
+  const trs = [];
+  for (let i = 1; i < candles.length; i++) {
+    const cur = candles[i], prev = candles[i - 1];
+    trs.push(Math.max(cur.high - cur.low, Math.abs(cur.high - prev.close), Math.abs(cur.low - prev.close)));
+  }
+  let trend = 'up';
+  let finalUpper = null, finalLower = null;
+  for (let i = period; i < candles.length; i++) {
+    const atrSlice = trs.slice(i - period, i);
+    const atrVal = atrSlice.reduce((a, b) => a + b, 0) / period;
+    const c = candles[i];
+    const mid = (c.high + c.low) / 2;
+    let basicUpper = mid + multiplier * atrVal;
+    let basicLower = mid - multiplier * atrVal;
+    if (finalUpper == null) { finalUpper = basicUpper; finalLower = basicLower; }
+    else {
+      finalUpper = (basicUpper < finalUpper || candles[i - 1].close > finalUpper) ? basicUpper : finalUpper;
+      finalLower = (basicLower > finalLower || candles[i - 1].close < finalLower) ? basicLower : finalLower;
+    }
+    if (trend === 'up' && c.close < finalLower) trend = 'down';
+    else if (trend === 'down' && c.close > finalUpper) trend = 'up';
+  }
+  return { trend, value: trend === 'up' ? finalLower : finalUpper };
+}
+
+// Market structure via multiple fractal swing points (not just the single
+// nearest one swingPoints() returns): tags the trend as HH/HL (up) or LH/LL
+// (down) from the last two swing highs/lows, then flags a break relative to
+// the most recent opposing swing — BOS (break of structure, continuation) if
+// the break is in the direction of that trend, CHoCH (change of character,
+// possible reversal) if the price broke the swing on the *other* side.
+function structureBreak(candles, wing = 3, maxPoints = 4) {
+  const highs = [], lows = [];
+  for (let i = candles.length - 1 - wing; i >= wing && (highs.length < maxPoints || lows.length < maxPoints); i--) {
+    const c = candles[i];
+    if (highs.length < maxPoints) {
+      const isHigh = candles.slice(i - wing, i).every(o => o.high <= c.high) && candles.slice(i + 1, i + wing + 1).every(o => o.high <= c.high);
+      if (isHigh) highs.push({ idx: i, price: c.high });
+    }
+    if (lows.length < maxPoints) {
+      const isLow = candles.slice(i - wing, i).every(o => o.low >= c.low) && candles.slice(i + 1, i + wing + 1).every(o => o.low >= c.low);
+      if (isLow) lows.push({ idx: i, price: c.low });
+    }
+  }
+  if (highs.length < 2 || lows.length < 2) return null;
+  const trendUp = highs[0].price > highs[1].price && lows[0].price > lows[1].price;
+  const trendDown = highs[0].price < highs[1].price && lows[0].price < lows[1].price;
+  const structure = trendUp ? 'HH/HL (ขาขึ้น)' : trendDown ? 'LH/LL (ขาลง)' : 'ไม่ชัดเจน (sideways)';
+  const close = candles[candles.length - 1].close;
+  let event = null;
+  if (trendUp && close < lows[0].price) event = 'CHoCH (สัญญาณเตือนกลับตัวเป็นขาลง หลุด swing low ล่าสุดขณะโครงสร้างเดิมเป็นขาขึ้น)';
+  else if (trendDown && close > highs[0].price) event = 'CHoCH (สัญญาณเตือนกลับตัวเป็นขาขึ้น หลุด swing high ล่าสุดขณะโครงสร้างเดิมเป็นขาลง)';
+  else if (trendUp && close > highs[0].price) event = 'BOS ขาขึ้น (ราคาทะลุ swing high ล่าสุด ยืนยันแนวโน้มขาขึ้นต่อ)';
+  else if (trendDown && close < lows[0].price) event = 'BOS ขาลง (ราคาทะลุ swing low ล่าสุด ยืนยันแนวโน้มขาลงต่อ)';
+  return { structure, event, trendUp, trendDown };
 }
 
 function computeSignalScore(m) {
   const reasons = [];
 
-  // EMA20/50, MACD histogram and higher-timeframe trend are all trend-following
-  // and tend to move together, so counting each separately inflates the score
-  // during ordinary trending markets (exactly when trend indicators lag a reversal
-  // the most). Collapse them into a single trend vote instead.
-  let trendVotes = 0;
-  if (m.ema20 > m.ema50) { trendVotes += 1; reasons.push('EMA20>EMA50 (trend vote buy)'); }
-  else { trendVotes -= 1; reasons.push('EMA20<EMA50 (trend vote sell)'); }
+  // --- Trend confluence block (EMA cascade, Supertrend, higher-timeframe) ---
+  // These three are all "what's the dominant trend" votes and tend to move
+  // together, so they're collapsed into one confluence vote rather than each
+  // inflating the score independently.
+  let trendVotes = 0, trendVoters = 0;
 
-  if (m.macd.histogram > 0) { trendVotes += 1; reasons.push('MACD histogram>0 (trend vote buy)'); }
-  else { trendVotes -= 1; reasons.push('MACD histogram<0 (trend vote sell)'); }
-
-  if (m.higherTimeframe.trend.includes('Uptrend')) { trendVotes += 1; reasons.push('Higher timeframe uptrend (trend vote buy)'); }
-  else { trendVotes -= 1; reasons.push('Higher timeframe downtrend (trend vote sell)'); }
-
-  // EMA200 is the standard long-term trend filter; only vote when we have
-  // enough history (200 candles) to compute it.
+  // Full cascade (EMA20>EMA50>EMA200), not just EMA20 vs EMA50 — a partial
+  // alignment (e.g. EMA20>EMA50 but price<EMA200) is exactly the kind of
+  // mixed signal that should NOT count as a clean trend vote.
   if (m.ema200 != null) {
-    if (m.currentPrice > m.ema200) { trendVotes += 1; reasons.push('Price>EMA200 (trend vote buy)'); }
-    else { trendVotes -= 1; reasons.push('Price<EMA200 (trend vote sell)'); }
+    trendVoters += 1;
+    if (m.ema20 > m.ema50 && m.ema50 > m.ema200) { trendVotes += 1; reasons.push('EMA20>EMA50>EMA200 cascade (trend vote buy)'); }
+    else if (m.ema20 < m.ema50 && m.ema50 < m.ema200) { trendVotes -= 1; reasons.push('EMA20<EMA50<EMA200 cascade (trend vote sell)'); }
+    else { reasons.push('EMA cascade ไม่ครบ (0)'); }
+  } else if (m.ema20 > m.ema50) { trendVotes += 1; trendVoters += 1; reasons.push('EMA20>EMA50 (trend vote buy, ยังไม่มี EMA200)'); }
+  else { trendVotes -= 1; trendVoters += 1; reasons.push('EMA20<EMA50 (trend vote sell, ยังไม่มี EMA200)'); }
+
+  if (m.supertrend) {
+    trendVoters += 1;
+    if (m.supertrend.trend === 'up') { trendVotes += 1; reasons.push('Supertrend เขียว (trend vote buy)'); }
+    else { trendVotes -= 1; reasons.push('Supertrend แดง (trend vote sell)'); }
   }
 
+  if (m.higherTimeframe.trend.includes('Uptrend')) { trendVotes += 1; trendVoters += 1; reasons.push('Higher timeframe uptrend (trend vote buy)'); }
+  else { trendVotes -= 1; trendVoters += 1; reasons.push('Higher timeframe downtrend (trend vote sell)'); }
+
   let score = 0;
-  if (trendVotes >= 2) { score += 1; reasons.push('=> Trend confluence BUY (+1)'); }
-  else if (trendVotes <= -2) { score -= 1; reasons.push('=> Trend confluence SELL (+1)'); }
+  const trendMajority = Math.ceil((trendVoters + 1) / 2);
+  if (trendVotes >= trendMajority) { score += 1; reasons.push('=> Trend confluence BUY (+1)'); }
+  else if (trendVotes <= -trendMajority) { score -= 1; reasons.push('=> Trend confluence SELL (+1)'); }
   else { reasons.push('=> Trend confluence mixed (0)'); }
 
-  // EMA200 is the long-term trend filter and is meant to be a hard veto, not
-  // just one vote among several correlated trend indicators — otherwise a
-  // "strong" score can still fire straight into the dominant long-term trend.
   const ema200Direction = m.ema200 != null ? (m.currentPrice > m.ema200 ? 'BUY' : 'SELL') : null;
 
+  // --- Momentum block: only vote on the event actually happening (crossover
+  // / threshold), not on the indicator's ambient level — matches the "ตัดขึ้น
+  // / ตัดลง" (crossover) rules rather than "is currently above/below".
   if (m.rsi >= 55) { score += 1; reasons.push('RSI>=55 (+1 buy)'); }
   else if (m.rsi <= 45) { score -= 1; reasons.push('RSI<=45 (+1 sell)'); }
-  else { reasons.push('RSI neutral (0)'); }
+  else { reasons.push('RSI neutral (0)' + (m.rsi > 48 && m.rsi < 52 ? ' — โซนห้ามเข้า 48-52' : '')); }
 
-  if (m.stochastic.k > m.stochastic.d && m.stochastic.k < 80) { score += 1; reasons.push('Stoch %K>%D not overbought (+1 buy)'); }
-  else if (m.stochastic.k < m.stochastic.d && m.stochastic.k > 20) { score -= 1; reasons.push('Stoch %K<%D not oversold (+1 sell)'); }
-  else { reasons.push('Stochastic neutral (0)'); }
+  if (m.macd.crossUp) { score += 1; reasons.push('MACD ตัดขึ้น (+1 buy)'); }
+  else if (m.macd.crossDown) { score -= 1; reasons.push('MACD ตัดลง (+1 sell)'); }
+  else { reasons.push('MACD ไม่มี crossover รอบนี้ (0)'); }
 
+  if (m.stochastic.crossUpFromOversold) { score += 1; reasons.push('Stochastic ตัดขึ้นจากโซน oversold (+1 buy)'); }
+  else if (m.stochastic.crossDownFromOverbought) { score -= 1; reasons.push('Stochastic ตัดลงจากโซน overbought (+1 sell)'); }
+  else { reasons.push('Stochastic ไม่มี crossover ที่โซนสุดขั้ว (0)'); }
+
+  // --- Structure / price-action block ---
+  if (m.structure && m.structure.event) {
+    if (m.structure.event.startsWith('BOS ขาขึ้น') || m.structure.event.includes('กลับตัวเป็นขาขึ้น')) { score += 1; reasons.push(`${m.structure.event} (+1 buy)`); }
+    else { score -= 1; reasons.push(`${m.structure.event} (+1 sell)`); }
+  } else { reasons.push('ไม่มี BOS/CHoCH ใหม่ (0)'); }
+
+  // No real tick volume exists for spot XAU/BTC via this data source, so
+  // candle-count momentum stands in as the closest available price-action
+  // proxy for "volume above average" rather than a fabricated volume number.
   const candleDiff = m.candleCounts.up - m.candleCounts.down;
-  if (candleDiff >= 3) { score += 1; reasons.push('More up candles recently (+1 buy)'); }
-  else if (candleDiff <= -3) { score -= 1; reasons.push('More down candles recently (+1 sell)'); }
+  if (candleDiff >= 3) { score += 1; reasons.push('More up candles recently — proxy for volume/price action (+1 buy)'); }
+  else if (candleDiff <= -3) { score -= 1; reasons.push('More down candles recently — proxy for volume/price action (+1 sell)'); }
   else { reasons.push('Candle count neutral (0)'); }
 
   // RSI divergence is a reversal signal that trend-following votes above can't
@@ -278,35 +373,29 @@ function computeSignalScore(m) {
     else { reasons.push('No RSI divergence (0)'); }
   }
 
+  const maxScore = 6 + (m.divergence ? 1 : 0);
   const direction = score > 0 ? 'BUY' : score < 0 ? 'SELL' : null;
   const against200 = ema200Direction != null && direction != null && direction !== ema200Direction;
   if (against200) { reasons.push(`=> ทิศทาง ${direction} สวนทาง EMA200 (long-term trend) — ต้องใช้ threshold สูงขึ้นจึงจะถือว่าสัญญาณแรง`); }
-  // Require a higher bar (all 4 points) to call a signal "strong" when it goes
-  // against EMA200, instead of the normal 3-of-4 threshold.
-  const strong = against200 ? Math.abs(score) >= 4 : Math.abs(score) >= 3;
+  const strongThreshold = Math.ceil(maxScore * (against200 ? 0.75 : 0.6));
+  const strong = Math.abs(score) >= strongThreshold;
 
-  // ADX < 18 means the market has no real trend (choppy/sideways) — trading
-  // trend-following signals here is where this system loses most, regardless
-  // of which direction it picks. Combined with a weak confluence score
-  // (|score|<=1), there's no real edge, so mark the setup as not tradable
-  // instead of forcing a BUY/SELL call.
-  const choppy = m.adx != null && m.adx < 20;
-  const weakScore = Math.abs(score) <= 2;
+  // ADX >= 25 is a hard gate (per the professional checklist this system
+  // follows): below that the market has no real trend and trend-following
+  // signals here — EMA cascade, Supertrend, BOS — are the ones most likely to
+  // whipsaw, regardless of which direction they point.
   let tradable = true;
   let waitReason = null;
-  if (choppy && weakScore) {
+  if (m.adx == null || m.adx < 25) {
     tradable = false;
-    waitReason = `ADX=${m.adx.toFixed(1)} (<20, ตลาดไม่มีเทรนด์ชัดเจน) และสัญญาณอ่อน/กลางๆ (score=${score}) — ไม่มี edge เพียงพอให้เข้าเทรด`;
-  } else if (m.adx != null && m.adx < 12) {
-    tradable = false;
-    waitReason = `ADX=${m.adx.toFixed(1)} (<12, ตลาดไซด์เวย์ชัดเจน) — ไม่แนะนำเข้าเทรดไม่ว่าสัญญาณจะชี้ทางไหน`;
+    waitReason = `ADX=${m.adx != null ? m.adx.toFixed(1) : 'N/A'} (<25) — ตลาดไม่มีเทรนด์แข็งแรงพอ ระบบนี้ไม่เข้าเทรดเว้นแต่ ADX>=25`;
   } else if (score === 0) {
     tradable = false;
     waitReason = `สัญญาณ BUY/SELL หักล้างกันพอดี (score=0) — ไม่มีทิศทางที่ชัดเจนพอให้เข้าเทรด`;
   }
   if (waitReason) reasons.push(`=> WAIT: ${waitReason}`);
 
-  return { score, direction, strong, against200, reasons, maxScore: m.divergence ? 5 : 4, tradable, waitReason, adx: m.adx };
+  return { score, direction, strong, against200, reasons, maxScore, tradable, waitReason, adx: m.adx };
 }
 
 // Classical (Floor Trader) pivot points computed from the prior period's H/L/C.
@@ -499,7 +588,7 @@ app.get('/api/market-data', async (req, res) => {
       resistance,
       candleCounts: { up: recentUp, down: recentDown },
       recentCandles: recent,
-      rsi: rsi(closes),
+      rsi: rsi(closes, 21),
       macd: macd(closes),
       ema20: ema20Series[ema20Series.length - 1],
       ema50: ema50Series[ema50Series.length - 1],
@@ -515,6 +604,8 @@ app.get('/api/market-data', async (req, res) => {
       volumeProfile: volumeProfile(candles.slice(-60)),
       divergence: detectDivergence(candles, closes),
       smc: orderBlocksAndFvg(candles),
+      supertrend: supertrend(candles),
+      structure: structureBreak(candles),
       higherTimeframe: {
         interval: higherInterval,
         trend: higherTrend,
@@ -564,6 +655,21 @@ app.post('/api/analyze', async (req, res) => {
   const signal = computeSignalScore(marketData);
   const assetLabel = marketData.assetLabel || ASSETS[marketData.assetKey]?.label || ASSETS.XAU.label;
   const news = await fetchGoldNews(marketData.assetKey || 'XAU');
+
+  // News blackout: block trading for a window after a high-impact release.
+  // Marketaux only gives us published_at, not a forward-looking economic
+  // calendar, so this can only catch the "just after news" half of the
+  // requested ±15-30min window, not "15min before" — there's no calendar
+  // feed wired up to know a release is imminent.
+  const highImpactPattern = /non-?farm|nfp|\bcpi\b|fomc|federal reserve|fed interest rate|interest rate decision|\bpce\b|powell/i;
+  const blackoutMinutes = 30;
+  const recentHighImpact = news.find(a => highImpactPattern.test(a.title || '') && a.published && (Date.now() - new Date(a.published).getTime()) < blackoutMinutes * 60 * 1000);
+  if (recentHighImpact && signal.tradable) {
+    signal.tradable = false;
+    signal.waitReason = `ข่าวผลกระทบสูงเพิ่งประกาศ ("${recentHighImpact.title}") ภายใน ${blackoutMinutes} นาทีที่ผ่านมา — งดเข้าเทรดช่วงตลาดผันผวนจากข่าว`;
+    signal.reasons.push(`=> WAIT: ${signal.waitReason}`);
+  }
+
   const lossPatterns = Array.isArray(req.body.lossPatterns) ? req.body.lossPatterns : [];
   const prompt = buildPrompt(marketData, signal, assetLabel, news, lossPatterns);
 
@@ -689,6 +795,20 @@ app.post('/api/analyze', async (req, res) => {
         }
       }
 
+      // Deterministic SL/TP: fixed formula (SL = ATR×1.5, TP = RR 1:3 for a
+      // normal signal or 1:5 when `strong`) instead of letting the AI pick
+      // arbitrary entry/tp/sl levels — keeps risk sizing consistent and tied
+      // to actual measured volatility rather than free-text guesses.
+      if (signal.tradable && isFinite(marketData.atr) && isFinite(marketData.currentPrice)) {
+        const entry = marketData.currentPrice;
+        const slDistance = marketData.atr * 1.5;
+        const rr = signal.strong ? 5 : 3;
+        parsed.entry = entry;
+        parsed.sl = finalIsBuy ? entry - slDistance : entry + slDistance;
+        parsed.tp = finalIsBuy ? entry + slDistance * rr : entry - slDistance * rr;
+        parsed.risk_reward = `1 : ${rr}`;
+      }
+
       // Deterministic no-trade veto: when the quantitative signal says there's
       // no real edge (choppy market / weak confluence, see computeSignalScore),
       // override to WAIT instead of letting the AI force a BUY/SELL call.
@@ -748,12 +868,12 @@ EMA20: ${m.ema20.toFixed(2)}
 EMA50: ${m.ema50.toFixed(2)}
 ${m.ema200 != null ? `EMA200: ${m.ema200.toFixed(2)}\n` : ''}Bollinger Bands (20,2): upper=${m.bollinger.upper.toFixed(2)}, middle=${m.bollinger.middle.toFixed(2)}, lower=${m.bollinger.lower.toFixed(2)}
 ATR (14): ${m.atr.toFixed(2)} (วัดความผันผวนเฉลี่ยต่อแท่ง)
-${m.adx != null ? `ADX (14): ${m.adx.toFixed(1)} (<18 = ไม่มีเทรนด์ชัดเจน/ไซด์เวย์, >25 = เทรนด์แข็งแรง)\n` : ''}
+${m.adx != null ? `ADX (14): ${m.adx.toFixed(1)} (ระบบนี้ต้องการ ADX>=25 จึงจะถือว่าเทรนด์แข็งแรงพอให้เข้าเทรด ต่ำกว่านั้น=ไซด์เวย์)\n` : ''}
 Stochastic Oscillator: %K=${m.stochastic.k.toFixed(2)}, %D=${m.stochastic.d.toFixed(2)}
 ${m.swing ? `Swing High ล่าสุด (จุดกลับตัวขาขึ้น→ลง): ${m.swing.high ? `${m.swing.high.price} (${m.swing.high.barsAgo} แท่งก่อนหน้า)` : 'ไม่พบในช่วงข้อมูล'}\nSwing Low ล่าสุด (จุดกลับตัวขาลง→ขึ้น): ${m.swing.low ? `${m.swing.low.price} (${m.swing.low.barsAgo} แท่งก่อนหน้า)` : 'ไม่พบในช่วงข้อมูล'}\n` : ''}
 ความผันผวน 20 แท่งล่าสุด: ช่วงราคาเฉลี่ย/แท่ง=${m.volatility.avgRange.toFixed(2)}, สัดส่วนตัวแท่งเทียนเฉลี่ย=${(m.volatility.avgBodyRatio*100).toFixed(1)}%
 แนวโน้มกรอบเวลาใหญ่กว่า (${m.higherTimeframe.interval}): ${m.higherTimeframe.trend} (EMA20=${m.higherTimeframe.ema20.toFixed(2)}, EMA50=${m.higherTimeframe.ema50.toFixed(2)})
-${m.pivot ? `Pivot Point: P=${m.pivot.pivot.toFixed(2)}, R1=${m.pivot.r1.toFixed(2)}, R2=${m.pivot.r2.toFixed(2)}, S1=${m.pivot.s1.toFixed(2)}, S2=${m.pivot.s2.toFixed(2)}\n` : ''}${m.vwap && m.vwap.value != null ? `VWAP${m.vwap.approx ? ' (โดยประมาณ ไม่มีข้อมูล volume จริง)' : ''}: ${m.vwap.value.toFixed(2)} (ราคาปัจจุบัน${m.currentPrice > m.vwap.value ? 'อยู่เหนือ' : 'อยู่ใต้'} VWAP)\n` : ''}${m.volumeProfile ? `Volume Profile POC${m.volumeProfile.approx ? ' (โดยประมาณจากเวลาที่ราคาพักอยู่ เพราะไม่มี volume จริง)' : ''}: ${m.volumeProfile.poc.toFixed(2)}\n` : ''}${m.divergence && (m.divergence.bullish || m.divergence.bearish) ? `Divergence: ${m.divergence.bullish ? `Bullish (ราคาทำ low ใหม่ต่ำกว่าเดิมที่ ${m.divergence.bullish.recentPrice} แต่ RSI สูงขึ้น)` : `Bearish (ราคาทำ high ใหม่สูงกว่าเดิมที่ ${m.divergence.bearish.recentPrice} แต่ RSI ต่ำลง)`}\n` : ''}${m.smc ? `Order Block: ${m.smc.bullishOB ? `Bullish OB ${m.smc.bullishOB.low.toFixed(2)}-${m.smc.bullishOB.high.toFixed(2)}` : 'ไม่พบ'} / ${m.smc.bearishOB ? `Bearish OB ${m.smc.bearishOB.low.toFixed(2)}-${m.smc.bearishOB.high.toFixed(2)}` : 'ไม่พบ'}\nFair Value Gap: ${m.smc.bullishFvg ? `Bullish FVG ${m.smc.bullishFvg.gapLow.toFixed(2)}-${m.smc.bullishFvg.gapHigh.toFixed(2)}` : 'ไม่พบ'} / ${m.smc.bearishFvg ? `Bearish FVG ${m.smc.bearishFvg.gapLow.toFixed(2)}-${m.smc.bearishFvg.gapHigh.toFixed(2)}` : 'ไม่พบ'}\n` : ''}
+${m.pivot ? `Pivot Point: P=${m.pivot.pivot.toFixed(2)}, R1=${m.pivot.r1.toFixed(2)}, R2=${m.pivot.r2.toFixed(2)}, S1=${m.pivot.s1.toFixed(2)}, S2=${m.pivot.s2.toFixed(2)}\n` : ''}${m.vwap && m.vwap.value != null ? `VWAP${m.vwap.approx ? ' (โดยประมาณ ไม่มีข้อมูล volume จริง)' : ''}: ${m.vwap.value.toFixed(2)} (ราคาปัจจุบัน${m.currentPrice > m.vwap.value ? 'อยู่เหนือ' : 'อยู่ใต้'} VWAP)\n` : ''}${m.volumeProfile ? `Volume Profile POC${m.volumeProfile.approx ? ' (โดยประมาณจากเวลาที่ราคาพักอยู่ เพราะไม่มี volume จริง)' : ''}: ${m.volumeProfile.poc.toFixed(2)}\n` : ''}${m.divergence && (m.divergence.bullish || m.divergence.bearish) ? `Divergence: ${m.divergence.bullish ? `Bullish (ราคาทำ low ใหม่ต่ำกว่าเดิมที่ ${m.divergence.bullish.recentPrice} แต่ RSI สูงขึ้น)` : `Bearish (ราคาทำ high ใหม่สูงกว่าเดิมที่ ${m.divergence.bearish.recentPrice} แต่ RSI ต่ำลง)`}\n` : ''}${m.smc ? `Order Block: ${m.smc.bullishOB ? `Bullish OB ${m.smc.bullishOB.low.toFixed(2)}-${m.smc.bullishOB.high.toFixed(2)}` : 'ไม่พบ'} / ${m.smc.bearishOB ? `Bearish OB ${m.smc.bearishOB.low.toFixed(2)}-${m.smc.bearishOB.high.toFixed(2)}` : 'ไม่พบ'}\nFair Value Gap: ${m.smc.bullishFvg ? `Bullish FVG ${m.smc.bullishFvg.gapLow.toFixed(2)}-${m.smc.bullishFvg.gapHigh.toFixed(2)}` : 'ไม่พบ'} / ${m.smc.bearishFvg ? `Bearish FVG ${m.smc.bearishFvg.gapLow.toFixed(2)}-${m.smc.bearishFvg.gapHigh.toFixed(2)}` : 'ไม่พบ'}\n` : ''}${m.supertrend ? `Supertrend (10,3): ${m.supertrend.trend === 'up' ? 'ขาขึ้น (เขียว)' : 'ขาลง (แดง)'} เส้นอยู่ที่ ${m.supertrend.value.toFixed(2)}\n` : ''}${m.structure ? `โครงสร้างตลาด (multi-swing): ${m.structure.structure}${m.structure.event ? ` — ${m.structure.event}` : ' — ไม่มี BOS/CHoCH ใหม่'}\n` : ''}
 
 หน้าที่ของคุณ:
 - พิจารณาข่าวล่าสุดข้างต้นประกอบด้วย ถ้าข่าวมีผลกระทบสูงต่อทองคำ/สินทรัพย์นี้ (เช่น ผลการประชุม Fed, ตัวเลขเงินเฟ้อ, ความตึงเครียดภูมิรัฐศาสตร์) และ sentiment ขัดแย้งกับสัญญาณทางเทคนิค ให้ลด confidence_percent ลงและระบุความขัดแย้งนี้ใน reasons ห้ามให้ข่าวมีน้ำหนักเกินกว่าข้อมูลราคาจริง แต่ใช้เป็นปัจจัยเสริมความเสี่ยง
@@ -768,7 +888,10 @@ ${m.pivot ? `Pivot Point: P=${m.pivot.pivot.toFixed(2)}, R1=${m.pivot.r1.toFixed
 - ใช้ Volume Profile POC เป็นแนวรับ/แนวต้านที่ราคามีการซื้อขาย/พักตัวมากที่สุด
 - ถ้ามี Divergence (RSI) ให้ถือเป็นสัญญาณเตือนการกลับตัวที่สำคัญ และอธิบายไว้ใน reasons อย่างชัดเจนถ้าขัดแย้งกับ trend หลัก
 - ถ้ามี Order Block หรือ Fair Value Gap ให้ใช้ระดับราคานั้นประกอบการวาง entry/tp/sl (โซนที่ราคามักย้อนกลับไปทดสอบ)
-- กำหนด entry ใกล้ราคาปัจจุบัน, tp และ sl โดยอ้างอิงแนวรับ-แนวต้านและ ATR ที่ให้มาจริง (ห้ามให้ tp/sl ขัดกับทิศทางคำแนะนำ)
+- ใช้ Supertrend ยืนยันทิศทางเทรนด์หลักเพิ่มเติมจาก EMA cascade
+- ใช้โครงสร้างตลาด BOS/CHoCH ประกอบการยืนยันว่าเทรนด์เดิมยังดำเนินต่อ (BOS) หรือมีสัญญาณกลับตัว (CHoCH)
+- ระบบต้องการ ADX>=25 จึงจะถือว่ามี edge เพียงพอให้เข้าเทรด — ถ้า ADX<25 ให้เอนเอียงไปทางแนะนำ WAIT/ลด confidence แม้สัญญาณอื่นจะดูดี
+- กำหนด entry ใกล้ราคาปัจจุบัน, tp และ sl โดยอ้างอิงแนวรับ-แนวต้านและ ATR ที่ให้มาจริง (ห้ามให้ tp/sl ขัดกับทิศทางคำแนะนำ) — ตัวเลข entry/tp/sl สุดท้ายที่ผู้ใช้เห็นจะถูกคำนวณใหม่โดยระบบด้วยสูตร SL=ATR×1.5, RR 1:3-1:5 อยู่ดี แต่ให้คุณประมาณค่าที่สมเหตุสมผลไว้ก่อนเพื่อความสอดคล้องของเหตุผลที่อธิบาย
 - risk_reward ต้องคำนวณจาก |tp-entry| ต่อ |entry-sl| ให้ตรงกับตัวเลข entry/tp/sl ที่คุณให้จริง
 - เขียน detailed_analysis เป็นย่อหน้าภาษาไทยอย่างละเอียด (อย่างน้อย 4-6 ประโยค) อธิบายภาพรวมทั้งหมด: โครงสร้างแนวโน้มหลัก/รอง, ตำแหน่งราคาเทียบ Bollinger Bands, โมเมนตัมจาก RSI/MACD/Stochastic, ความผันผวนจาก ATR, และเหตุผลเชิงลึกว่าทำไมจึงให้คำแนะนำ BUY/SELL นี้พร้อมความเสี่ยงที่ควรระวัง
 
@@ -801,6 +924,8 @@ buy_probability/sell_probability ต้องรวมกันได้ 100 แ
   "volume_profile": "สรุประดับ POC (Volume Profile) และนัยสำคัญต่อแนวรับ-แนวต้าน",
   "divergence": "สรุป divergence ที่พบ (bullish/bearish) หรือ \\"ไม่พบ divergence\\"",
   "smart_money": "สรุป Order Block และ Fair Value Gap ที่พบและนัยต่อ entry/tp/sl หรือ \\"ไม่พบ\\"",
+  "supertrend": "สถานะ Supertrend เช่น ขาขึ้น (เขียว) และราคาอยู่เหนือเส้นหรือไม่",
+  "structure_break": "สรุปโครงสร้างตลาดและ BOS/CHoCH ที่พบ หรือ \\"ไม่มี BOS/CHoCH ใหม่\\"",
   "news_summary": "สรุปข่าวสำคัญที่มีผลต่อการตัดสินใจสั้นๆ ภาษาไทย และว่าสอดคล้องหรือขัดแย้งกับสัญญาณเทคนิค (ถ้าไม่มีข่าวสำคัญ ให้ตอบว่า \\"ไม่มีข่าวสำคัญ\\")",
   "entry": ราคาตัวเลข,
   "tp": ราคาตัวเลข,

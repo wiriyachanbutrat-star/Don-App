@@ -971,7 +971,9 @@
       ['VWAP', a.vwap_relation||'—', ''],
       ['Volume Profile', a.volume_profile||'—', ''],
       ['Divergence', a.divergence||'—', ''],
-      ['Smart Money (OB/FVG)', a.smart_money||'—', '']
+      ['Smart Money (OB/FVG)', a.smart_money||'—', ''],
+      ['Supertrend', a.supertrend||'—', ''],
+      ['BOS/CHoCH', a.structure_break||'—', '']
     ];
     const grid = document.getElementById('indicatorGrid');
     grid.innerHTML = indicators.map(([name,val,cls]) =>
