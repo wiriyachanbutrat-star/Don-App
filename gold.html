@@ -409,6 +409,7 @@
           </div>
         </div>
         <div class="drop-sub" style="margin-bottom:14px;">SL ($) คือความเสี่ยงจริงที่คุณตั้ง (ปรับ lot ได้), TP คำนวณอัตโนมัติจาก SL × risk:reward ที่ AI ให้มา — ไม่ใช่ตัวเลขอิสระที่ตั้งเองอีกต่อไป เพื่อให้ตรงกับเหตุผลที่ AI วิเคราะห์จริง (ทอง 1 lot = 100 oz, บิตคอยน์ 1 lot = 1 BTC — ปรับตามสเปคโบรกเกอร์ของคุณถ้าไม่ตรง)</div>
+        <div id="quickCheckBox" style="display:none; border-radius:8px; padding:10px 14px; margin-bottom:14px; font-size:13px; line-height:1.5;"></div>
         <button class="btn btn-gold" id="analyzeBtn" type="button">วิเคราะห์ตอนนี้</button>
       </div>
     </div>
@@ -560,9 +561,52 @@
     loadHistoryFromSheet(asset).then(() => {
       if(asset === currentAsset) renderHistory(); // refresh with the sheet's copy once it lands
     });
+    runQuickCheck();
   }
   assetSelect.addEventListener('change', applyAssetUI);
+  intervalSelect.addEventListener('change', runQuickCheck);
   applyAssetUI();
+
+  // Free pre-check (no AI call, just the deterministic indicator gate) so
+  // someone can glance at "เทรดได้ตอนนี้"/"รอก่อน" before spending a Claude
+  // call on a full analysis that would likely come back WAIT anyway.
+  let quickCheckSeq = 0;
+  async function runQuickCheck(){
+    const seq = ++quickCheckSeq;
+    const asset = currentAsset, interval = intervalSelect.value;
+    const box = document.getElementById('quickCheckBox');
+    box.style.display = 'block';
+    box.style.background = 'var(--hairline)';
+    box.style.color = 'var(--ink-dim)';
+    box.textContent = '— กำลังเช็คสัญญาณเบื้องต้นจากราคาจริง...';
+    try {
+      const res = await fetch('/api/quick-check?interval=' + encodeURIComponent(interval) + '&asset=' + encodeURIComponent(asset));
+      const data = await res.json();
+      if(seq !== quickCheckSeq) return; // a newer check superseded this one
+      if(!res.ok || data.error){
+        box.style.background = 'var(--hairline)';
+        box.style.color = 'var(--ink-dim)';
+        box.textContent = 'เช็คสัญญาณเบื้องต้นไม่สำเร็จ — กดวิเคราะห์เต็มรูปแบบเพื่อดูรายละเอียด';
+        return;
+      }
+      if(data.tradable){
+        box.style.background = data.direction === 'BUY' ? 'var(--buy-dim)' : 'var(--sell-dim)';
+        box.style.color = data.direction === 'BUY' ? 'var(--buy-bright)' : 'var(--sell-bright)';
+        box.innerHTML = '✓ <b>เทรดได้ตอนนี้</b> — สัญญาณเบื้องต้นเอนไปทาง ' + data.direction +
+          (data.strong ? ' (ชัดเจน)' : ' (ปานกลาง)') + ' · ADX=' + (data.adx != null ? data.adx.toFixed(1) : '—') +
+          ' · คะแนน ' + data.score + '/' + data.maxScore;
+      } else {
+        box.style.background = 'var(--wait-dim)';
+        box.style.color = 'var(--wait-bright)';
+        box.innerHTML = '⏸ <b>รอก่อน</b> — ' + (data.waitReason || 'สัญญาณยังไม่ชัดเจนพอ');
+      }
+    } catch(e){
+      if(seq !== quickCheckSeq) return;
+      box.style.background = 'var(--hairline)';
+      box.style.color = 'var(--ink-dim)';
+      box.textContent = 'เช็คสัญญาณเบื้องต้นไม่สำเร็จ — กดวิเคราะห์เต็มรูปแบบเพื่อดูรายละเอียด';
+    }
+  }
 
   analyzeBtn.addEventListener('click', () => handleAnalyze());
 

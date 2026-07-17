@@ -304,6 +304,44 @@ function structureBreak(candles, wing = 3, maxPoints = 4, lookback = 80) {
   return { structure, event, trendUp, trendDown };
 }
 
+// Liquidity Sweep: price wicks beyond a recent swing high/low (where stop-loss
+// / breakout orders cluster — "liquidity") then closes back inside the range
+// within a few bars, signalling a stop-hunt/fakeout rather than a genuine
+// breakout. Swing points are taken from the window *before* the recent bars
+// so the sweep candle itself can't also be the swing being swept.
+function liquiditySweep(candles, wing = 3, lookback = 80, recentBars = 5) {
+  candles = candles.slice(-lookback);
+  if (candles.length < recentBars + wing * 2 + 2) return null;
+  const priorEnd = candles.length - recentBars;
+  const prior = candles.slice(0, priorEnd);
+  let swingHigh = null, swingLow = null;
+  for (let i = prior.length - 1 - wing; i >= wing; i--) {
+    const c = prior[i];
+    if (swingHigh === null && prior.slice(i - wing, i).every(o => o.high <= c.high) && prior.slice(i + 1, i + wing + 1).every(o => o.high <= c.high)) {
+      swingHigh = c.high;
+    }
+    if (swingLow === null && prior.slice(i - wing, i).every(o => o.low >= c.low) && prior.slice(i + 1, i + wing + 1).every(o => o.low >= c.low)) {
+      swingLow = c.low;
+    }
+    if (swingHigh !== null && swingLow !== null) break;
+  }
+  if (swingHigh === null && swingLow === null) return null;
+
+  const recent = candles.slice(priorEnd);
+  let bullish = null, bearish = null;
+  for (let i = recent.length - 1; i >= 0; i--) {
+    const c = recent[i];
+    if (!bearish && swingHigh !== null && c.high > swingHigh && c.close < swingHigh) {
+      bearish = { level: swingHigh, wickHigh: c.high, time: c.time, barsAgo: recent.length - 1 - i };
+    }
+    if (!bullish && swingLow !== null && c.low < swingLow && c.close > swingLow) {
+      bullish = { level: swingLow, wickLow: c.low, time: c.time, barsAgo: recent.length - 1 - i };
+    }
+    if (bullish && bearish) break;
+  }
+  return { bullish, bearish };
+}
+
 function computeSignalScore(m) {
   const reasons = [];
 
@@ -362,6 +400,13 @@ function computeSignalScore(m) {
     else { score -= 1; reasons.push(`${m.structure.event} (+1 sell)`); }
   } else { reasons.push('ไม่มี BOS/CHoCH ใหม่ (0)'); }
 
+  // Liquidity sweep: a stop-hunt reversal signal, independent of BOS/CHoCH
+  // (which look at the close breaking structure, not a wick-and-reject).
+  if (m.liquiditySweep && (m.liquiditySweep.bullish || m.liquiditySweep.bearish)) {
+    if (m.liquiditySweep.bullish) { score += 1; reasons.push(`Liquidity sweep ใต้ swing low ${m.liquiditySweep.bullish.level.toFixed ? m.liquiditySweep.bullish.level.toFixed(2) : m.liquiditySweep.bullish.level} แล้วปิดกลับขึ้น (+1 buy)`); }
+    else { score -= 1; reasons.push(`Liquidity sweep เหนือ swing high ${m.liquiditySweep.bearish.level.toFixed ? m.liquiditySweep.bearish.level.toFixed(2) : m.liquiditySweep.bearish.level} แล้วปิดกลับลง (+1 sell)`); }
+  } else { reasons.push('ไม่มี Liquidity Sweep ใหม่ (0)'); }
+
   // No real tick volume exists for spot XAU/BTC via this data source, so
   // candle-count momentum stands in as the closest available price-action
   // proxy for "volume above average" rather than a fabricated volume number.
@@ -378,7 +423,7 @@ function computeSignalScore(m) {
     else { reasons.push('No RSI divergence (0)'); }
   }
 
-  const maxScore = 6 + (m.divergence ? 1 : 0);
+  const maxScore = 6 + (m.divergence ? 1 : 0) + (m.liquiditySweep ? 1 : 0);
   const direction = score > 0 ? 'BUY' : score < 0 ? 'SELL' : null;
   const against200 = ema200Direction != null && direction != null && direction !== ema200Direction;
   if (against200) { reasons.push(`=> ทิศทาง ${direction} สวนทาง EMA200 (long-term trend) — ต้องใช้ threshold สูงขึ้นจึงจะถือว่าสัญญาณแรง`); }
@@ -543,20 +588,16 @@ function volatilityStats(candles, period = 20) {
 const marketDataCache = new Map();
 const MARKET_DATA_CACHE_MS = 45 * 1000;
 
-app.get('/api/market-data', async (req, res) => {
-  if (!TWELVE_DATA_API_KEY) {
-    return res.status(500).json({ error: 'ยังไม่ได้ตั้งค่า TWELVE_DATA_API_KEY บนเซิร์ฟเวอร์' });
-  }
-  const interval = ['1min', '5min', '15min', '1h', '4h', '1day'].includes(req.query.interval)
-    ? req.query.interval
-    : '1h';
-  const assetKey = ASSETS[req.query.asset] ? req.query.asset : 'XAU';
+// Shared by /api/market-data and /api/quick-check — fetches + computes every
+// indicator, using the same cache, without either route needing to know how
+// the other gets its data. Throws on a hard failure (caller decides whether
+// stale cache is an acceptable fallback).
+async function getMarketDataPayload(assetKey, interval) {
   const asset = ASSETS[assetKey];
-
   const cacheKey = `${assetKey}:${interval}`;
   const cached = marketDataCache.get(cacheKey);
   if (cached && Date.now() - cached.time < MARKET_DATA_CACHE_MS) {
-    return res.json(cached.data);
+    return { payload: cached.data, fromCache: true };
   }
 
   const higherIntervalMap = { '1min': '15min', '5min': '1h', '15min': '4h', '1h': '4h', '4h': '1day', '1day': '1week' };
@@ -633,6 +674,7 @@ app.get('/api/market-data', async (req, res) => {
       smc: orderBlocksAndFvg(candles),
       supertrend: supertrend(candles),
       structure: structureBreak(candles),
+      liquiditySweep: liquiditySweep(candles),
       higherTimeframe: {
         interval: higherInterval,
         trend: higherTrend,
@@ -641,14 +683,66 @@ app.get('/api/market-data', async (req, res) => {
       },
     };
     marketDataCache.set(cacheKey, { time: Date.now(), data: payload });
-    res.json(payload);
+    return { payload, fromCache: false };
   } catch (err) {
-    console.error(err);
     // Serve stale cache rather than a hard error if Twelve Data itself is
     // rate-limited/unreachable — better a slightly old price than a WAIT
     // error screen when we already had good data moments ago.
-    if (cached) return res.json(cached.data);
+    if (cached) return { payload: cached.data, fromCache: true, stale: true };
+    throw err;
+  }
+}
+
+app.get('/api/market-data', async (req, res) => {
+  if (!TWELVE_DATA_API_KEY) {
+    return res.status(500).json({ error: 'ยังไม่ได้ตั้งค่า TWELVE_DATA_API_KEY บนเซิร์ฟเวอร์' });
+  }
+  const interval = ['1min', '5min', '15min', '1h', '4h', '1day'].includes(req.query.interval)
+    ? req.query.interval
+    : '1h';
+  const assetKey = ASSETS[req.query.asset] ? req.query.asset : 'XAU';
+
+  try {
+    const { payload } = await getMarketDataPayload(assetKey, interval);
+    res.json(payload);
+  } catch (err) {
+    console.error(err);
     res.status(502).json({ error: 'ดึงราคาจริงไม่สำเร็จ: ' + err.message });
+  }
+});
+
+// Cheap pre-check: is the current setup even worth spending a Claude call on?
+// Runs the same deterministic signal (ADX gate, EMA cascade, crossovers, etc.)
+// used inside /api/analyze, but returns immediately without touching the AI
+// or the news API — so the UI can show "เทรดได้ตอนนี้" / "รอก่อน" for free
+// before the user commits to a full (paid) analysis.
+app.get('/api/quick-check', async (req, res) => {
+  if (!TWELVE_DATA_API_KEY) {
+    return res.status(500).json({ error: 'ยังไม่ได้ตั้งค่า TWELVE_DATA_API_KEY บนเซิร์ฟเวอร์' });
+  }
+  const interval = ['1min', '5min', '15min', '1h', '4h', '1day'].includes(req.query.interval)
+    ? req.query.interval
+    : '1h';
+  const assetKey = ASSETS[req.query.asset] ? req.query.asset : 'XAU';
+
+  try {
+    const { payload } = await getMarketDataPayload(assetKey, interval);
+    const signal = computeSignalScore(payload);
+    res.json({
+      assetKey,
+      interval,
+      currentPrice: payload.currentPrice,
+      tradable: signal.tradable,
+      direction: signal.direction,
+      strong: signal.strong,
+      score: signal.score,
+      maxScore: signal.maxScore,
+      adx: signal.adx,
+      waitReason: signal.waitReason,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(502).json({ error: 'เช็คสัญญาณไม่สำเร็จ: ' + err.message });
   }
 });
 
@@ -930,7 +1024,7 @@ Stochastic Oscillator: %K=${m.stochastic.k.toFixed(2)}, %D=${m.stochastic.d.toFi
 ${m.swing ? `Swing High ล่าสุด (จุดกลับตัวขาขึ้น→ลง): ${m.swing.high ? `${m.swing.high.price} (${m.swing.high.barsAgo} แท่งก่อนหน้า)` : 'ไม่พบในช่วงข้อมูล'}\nSwing Low ล่าสุด (จุดกลับตัวขาลง→ขึ้น): ${m.swing.low ? `${m.swing.low.price} (${m.swing.low.barsAgo} แท่งก่อนหน้า)` : 'ไม่พบในช่วงข้อมูล'}\n` : ''}
 ความผันผวน 20 แท่งล่าสุด: ช่วงราคาเฉลี่ย/แท่ง=${m.volatility.avgRange.toFixed(2)}, สัดส่วนตัวแท่งเทียนเฉลี่ย=${(m.volatility.avgBodyRatio*100).toFixed(1)}%
 แนวโน้มกรอบเวลาใหญ่กว่า (${m.higherTimeframe.interval}): ${m.higherTimeframe.trend} (EMA20=${m.higherTimeframe.ema20.toFixed(2)}, EMA50=${m.higherTimeframe.ema50.toFixed(2)})
-${m.pivot ? `Pivot Point: P=${m.pivot.pivot.toFixed(2)}, R1=${m.pivot.r1.toFixed(2)}, R2=${m.pivot.r2.toFixed(2)}, S1=${m.pivot.s1.toFixed(2)}, S2=${m.pivot.s2.toFixed(2)}\n` : ''}${m.vwap && m.vwap.value != null ? `VWAP${m.vwap.approx ? ' (โดยประมาณ ไม่มีข้อมูล volume จริง)' : ''}: ${m.vwap.value.toFixed(2)} (ราคาปัจจุบัน${m.currentPrice > m.vwap.value ? 'อยู่เหนือ' : 'อยู่ใต้'} VWAP)\n` : ''}${m.volumeProfile ? `Volume Profile POC${m.volumeProfile.approx ? ' (โดยประมาณจากเวลาที่ราคาพักอยู่ เพราะไม่มี volume จริง)' : ''}: ${m.volumeProfile.poc.toFixed(2)}\n` : ''}${m.divergence && (m.divergence.bullish || m.divergence.bearish) ? `Divergence: ${m.divergence.bullish ? `Bullish (ราคาทำ low ใหม่ต่ำกว่าเดิมที่ ${m.divergence.bullish.recentPrice} แต่ RSI สูงขึ้น)` : `Bearish (ราคาทำ high ใหม่สูงกว่าเดิมที่ ${m.divergence.bearish.recentPrice} แต่ RSI ต่ำลง)`}\n` : ''}${m.smc ? `Order Block: ${m.smc.bullishOB ? `Bullish OB ${m.smc.bullishOB.low.toFixed(2)}-${m.smc.bullishOB.high.toFixed(2)}` : 'ไม่พบ'} / ${m.smc.bearishOB ? `Bearish OB ${m.smc.bearishOB.low.toFixed(2)}-${m.smc.bearishOB.high.toFixed(2)}` : 'ไม่พบ'}\nFair Value Gap: ${m.smc.bullishFvg ? `Bullish FVG ${m.smc.bullishFvg.gapLow.toFixed(2)}-${m.smc.bullishFvg.gapHigh.toFixed(2)}` : 'ไม่พบ'} / ${m.smc.bearishFvg ? `Bearish FVG ${m.smc.bearishFvg.gapLow.toFixed(2)}-${m.smc.bearishFvg.gapHigh.toFixed(2)}` : 'ไม่พบ'}\n` : ''}${m.supertrend ? `Supertrend (10,3): ${m.supertrend.trend === 'up' ? 'ขาขึ้น (เขียว)' : 'ขาลง (แดง)'} เส้นอยู่ที่ ${m.supertrend.value.toFixed(2)}\n` : ''}${m.structure ? `โครงสร้างตลาด (multi-swing): ${m.structure.structure}${m.structure.event ? ` — ${m.structure.event}` : ' — ไม่มี BOS/CHoCH ใหม่'}\n` : ''}
+${m.pivot ? `Pivot Point: P=${m.pivot.pivot.toFixed(2)}, R1=${m.pivot.r1.toFixed(2)}, R2=${m.pivot.r2.toFixed(2)}, S1=${m.pivot.s1.toFixed(2)}, S2=${m.pivot.s2.toFixed(2)}\n` : ''}${m.vwap && m.vwap.value != null ? `VWAP${m.vwap.approx ? ' (โดยประมาณ ไม่มีข้อมูล volume จริง)' : ''}: ${m.vwap.value.toFixed(2)} (ราคาปัจจุบัน${m.currentPrice > m.vwap.value ? 'อยู่เหนือ' : 'อยู่ใต้'} VWAP)\n` : ''}${m.volumeProfile ? `Volume Profile POC${m.volumeProfile.approx ? ' (โดยประมาณจากเวลาที่ราคาพักอยู่ เพราะไม่มี volume จริง)' : ''}: ${m.volumeProfile.poc.toFixed(2)}\n` : ''}${m.divergence && (m.divergence.bullish || m.divergence.bearish) ? `Divergence: ${m.divergence.bullish ? `Bullish (ราคาทำ low ใหม่ต่ำกว่าเดิมที่ ${m.divergence.bullish.recentPrice} แต่ RSI สูงขึ้น)` : `Bearish (ราคาทำ high ใหม่สูงกว่าเดิมที่ ${m.divergence.bearish.recentPrice} แต่ RSI ต่ำลง)`}\n` : ''}${m.smc ? `Order Block: ${m.smc.bullishOB ? `Bullish OB ${m.smc.bullishOB.low.toFixed(2)}-${m.smc.bullishOB.high.toFixed(2)}` : 'ไม่พบ'} / ${m.smc.bearishOB ? `Bearish OB ${m.smc.bearishOB.low.toFixed(2)}-${m.smc.bearishOB.high.toFixed(2)}` : 'ไม่พบ'}\nFair Value Gap: ${m.smc.bullishFvg ? `Bullish FVG ${m.smc.bullishFvg.gapLow.toFixed(2)}-${m.smc.bullishFvg.gapHigh.toFixed(2)}` : 'ไม่พบ'} / ${m.smc.bearishFvg ? `Bearish FVG ${m.smc.bearishFvg.gapLow.toFixed(2)}-${m.smc.bearishFvg.gapHigh.toFixed(2)}` : 'ไม่พบ'}\n` : ''}${m.supertrend ? `Supertrend (10,3): ${m.supertrend.trend === 'up' ? 'ขาขึ้น (เขียว)' : 'ขาลง (แดง)'} เส้นอยู่ที่ ${m.supertrend.value.toFixed(2)}\n` : ''}${m.structure ? `โครงสร้างตลาด (multi-swing): ${m.structure.structure}${m.structure.event ? ` — ${m.structure.event}` : ' — ไม่มี BOS/CHoCH ใหม่'}\n` : ''}${m.liquiditySweep && (m.liquiditySweep.bullish || m.liquiditySweep.bearish) ? `Liquidity Sweep: ${m.liquiditySweep.bullish ? `กวาดใต้ swing low ${m.liquiditySweep.bullish.level.toFixed(2)} (wick ต่ำสุด ${m.liquiditySweep.bullish.wickLow.toFixed(2)}) แล้วปิดกลับเข้ากรอบ — สัญญาณ stop-hunt ฝั่งซื้อ` : `กวาดเหนือ swing high ${m.liquiditySweep.bearish.level.toFixed(2)} (wick สูงสุด ${m.liquiditySweep.bearish.wickHigh.toFixed(2)}) แล้วปิดกลับเข้ากรอบ — สัญญาณ stop-hunt ฝั่งขาย`}\n` : ''}
 
 หน้าที่ของคุณ:
 - พิจารณาข่าวล่าสุดข้างต้นประกอบด้วย ถ้าข่าวมีผลกระทบสูงต่อทองคำ/สินทรัพย์นี้ (เช่น ผลการประชุม Fed, ตัวเลขเงินเฟ้อ, ความตึงเครียดภูมิรัฐศาสตร์) และ sentiment ขัดแย้งกับสัญญาณทางเทคนิค ให้ลด confidence_percent ลงและระบุความขัดแย้งนี้ใน reasons ห้ามให้ข่าวมีน้ำหนักเกินกว่าข้อมูลราคาจริง แต่ใช้เป็นปัจจัยเสริมความเสี่ยง
@@ -947,6 +1041,7 @@ ${m.pivot ? `Pivot Point: P=${m.pivot.pivot.toFixed(2)}, R1=${m.pivot.r1.toFixed
 - ถ้ามี Order Block หรือ Fair Value Gap ให้ใช้ระดับราคานั้นประกอบการวาง entry/tp/sl (โซนที่ราคามักย้อนกลับไปทดสอบ)
 - ใช้ Supertrend ยืนยันทิศทางเทรนด์หลักเพิ่มเติมจาก EMA cascade
 - ใช้โครงสร้างตลาด BOS/CHoCH ประกอบการยืนยันว่าเทรนด์เดิมยังดำเนินต่อ (BOS) หรือมีสัญญาณกลับตัว (CHoCH)
+- ถ้ามี Liquidity Sweep ให้ถือเป็นสัญญาณ stop-hunt/reversal ที่สำคัญ (ราคาแทงทะลุ swing high/low ไปกวาดสภาพคล่องแล้วปิดกลับเข้ากรอบ) และใช้ระดับที่ถูกกวาดนั้นประกอบการวาง entry/sl
 - ระบบต้องการ ADX>=18 จึงจะถือว่ามี edge เพียงพอให้เข้าเทรด — ถ้า ADX<18 ให้เอนเอียงไปทางแนะนำ WAIT/ลด confidence แม้สัญญาณอื่นจะดูดี
 - กำหนด entry ใกล้ราคาปัจจุบัน, tp และ sl โดยอ้างอิงแนวรับ-แนวต้านและ ATR ที่ให้มาจริง (ห้ามให้ tp/sl ขัดกับทิศทางคำแนะนำ) — ตัวเลข entry/tp/sl สุดท้ายที่ผู้ใช้เห็นจะถูกคำนวณใหม่โดยระบบด้วยสูตร SL=ATR×1.5, RR 1:3-1:5 อยู่ดี แต่ให้คุณประมาณค่าที่สมเหตุสมผลไว้ก่อนเพื่อความสอดคล้องของเหตุผลที่อธิบาย
 - risk_reward ต้องคำนวณจาก |tp-entry| ต่อ |entry-sl| ให้ตรงกับตัวเลข entry/tp/sl ที่คุณให้จริง
@@ -983,6 +1078,7 @@ buy_probability/sell_probability ต้องรวมกันได้ 100 แ
   "smart_money": "สรุป Order Block และ Fair Value Gap ที่พบและนัยต่อ entry/tp/sl หรือ \\"ไม่พบ\\"",
   "supertrend": "สถานะ Supertrend เช่น ขาขึ้น (เขียว) และราคาอยู่เหนือเส้นหรือไม่",
   "structure_break": "สรุปโครงสร้างตลาดและ BOS/CHoCH ที่พบ หรือ \\"ไม่มี BOS/CHoCH ใหม่\\"",
+  "liquidity_sweep": "สรุป Liquidity Sweep ที่พบ (ระดับที่ถูกกวาดและทิศทาง reversal) หรือ \\"ไม่พบ\\"",
   "news_summary": "สรุปข่าวสำคัญที่มีผลต่อการตัดสินใจสั้นๆ ภาษาไทย และว่าสอดคล้องหรือขัดแย้งกับสัญญาณเทคนิค (ถ้าไม่มีข่าวสำคัญ ให้ตอบว่า \\"ไม่มีข่าวสำคัญ\\")",
   "entry": ราคาตัวเลข,
   "tp": ราคาตัวเลข,
