@@ -156,12 +156,26 @@
     margin-bottom: 20px;
   }
   .scan-frame img{ width:100%; height:100%; object-fit:cover; opacity:0.6; }
-  .scan-frame .sweep{
-    position:absolute; top:0; bottom:0; width:60px;
-    background: linear-gradient(90deg, transparent, rgba(224,169,0,0.3), transparent);
-    animation: sweep 1.8s linear infinite;
+  .scan-frame{ display:flex; align-items:center; justify-content:center; }
+  .scan-spinner{
+    position:relative;
+    width:60px; height:60px;
   }
-  @keyframes sweep{ 0%{ left:-60px; } 100%{ left:100%; } }
+  .scan-spinner::before, .scan-spinner::after{
+    content:''; position:absolute; inset:0; border-radius:50%;
+    border: 4px solid transparent;
+  }
+  .scan-spinner::before{
+    border-top-color: var(--gold-bright);
+    border-right-color: var(--gold);
+    animation: spin 0.9s cubic-bezier(0.6,0.1,0.4,0.9) infinite;
+  }
+  .scan-spinner::after{
+    inset: 10px;
+    border-top-color: rgba(255,255,255,0.5);
+    animation: spin 1.3s linear infinite reverse;
+  }
+  @keyframes spin{ to{ transform: rotate(360deg); } }
 
   .checklist{ display:flex; flex-direction:column; gap:10px; margin-bottom:20px; }
   .check-item{
@@ -329,7 +343,7 @@
   }
 
   @media (prefers-reduced-motion: reduce){
-    .ticker .dot, .sweep{ animation: none; }
+    .ticker .dot, .scan-spinner::before, .scan-spinner::after{ animation: none; }
   }
 </style>
 </head>
@@ -405,7 +419,7 @@
     <div class="panel">
       <div class="step-label">02 · กำลังวิเคราะห์</div>
       <div class="scan-frame">
-        <div class="sweep"></div>
+        <div class="scan-spinner"></div>
       </div>
       <div class="checklist" id="checklist">
         <div class="check-item" data-i="0"><span class="mark"></span>ดึงราคาล่าสุดจากตลาดจริง</div>
@@ -980,7 +994,8 @@
       ['Divergence', a.divergence||'—', ''],
       ['Smart Money (OB/FVG)', a.smart_money||'—', ''],
       ['Supertrend', a.supertrend||'—', ''],
-      ['BOS/CHoCH', a.structure_break||'—', '']
+      ['BOS/CHoCH', a.structure_break||'—', ''],
+      ['Liquidity Sweep', a.liquidity_sweep||'—', '']
     ];
     const grid = document.getElementById('indicatorGrid');
     grid.innerHTML = indicators.map(([name,val,cls]) =>
