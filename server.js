@@ -704,7 +704,6 @@ app.post('/api/analyze', async (req, res) => {
       body: JSON.stringify({
         model: CLAUDE_MODEL,
         max_tokens: 4096,
-        temperature: 0,
         messages: [{ role: 'user', content: prompt }],
       }),
     });
