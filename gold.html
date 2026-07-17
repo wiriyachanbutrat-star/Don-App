@@ -8,28 +8,28 @@
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root{
-    --bg: #f6f1e6;
-    --bg-panel: #fffcf5;
+    --bg: #f4f1fb;
+    --bg-panel: #ffffff;
     --bg-panel-raised: #ffffff;
-    --hairline: #e6dcc6;
-    --gold: #b3872f;
-    --gold-bright: #8f6a1f;
-    --gold-soft: rgba(179,135,47,0.10);
-    --ink: #2c2620;
-    --ink-dim: #7a7266;
-    --buy: #1f9d63;
-    --buy-bright: #17804f;
-    --buy-dim: #e2f4ea;
-    --sell: #c2434f;
-    --sell-bright: #a5303c;
-    --sell-dim: #fbe9eb;
-    --wait: #b8791f;
-    --wait-bright: #966215;
-    --wait-dim: #fbf0d9;
+    --hairline: #e3ddf5;
+    --gold: #e0a900;
+    --gold-bright: #ffcc33;
+    --gold-soft: rgba(224,169,0,0.12);
+    --ink: #241b3d;
+    --ink-dim: #7b7194;
+    --buy: #00b871;
+    --buy-bright: #00d685;
+    --buy-dim: #dcfaec;
+    --sell: #ff4d6a;
+    --sell-bright: #e8324f;
+    --sell-dim: #ffe4e9;
+    --wait: #ff9800;
+    --wait-bright: #ffb238;
+    --wait-dim: #fff0d9;
     --font-display: 'Space Grotesk', sans-serif;
     --font-body: 'Sarabun', sans-serif;
     --font-mono: 'IBM Plex Mono', monospace;
-    --shadow-panel: 0 8px 30px -14px rgba(44,38,32,0.18), 0 1px 0 rgba(255,255,255,0.6) inset;
+    --shadow-panel: 0 10px 32px -14px rgba(124,58,237,0.20), 0 1px 0 rgba(255,255,255,0.7) inset;
   }
   *{box-sizing:border-box; margin:0; padding:0;}
   body{
@@ -41,9 +41,10 @@
     justify-content:center;
     padding: 32px 16px 80px;
     background-image:
-      radial-gradient(ellipse 900px 500px at 20% -10%, rgba(212,175,55,0.10), transparent 55%),
-      radial-gradient(ellipse 700px 500px at 100% 20%, rgba(55,181,120,0.05), transparent 50%),
-      repeating-linear-gradient(180deg, transparent, transparent 39px, rgba(44,38,32,0.015) 40px);
+      radial-gradient(ellipse 900px 500px at 20% -10%, rgba(224,169,0,0.14), transparent 55%),
+      radial-gradient(ellipse 700px 500px at 100% 20%, rgba(0,184,113,0.10), transparent 50%),
+      radial-gradient(ellipse 700px 600px at 0% 100%, rgba(124,58,237,0.08), transparent 55%),
+      repeating-linear-gradient(180deg, transparent, transparent 39px, rgba(36,27,61,0.015) 40px);
     background-attachment: fixed;
   }
   .app{ width:100%; max-width: 480px; }
@@ -103,7 +104,7 @@
   }
   #view-upload .dropzone:hover, #view-upload .dropzone.drag{
     border-color: var(--gold);
-    background: rgba(201,162,39,0.04);
+    background: rgba(224,169,0,0.04);
   }
   .candle-icon{
     display:flex; justify-content:center; gap:5px; margin-bottom:18px;
@@ -126,9 +127,9 @@
   .btn-gold{
     background: linear-gradient(135deg, var(--gold-bright), var(--gold));
     color: #17130a;
-    box-shadow: 0 4px 18px -6px rgba(212,175,55,0.55);
+    box-shadow: 0 4px 18px -6px rgba(224,169,0,0.55);
   }
-  .btn-gold:hover{ filter: brightness(1.08); box-shadow: 0 6px 22px -6px rgba(212,175,55,0.7); }
+  .btn-gold:hover{ filter: brightness(1.08); box-shadow: 0 6px 22px -6px rgba(224,169,0,0.7); }
   .formats{
     font-family: var(--font-mono);
     font-size: 10.5px;
@@ -149,7 +150,7 @@
     position:relative;
     height: 140px;
     border-radius: 8px;
-    background: linear-gradient(180deg, #3a3226, #241f18);
+    background: linear-gradient(180deg, #3d2f66, #241b3d);
     border: 1px solid var(--hairline);
     overflow:hidden;
     margin-bottom: 20px;
@@ -157,7 +158,7 @@
   .scan-frame img{ width:100%; height:100%; object-fit:cover; opacity:0.6; }
   .scan-frame .sweep{
     position:absolute; top:0; bottom:0; width:60px;
-    background: linear-gradient(90deg, transparent, rgba(201,162,39,0.3), transparent);
+    background: linear-gradient(90deg, transparent, rgba(224,169,0,0.3), transparent);
     animation: sweep 1.8s linear infinite;
   }
   @keyframes sweep{ 0%{ left:-60px; } 100%{ left:100%; } }
@@ -195,7 +196,7 @@
   #view-results{ display:none; }
   #view-error{ display:none; }
   .error-panel{
-    border-color: var(--sell-dim); background: rgba(209,67,67,0.06);
+    border-color: var(--sell-dim); background: rgba(255,77,106,0.06);
   }
   .error-panel .step-label{ color: var(--sell); }
   .error-panel .step-label::before{ background: var(--sell); }
@@ -213,7 +214,7 @@
   }
   .verdict-panel::before{
     content:''; position:absolute; inset:0; border-radius:16px; padding:1px;
-    background: linear-gradient(160deg, rgba(212,175,55,0.35), transparent 40%, transparent 70%, rgba(212,175,55,0.15));
+    background: linear-gradient(160deg, rgba(224,169,0,0.35), transparent 40%, transparent 70%, rgba(224,169,0,0.15));
     -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
     -webkit-mask-composite: xor; mask-composite: exclude;
     pointer-events:none;
@@ -242,8 +243,8 @@
     border: 1px solid var(--hairline);
   }
   .prob-box{ transition: transform 0.15s; }
-  .prob-box.buy{ background: linear-gradient(160deg, rgba(55,181,120,0.12), rgba(55,181,120,0.03)); border-color: rgba(55,181,120,0.32); }
-  .prob-box.sell{ background: linear-gradient(160deg, rgba(224,80,90,0.10), rgba(224,80,90,0.02)); border-color: rgba(224,80,90,0.28); }
+  .prob-box.buy{ background: linear-gradient(160deg, rgba(0,184,113,0.12), rgba(0,184,113,0.03)); border-color: rgba(0,184,113,0.32); }
+  .prob-box.sell{ background: linear-gradient(160deg, rgba(255,77,106,0.10), rgba(255,77,106,0.02)); border-color: rgba(255,77,106,0.28); }
   .prob-label{ font-family: var(--font-mono); font-size:10.5px; letter-spacing:0.08em; margin-bottom:4px; }
   .prob-box.buy .prob-label{ color: var(--buy-bright); }
   .prob-box.sell .prob-label{ color: var(--sell-bright); }
@@ -286,9 +287,9 @@
     padding: 6px 14px; border-radius: 20px; letter-spacing:0.05em;
     margin-bottom: 16px;
   }
-  .reco-badge.buy{ background: var(--buy-dim); color: var(--buy-bright); box-shadow: 0 0 0 1px rgba(55,181,120,0.3) inset; }
-  .reco-badge.sell{ background: var(--sell-dim); color: var(--sell-bright); box-shadow: 0 0 0 1px rgba(224,80,90,0.3) inset; }
-  .reco-badge.wait{ background: var(--wait-dim); color: var(--wait-bright); box-shadow: 0 0 0 1px rgba(224,168,60,0.35) inset; animation: pulse 2s ease-in-out infinite; }
+  .reco-badge.buy{ background: var(--buy-dim); color: var(--buy-bright); box-shadow: 0 0 0 1px rgba(0,184,113,0.3) inset; }
+  .reco-badge.sell{ background: var(--sell-dim); color: var(--sell-bright); box-shadow: 0 0 0 1px rgba(255,77,106,0.3) inset; }
+  .reco-badge.wait{ background: var(--wait-dim); color: var(--wait-bright); box-shadow: 0 0 0 1px rgba(255,152,0,0.35) inset; animation: pulse 2s ease-in-out infinite; }
   .reco-grid{ display:grid; grid-template-columns: repeat(3, 1fr); gap:10px; margin-bottom:14px; }
   .reco-cell .lbl{ font-family: var(--font-mono); font-size:10px; color: var(--ink-dim); letter-spacing:0.06em; text-transform:uppercase; margin-bottom:4px; }
   .reco-cell .val{ font-family: var(--font-mono); font-weight:600; font-size:15px; }
@@ -312,7 +313,7 @@
   }
   .verdict-tag.buy{ color: var(--buy); border: 1px solid var(--buy-dim); background: var(--buy-dim); }
   .verdict-tag.sell{ color: var(--sell); border: 1px solid var(--sell-dim); background: var(--sell-dim); }
-  .verdict-tag.wait{ color: var(--wait-bright); border: 1px solid rgba(224,168,60,0.35); background: var(--wait-dim); }
+  .verdict-tag.wait{ color: var(--wait-bright); border: 1px solid rgba(255,152,0,0.35); background: var(--wait-dim); }
 
   .reset-link{
     display:block; text-align:center; margin-top: 22px;
@@ -363,7 +364,7 @@
       <div class="step-label">01 · ดึงราคาสด</div>
       <div class="dropzone" id="startZone">
         <div class="candle-icon">
-          <span style="height:22px;background:#e0505a;opacity:.75"></span><span style="height:34px;background:#37b578;opacity:.9"></span><span style="height:16px;background:#e0505a;opacity:.75"></span><span style="height:40px;background:#4fd691"></span><span style="height:26px;background:#37b578;opacity:.65"></span>
+          <span style="height:22px;background:#ff4d6a;opacity:.8"></span><span style="height:34px;background:#00b871;opacity:.9"></span><span style="height:16px;background:#ff4d6a;opacity:.8"></span><span style="height:40px;background:#00d685"></span><span style="height:26px;background:#00b871;opacity:.7"></span>
         </div>
         <div class="drop-title" id="dropTitle">วิเคราะห์ XAU/USD ด้วยราคาจริง</div>
         <div class="drop-sub">ดึงราคาสด + RSI/MACD/EMA จาก Twelve Data แล้วให้ AI สรุปเหตุผล</div>
@@ -442,8 +443,8 @@
       <div class="gauge-wrap">
         <div class="gauge">
           <svg viewBox="0 0 220 120">
-            <path d="M 14 110 A 96 96 0 0 1 206 110" fill="none" stroke="#e6dcc6" stroke-width="14" stroke-linecap="round"/>
-            <path id="gaugeArc" d="M 14 110 A 96 96 0 0 1 206 110" fill="none" stroke="#1f9d63" stroke-width="14" stroke-linecap="round"
+            <path d="M 14 110 A 96 96 0 0 1 206 110" fill="none" stroke="#e3ddf5" stroke-width="14" stroke-linecap="round"/>
+            <path id="gaugeArc" d="M 14 110 A 96 96 0 0 1 206 110" fill="none" stroke="#00b871" stroke-width="14" stroke-linecap="round"
               stroke-dasharray="301.6" stroke-dashoffset="301.6"/>
           </svg>
           <div class="gauge-center">
@@ -948,7 +949,7 @@
     const arc = document.getElementById('gaugeArc');
     const circumference = 301.6;
     const winPct = isWait ? 50 : (isBuy ? buyPct : sellPct);
-    arc.setAttribute('stroke', isWait ? '#b8791f' : (isBuy ? '#1f9d63' : '#c2434f'));
+    arc.setAttribute('stroke', isWait ? '#ff9800' : (isBuy ? '#00b871' : '#ff4d6a'));
     const target = circumference * (1 - winPct/100);
     requestAnimationFrame(() => {
       arc.style.transition = 'stroke-dashoffset 1.1s ease-out';
