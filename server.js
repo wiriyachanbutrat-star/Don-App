@@ -522,6 +522,14 @@ function volatilityStats(candles, period = 20) {
   return { avgRange, avgBodyRatio };
 }
 
+// Twelve Data's free tier caps requests per minute (8 credits/min), and each
+// call here burns 2 credits (current interval + higher timeframe). Caching
+// the computed response per asset+interval means repeated clicks or the
+// win/loss price-check poll don't re-spend credits for data that's still
+// fresh, instead of hitting the rate limit like "9 credits used, limit 8".
+const marketDataCache = new Map();
+const MARKET_DATA_CACHE_MS = 45 * 1000;
+
 app.get('/api/market-data', async (req, res) => {
   if (!TWELVE_DATA_API_KEY) {
     return res.status(500).json({ error: 'ยังไม่ได้ตั้งค่า TWELVE_DATA_API_KEY บนเซิร์ฟเวอร์' });
@@ -531,6 +539,12 @@ app.get('/api/market-data', async (req, res) => {
     : '1h';
   const assetKey = ASSETS[req.query.asset] ? req.query.asset : 'XAU';
   const asset = ASSETS[assetKey];
+
+  const cacheKey = `${assetKey}:${interval}`;
+  const cached = marketDataCache.get(cacheKey);
+  if (cached && Date.now() - cached.time < MARKET_DATA_CACHE_MS) {
+    return res.json(cached.data);
+  }
 
   const higherIntervalMap = { '1min': '15min', '5min': '1h', '15min': '4h', '1h': '4h', '4h': '1day', '1day': '1week' };
   const higherInterval = higherIntervalMap[interval] || '4h';
@@ -578,7 +592,7 @@ app.get('/api/market-data', async (req, res) => {
     const higherEma50 = higherEma50Series[higherEma50Series.length - 1];
     const higherTrend = higherEma20 > higherEma50 ? 'ขาขึ้น (Uptrend)' : 'ขาลง (Downtrend)';
 
-    res.json({
+    const payload = {
       symbol: asset.symbol,
       assetKey,
       assetLabel: asset.label,
@@ -612,9 +626,15 @@ app.get('/api/market-data', async (req, res) => {
         ema20: higherEma20,
         ema50: higherEma50,
       },
-    });
+    };
+    marketDataCache.set(cacheKey, { time: Date.now(), data: payload });
+    res.json(payload);
   } catch (err) {
     console.error(err);
+    // Serve stale cache rather than a hard error if Twelve Data itself is
+    // rate-limited/unreachable — better a slightly old price than a WAIT
+    // error screen when we already had good data moments ago.
+    if (cached) return res.json(cached.data);
     res.status(502).json({ error: 'ดึงราคาจริงไม่สำเร็จ: ' + err.message });
   }
 });
