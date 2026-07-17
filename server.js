@@ -273,7 +273,12 @@ function supertrend(candles, period = 10, multiplier = 3) {
 // the most recent opposing swing — BOS (break of structure, continuation) if
 // the break is in the direction of that trend, CHoCH (change of character,
 // possible reversal) if the price broke the swing on the *other* side.
-function structureBreak(candles, wing = 3, maxPoints = 4) {
+function structureBreak(candles, wing = 3, maxPoints = 4, lookback = 80) {
+  // Bounded to a recent window (like orderBlocksAndFvg's lookback=30) —
+  // without this the fractal scan could walk all the way back to the start
+  // of the whole fetched series and call decade-old (in candle terms) swings
+  // "recent market structure".
+  candles = candles.slice(-lookback);
   const highs = [], lows = [];
   for (let i = candles.length - 1 - wing; i >= wing && (highs.length < maxPoints || lows.length < maxPoints); i--) {
     const c = candles[i];
@@ -395,7 +400,7 @@ function computeSignalScore(m) {
   }
   if (waitReason) reasons.push(`=> WAIT: ${waitReason}`);
 
-  return { score, direction, strong, against200, reasons, maxScore, tradable, waitReason, adx: m.adx };
+  return { score, direction, strong, strongThreshold, against200, reasons, maxScore, tradable, waitReason, adx: m.adx };
 }
 
 // Classical (Floor Trader) pivot points computed from the prior period's H/L/C.
@@ -455,9 +460,13 @@ function volumeProfile(candles, buckets = 20) {
 // oscillator (RSI here) makes the opposite, using the two most recent swing
 // points from swingPoints(). Signals a likely reversal that trend-following
 // indicators (EMA/MACD) won't see coming.
-function detectDivergence(candles, closes, wing = 3) {
+function detectDivergence(candles, closes, wing = 3, lookback = 80) {
+  // Bounded like structureBreak/orderBlocksAndFvg — indices stay absolute
+  // (into the full `candles`/`closes` arrays, not a sliced copy) because
+  // rsiAt() below needs the real preceding history to compute RSI correctly.
+  const earliestIdx = Math.max(wing, candles.length - lookback);
   const swingLows = [], swingHighs = [];
-  for (let i = candles.length - 1 - wing; i >= wing; i--) {
+  for (let i = candles.length - 1 - wing; i >= earliestIdx; i--) {
     const c = candles[i];
     const isLow = candles.slice(i - wing, i).every(o => o.low >= c.low) && candles.slice(i + 1, i + wing + 1).every(o => o.low >= c.low);
     if (isLow) swingLows.push({ idx: i, price: c.low });
@@ -658,9 +667,16 @@ function matchesLossPatternKey(key, direction, m, signal) {
     case 'weakScore':
       return Math.abs(signal.score) <= 1;
     case 'emaMisaligned':
-      return m.ema20 != null && m.ema50 != null
-        ? (direction === 'BUY' ? m.ema20 < m.ema50 : m.ema20 > m.ema50)
-        : false;
+      // Matches the EMA20>EMA50>EMA200 cascade used in computeSignalScore now
+      // (previously just EMA20 vs EMA50), so this loss-pattern bucket lines
+      // up with what "aligned" actually means to the current scoring system.
+      if (m.ema20 == null || m.ema50 == null) return false;
+      if (m.ema200 != null) {
+        return direction === 'BUY'
+          ? !(m.ema20 > m.ema50 && m.ema50 > m.ema200)
+          : !(m.ema20 < m.ema50 && m.ema50 < m.ema200);
+      }
+      return direction === 'BUY' ? m.ema20 < m.ema50 : m.ema20 > m.ema50;
     default:
       return false;
   }
@@ -756,10 +772,12 @@ app.post('/api/analyze', async (req, res) => {
         parsed.recommendation = signal.direction;
         const flippedIsBuy = signal.direction === 'BUY';
         // Scale the overridden probability/confidence with how many indicators
-        // actually agree (score 3 of 4 vs. all 4) instead of a flat 65/35 for
-        // every override regardless of signal strength.
-        const magnitude = Math.abs(signal.score); // 3 or 4 given strong threshold
-        const skew = 60 + (magnitude - 3) * 10; // 3 -> 60, 4 -> 70
+        // actually agree, relative to the strong-signal threshold and the
+        // maximum possible score — not a hardcoded 3-4 range, since maxScore
+        // and strongThreshold both move as indicators are added/removed.
+        const magnitude = Math.abs(signal.score);
+        const skewRange = Math.max(signal.maxScore - signal.strongThreshold, 1);
+        const skew = Math.round(60 + Math.min(1, (magnitude - signal.strongThreshold) / skewRange) * 35); // strongThreshold -> 60, maxScore -> 95
         parsed.buy_probability = flippedIsBuy ? skew : 100 - skew;
         parsed.sell_probability = flippedIsBuy ? 100 - skew : skew;
         parsed.confidence_percent = Math.min(Number(parsed.confidence_percent) || skew, skew);
