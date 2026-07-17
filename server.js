@@ -3,10 +3,10 @@ const express = require('express');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 const TWELVE_DATA_API_KEY = process.env.TWELVE_DATA_API_KEY;
 const MARKETAUX_API_KEY = process.env.MARKETAUX_API_KEY;
-const GEMINI_MODEL = 'gemini-2.5-flash';
+const CLAUDE_MODEL = 'claude-sonnet-5';
 
 const ASSETS = {
   XAU: { symbol: 'XAU/USD', label: 'ทองคำ (XAUUSD)' },
@@ -552,8 +552,8 @@ function matchesLossPatternKey(key, direction, m, signal) {
 }
 
 app.post('/api/analyze', async (req, res) => {
-  if (!GEMINI_API_KEY) {
-    return res.status(500).json({ error: 'ยังไม่ได้ตั้งค่า GEMINI_API_KEY บนเซิร์ฟเวอร์' });
+  if (!ANTHROPIC_API_KEY) {
+    return res.status(500).json({ error: 'ยังไม่ได้ตั้งค่า ANTHROPIC_API_KEY บนเซิร์ฟเวอร์' });
   }
 
   const { marketData } = req.body || {};
@@ -568,30 +568,34 @@ app.post('/api/analyze', async (req, res) => {
   const prompt = buildPrompt(marketData, signal, assetLabel, news, lossPatterns);
 
   try {
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: {
-            temperature: 0,
-            response_mime_type: 'application/json',
-          },
-        }),
-      }
-    );
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: CLAUDE_MODEL,
+        max_tokens: 4096,
+        temperature: 0,
+        messages: [{ role: 'user', content: prompt }],
+      }),
+    });
 
     const data = await response.json();
     if (!response.ok) {
-      return res.status(response.status).json({ error: data?.error?.message || 'เรียก Gemini API ไม่สำเร็จ' });
+      return res.status(response.status).json({ error: data?.error?.message || 'เรียก Claude API ไม่สำเร็จ' });
     }
 
-    let text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+    let text = data?.content?.[0]?.text;
     if (!text) {
       return res.status(502).json({ error: 'ไม่ได้รับข้อความตอบกลับจาก AI' });
     }
+    // Claude isn't given a hard JSON-only response mode like Gemini's
+    // response_mime_type, so it may wrap the JSON in a ```json code fence
+    // despite being told not to — strip that before JSON.parse below.
+    text = text.trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '');
 
     // Server-side veto: if the deterministic indicator score strongly disagrees
     // with the AI's call, the AI's answer is contradicting the actual data —
