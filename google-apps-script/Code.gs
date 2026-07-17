@@ -13,6 +13,14 @@
  *    box on the gold.html page. Every time a trade result is recorded there,
  *    it will overwrite a sheet tab named after the asset (XAU / BTC) with
  *    the full up-to-date history plus a win/loss/win-rate summary.
+ * 6. The sheet is the source of truth across devices: gold.html calls
+ *    GET <web app url>?asset=XAU on load to pull history down before
+ *    rendering, so opening the page on a different phone/PC shows the same
+ *    win/loss record instead of each device's own local-only copy.
+ *
+ * IMPORTANT: after editing this file, re-deploy (Deploy > Manage deployments
+ * > edit > New version) — editing the script alone does NOT update the live
+ * /exec URL that gold.html is already calling.
  */
 
 function doPost(e) {
@@ -30,12 +38,17 @@ function doPost(e) {
 
     var header = [
       'Time', 'Direction', 'Entry', 'TP', 'SL', 'Status', 'Closed Price', 'Closed Time',
-      'RSI', 'EMA Aligned', 'Counter Higher Trend', 'Signal Score', 'Signal Strong',
+      'RSI', 'EMA Aligned', 'Counter Higher Trend', 'Signal Score', 'Signal Strong', 'RawJSON',
     ];
     sheet.appendRow(header);
 
     rows.forEach(function (r) {
       var snap = r.snapshot || {};
+      // RawJSON (column N) is the source of truth doGet() reads back from —
+      // the other columns are just for a human glancing at the sheet. Storing
+      // the exact row object round-trips every field (including ones not
+      // broken out into their own column) instead of reconstructing an
+      // approximation from the readable columns.
       sheet.appendRow([
         r.time ? new Date(r.time) : '',
         r.direction || '',
@@ -50,6 +63,7 @@ function doPost(e) {
         snap.counterHigherTrend != null ? snap.counterHigherTrend : '',
         snap.signalScore != null ? snap.signalScore : '',
         snap.signalStrong != null ? snap.signalStrong : '',
+        JSON.stringify(r),
       ]);
     });
 
@@ -78,8 +92,36 @@ function doPost(e) {
   }
 }
 
+// Reads history back so any device loading the page can pull the same
+// trade history that was last synced from any other device — GET
+// /exec?asset=XAU returns { ok: true, rows: [...] } in the same shape
+// gold.html stores in localStorage.
 function doGet(e) {
-  return ContentService
-    .createTextOutput(JSON.stringify({ ok: true, message: 'Gold AI history sync endpoint is live' }))
-    .setMimeType(ContentService.MimeType.JSON);
+  try {
+    var asset = (e && e.parameter && e.parameter.asset) || 'XAU';
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheet = ss.getSheetByName(asset);
+    if (!sheet) {
+      return ContentService
+        .createTextOutput(JSON.stringify({ ok: true, rows: [] }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    var data = sheet.getDataRange().getValues();
+    var rows = [];
+    // Row 0 is the header; RawJSON lives in column N (index 13).
+    for (var i = 1; i < data.length; i++) {
+      var raw = data[i][13];
+      if (!raw) continue;
+      try { rows.push(JSON.parse(raw)); } catch (parseErr) { /* skip malformed row */ }
+    }
+
+    return ContentService
+      .createTextOutput(JSON.stringify({ ok: true, rows: rows }))
+      .setMimeType(ContentService.MimeType.JSON);
+  } catch (err) {
+    return ContentService
+      .createTextOutput(JSON.stringify({ ok: false, error: String(err), rows: [] }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
 }

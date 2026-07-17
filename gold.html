@@ -555,7 +555,11 @@
     document.getElementById('tickerLabel').textContent = meta.ticker;
     document.getElementById('assetTitle').textContent = meta.title;
     document.getElementById('dropTitle').textContent = meta.dropTitle;
-    renderHistory();
+    renderHistory(); // show cached/local history immediately
+    const asset = currentAsset;
+    loadHistoryFromSheet(asset).then(() => {
+      if(asset === currentAsset) renderHistory(); // refresh with the sheet's copy once it lands
+    });
   }
   assetSelect.addEventListener('change', applyAssetUI);
   applyAssetUI();
@@ -658,7 +662,9 @@
     return data;
   }
 
-  // ---- Win/Loss track record (stored in localStorage, per asset) ----
+  // ---- Win/Loss track record (Google Sheet is the source of truth, per
+  // asset; localStorage is a local cache refreshed from the sheet on load —
+  // see loadHistoryFromSheet below) ----
   function historyKey(){
     return 'goldAnalysisHistory_' + currentAsset;
   }
@@ -683,6 +689,22 @@
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify({ asset: currentAsset, rows: list }),
     }).catch(() => {});
+  }
+
+  // The Google Sheet is the source of truth across devices — localStorage is
+  // just a fast local cache. Pulls the sheet's rows down on load/asset-switch
+  // and overwrites the local cache with them, so a different phone/PC opening
+  // the page sees the same win/loss record instead of its own empty/stale copy.
+  async function loadHistoryFromSheet(asset){
+    try {
+      const res = await fetch(SHEET_WEBHOOK_URL + '?asset=' + encodeURIComponent(asset));
+      const data = await res.json();
+      if(data && data.ok && Array.isArray(data.rows)){
+        localStorage.setItem('goldAnalysisHistory_' + asset, JSON.stringify(data.rows.slice(-50)));
+        return true;
+      }
+    } catch(e){ /* offline or webhook unreachable — fall back to local cache */ }
+    return false;
   }
 
   function addHistoryEntry(a, trade, marketData){
