@@ -8,28 +8,30 @@
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root{
-    --bg: #f4f1fb;
-    --bg-panel: #ffffff;
-    --bg-panel-raised: #ffffff;
-    --hairline: #e3ddf5;
-    --gold: #e0a900;
+    --bg: #eee9fb;
+    --bg-panel: rgba(255,255,255,0.55);
+    --bg-panel-raised: rgba(255,255,255,0.68);
+    --glass-border: rgba(255,255,255,0.6);
+    --hairline: rgba(120,100,180,0.16);
+    --gold: #d19700;
     --gold-bright: #ffcc33;
     --gold-soft: rgba(224,169,0,0.12);
     --ink: #241b3d;
-    --ink-dim: #7b7194;
-    --buy: #00b871;
+    --ink-dim: #6d6389;
+    --buy: #00a367;
     --buy-bright: #00d685;
-    --buy-dim: #dcfaec;
-    --sell: #ff4d6a;
-    --sell-bright: #e8324f;
-    --sell-dim: #ffe4e9;
-    --wait: #ff9800;
+    --buy-dim: rgba(0,184,113,0.14);
+    --sell: #e13e5a;
+    --sell-bright: #ff4d6a;
+    --sell-dim: rgba(255,77,106,0.13);
+    --wait: #e08600;
     --wait-bright: #ffb238;
-    --wait-dim: #fff0d9;
+    --wait-dim: rgba(255,152,0,0.15);
     --font-display: 'Space Grotesk', sans-serif;
     --font-body: 'Sarabun', sans-serif;
     --font-mono: 'IBM Plex Mono', monospace;
-    --shadow-panel: 0 10px 32px -14px rgba(124,58,237,0.20), 0 1px 0 rgba(255,255,255,0.7) inset;
+    --shadow-panel: 0 20px 50px -20px rgba(88,40,180,0.28), 0 1px 0 rgba(255,255,255,0.5) inset;
+    --glass-blur: blur(24px) saturate(180%);
   }
   *{box-sizing:border-box; margin:0; padding:0;}
   body{
@@ -41,10 +43,10 @@
     justify-content:center;
     padding: 32px 16px 80px;
     background-image:
-      radial-gradient(ellipse 900px 500px at 20% -10%, rgba(224,169,0,0.14), transparent 55%),
-      radial-gradient(ellipse 700px 500px at 100% 20%, rgba(0,184,113,0.10), transparent 50%),
-      radial-gradient(ellipse 700px 600px at 0% 100%, rgba(124,58,237,0.08), transparent 55%),
-      repeating-linear-gradient(180deg, transparent, transparent 39px, rgba(36,27,61,0.015) 40px);
+      radial-gradient(ellipse 700px 500px at 15% -10%, rgba(255,204,51,0.35), transparent 55%),
+      radial-gradient(ellipse 600px 500px at 100% 10%, rgba(0,214,133,0.28), transparent 50%),
+      radial-gradient(ellipse 650px 600px at 90% 90%, rgba(124,58,237,0.30), transparent 55%),
+      radial-gradient(ellipse 600px 500px at 0% 100%, rgba(255,77,106,0.18), transparent 55%);
     background-attachment: fixed;
   }
   .app{ width:100%; max-width: 480px; }
@@ -75,8 +77,10 @@
 
   .panel{
     background: linear-gradient(165deg, var(--bg-panel-raised), var(--bg-panel));
-    border: 1px solid var(--hairline);
-    border-radius: 14px;
+    backdrop-filter: var(--glass-blur);
+    -webkit-backdrop-filter: var(--glass-blur);
+    border: 1px solid var(--glass-border);
+    border-radius: 22px;
     padding: 22px;
     margin-bottom: 18px;
     position: relative;
@@ -95,8 +99,8 @@
   .step-label::before{ content:''; width:14px; height:1px; background: var(--gold); }
 
   #view-upload .dropzone{
-    border: 1.5px dashed var(--hairline);
-    border-radius: 8px;
+    border: 1.5px dashed rgba(120,100,180,0.28);
+    border-radius: 18px;
     padding: 44px 20px;
     text-align: center;
     cursor: pointer;
@@ -118,18 +122,21 @@
     font-weight: 600;
     font-size: 13.5px;
     border: none;
-    border-radius: 8px;
+    border-radius: 12px;
     padding: 11px 22px;
     cursor: pointer;
     transition: transform 0.15s, filter 0.15s, box-shadow 0.15s;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
   }
   .btn:active{ transform: scale(0.97); }
   .btn-gold{
     background: linear-gradient(135deg, var(--gold-bright), var(--gold));
     color: #17130a;
-    box-shadow: 0 4px 18px -6px rgba(224,169,0,0.55);
+    box-shadow: 0 8px 24px -8px rgba(224,169,0,0.6);
+    border-radius: 14px;
   }
-  .btn-gold:hover{ filter: brightness(1.08); box-shadow: 0 6px 22px -6px rgba(224,169,0,0.7); }
+  .btn-gold:hover{ filter: brightness(1.08); box-shadow: 0 10px 28px -8px rgba(224,169,0,0.75); }
   .formats{
     font-family: var(--font-mono);
     font-size: 10.5px;
@@ -141,7 +148,7 @@
 
   .preview-thumb{
     width:100%; max-height:180px; object-fit:contain;
-    border-radius:8px; margin-bottom:14px; border: 1px solid var(--hairline);
+    border-radius:16px; margin-bottom:14px; border: 1px solid var(--hairline);
     display:none;
   }
 
@@ -149,7 +156,7 @@
   .scan-frame{
     position:relative;
     height: 140px;
-    border-radius: 8px;
+    border-radius: 18px;
     background: linear-gradient(180deg, #3d2f66, #241b3d);
     border: 1px solid var(--hairline);
     overflow:hidden;
@@ -218,8 +225,10 @@
 
   .verdict-panel{
     background: linear-gradient(160deg, var(--bg-panel-raised), var(--bg-panel));
-    border: 1px solid var(--hairline);
-    border-radius: 16px;
+    backdrop-filter: var(--glass-blur);
+    -webkit-backdrop-filter: var(--glass-blur);
+    border: 1px solid var(--glass-border);
+    border-radius: 26px;
     padding: 26px 22px;
     margin-bottom: 18px;
     box-shadow: var(--shadow-panel);
@@ -227,7 +236,7 @@
     overflow: hidden;
   }
   .verdict-panel::before{
-    content:''; position:absolute; inset:0; border-radius:16px; padding:1px;
+    content:''; position:absolute; inset:0; border-radius:26px; padding:1px;
     background: linear-gradient(160deg, rgba(224,169,0,0.35), transparent 40%, transparent 70%, rgba(224,169,0,0.15));
     -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
     -webkit-mask-composite: xor; mask-composite: exclude;
@@ -253,8 +262,10 @@
 
   .prob-row{ display:flex; gap:12px; margin-bottom:6px; }
   .prob-box{
-    flex:1; border-radius:8px; padding:12px 14px;
+    flex:1; border-radius:16px; padding:12px 14px;
     border: 1px solid var(--hairline);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
   }
   .prob-box{ transition: transform 0.15s; }
   .prob-box.buy{ background: linear-gradient(160deg, rgba(0,184,113,0.12), rgba(0,184,113,0.03)); border-color: rgba(0,184,113,0.32); }
@@ -274,14 +285,17 @@
   .grid-label{ font-family: var(--font-mono); font-size:11px; color: var(--gold); letter-spacing:0.1em; text-transform:uppercase; margin-bottom:12px; display:flex; align-items:center; gap:8px; }
   .grid-label::before{ content:''; width:14px; height:1px; background: var(--gold); }
   .indicator-grid{
-    display:grid; grid-template-columns: 1fr 1fr; gap:1px;
-    background: var(--hairline);
-    border: 1px solid var(--hairline);
-    border-radius: 8px;
-    overflow:hidden;
+    display:grid; grid-template-columns: 1fr 1fr; gap:8px;
     margin-bottom: 18px;
   }
-  .indicator{ background: var(--bg-panel); padding: 13px 14px; }
+  .indicator{
+    background: var(--bg-panel-raised);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border: 1px solid var(--hairline);
+    border-radius: 14px;
+    padding: 13px 14px;
+  }
   .indicator-name{ font-family: var(--font-mono); font-size:10px; color: var(--ink-dim); letter-spacing:0.06em; text-transform:uppercase; margin-bottom:5px; }
   .indicator-value{ font-size: 14px; font-weight:600; }
   .indicator-value.up{ color: var(--buy); }
@@ -289,8 +303,10 @@
 
   .reco-panel{
     background: linear-gradient(165deg, var(--bg-panel-raised), var(--bg-panel));
-    border: 1px solid var(--hairline);
-    border-radius: 14px;
+    backdrop-filter: var(--glass-blur);
+    -webkit-backdrop-filter: var(--glass-blur);
+    border: 1px solid var(--glass-border);
+    border-radius: 22px;
     padding: 20px;
     margin-bottom: 18px;
     box-shadow: var(--shadow-panel);
@@ -429,7 +445,7 @@
           </div>
         </div>
         <div class="drop-sub" style="margin-bottom:14px;">SL ($) คือความเสี่ยงจริงที่คุณตั้ง (ปรับ lot ได้), TP คำนวณอัตโนมัติจาก SL × risk:reward ที่ AI ให้มา — ไม่ใช่ตัวเลขอิสระที่ตั้งเองอีกต่อไป เพื่อให้ตรงกับเหตุผลที่ AI วิเคราะห์จริง (ทอง 1 lot = 100 oz — ปรับตามสเปคโบรกเกอร์ของคุณถ้าไม่ตรง)</div>
-        <div id="quickCheckBox" style="display:none; border-radius:8px; padding:10px 14px; margin-bottom:14px; font-size:13px; line-height:1.5;"></div>
+        <div id="quickCheckBox" style="display:none; border-radius:14px; padding:10px 14px; margin-bottom:14px; font-size:13px; line-height:1.5; backdrop-filter:blur(10px);"></div>
         <button class="btn btn-gold" id="analyzeBtn" type="button">วิเคราะห์ตอนนี้</button>
       </div>
     </div>
