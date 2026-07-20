@@ -404,10 +404,8 @@
         </div>
         <div class="drop-title" id="dropTitle">วิเคราะห์ XAU/USD ด้วยราคาจริง</div>
         <div class="drop-sub">ดึงราคาสด + RSI/MACD/EMA จาก Twelve Data แล้วให้ AI สรุปเหตุผล</div>
-        <label class="drop-sub" for="assetSelect" style="display:block; margin-bottom:6px;">สินทรัพย์</label>
-        <select id="assetSelect" class="btn" style="background:var(--bg-panel-raised); color:var(--ink); border:1px solid var(--hairline); margin-bottom:14px;">
+        <select id="assetSelect" class="btn" style="display:none;">
           <option value="XAU" selected>ทองคำ (XAU/USD)</option>
-          <option value="BTC">บิตคอยน์ (BTC/USD)</option>
         </select>
         <label class="drop-sub" for="intervalSelect" style="display:block; margin-bottom:6px;">กรอบเวลา</label>
         <select id="intervalSelect" class="btn" style="background:var(--bg-panel-raised); color:var(--ink); border:1px solid var(--hairline); margin-bottom:14px;">
@@ -430,7 +428,7 @@
             <input id="slUsdInput" type="number" step="1" min="1" value="20" class="btn" style="width:100%; background:var(--bg-panel-raised); color:var(--ink); border:1px solid var(--hairline); text-align:center;">
           </div>
         </div>
-        <div class="drop-sub" style="margin-bottom:14px;">SL ($) คือความเสี่ยงจริงที่คุณตั้ง (ปรับ lot ได้), TP คำนวณอัตโนมัติจาก SL × risk:reward ที่ AI ให้มา — ไม่ใช่ตัวเลขอิสระที่ตั้งเองอีกต่อไป เพื่อให้ตรงกับเหตุผลที่ AI วิเคราะห์จริง (ทอง 1 lot = 100 oz, บิตคอยน์ 1 lot = 1 BTC — ปรับตามสเปคโบรกเกอร์ของคุณถ้าไม่ตรง)</div>
+        <div class="drop-sub" style="margin-bottom:14px;">SL ($) คือความเสี่ยงจริงที่คุณตั้ง (ปรับ lot ได้), TP คำนวณอัตโนมัติจาก SL × risk:reward ที่ AI ให้มา — ไม่ใช่ตัวเลขอิสระที่ตั้งเองอีกต่อไป เพื่อให้ตรงกับเหตุผลที่ AI วิเคราะห์จริง (ทอง 1 lot = 100 oz — ปรับตามสเปคโบรกเกอร์ของคุณถ้าไม่ตรง)</div>
         <div id="quickCheckBox" style="display:none; border-radius:8px; padding:10px 14px; margin-bottom:14px; font-size:13px; line-height:1.5;"></div>
         <button class="btn btn-gold" id="analyzeBtn" type="button">วิเคราะห์ตอนนี้</button>
       </div>
@@ -563,12 +561,11 @@
 
   const ASSET_META = {
     XAU: { ticker: 'XAUUSD LIVE', title: 'ทองคำ', dropTitle: 'วิเคราะห์ XAU/USD ด้วยราคาจริง' },
-    BTC: { ticker: 'BTCUSD LIVE', title: 'บิตคอยน์', dropTitle: 'วิเคราะห์ BTC/USD ด้วยราคาจริง' },
   };
   // Units per 1.00 lot, i.e. $ profit/loss per $1 price move at lot=1.
-  // Standard XAUUSD CFD spec is 100oz/lot; BTCUSD is commonly 1 BTC/lot.
-  // Adjust if your broker's contract size differs.
-  const CONTRACT_SIZE = { XAU: 100, BTC: 1 };
+  // Standard XAUUSD CFD spec is 100oz/lot. Adjust if your broker's contract
+  // size differs.
+  const CONTRACT_SIZE = { XAU: 100 };
   let currentAsset = assetSelect.value;
   let lastMarketData = null;
   let quickCheckSeq = 0;

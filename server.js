@@ -10,7 +10,6 @@ const CLAUDE_MODEL = 'claude-sonnet-5';
 
 const ASSETS = {
   XAU: { symbol: 'XAU/USD', label: 'ทองคำ (XAUUSD)' },
-  BTC: { symbol: 'BTC/USD', label: 'บิตคอยน์ (BTCUSD)' },
 };
 
 app.use(express.json({ limit: '15mb' }));
@@ -44,8 +43,8 @@ async function fetchGoldNews(assetKey) {
   const cached = newsCache.get(assetKey);
   if (cached && Date.now() - cached.time < NEWS_CACHE_MS) return cached.articles;
 
-  const symbols = assetKey === 'BTC' ? 'BTC/USD' : 'XAU/USD';
-  const search = assetKey === 'BTC' ? 'bitcoin OR crypto' : 'gold OR XAUUSD OR "Federal Reserve"';
+  const symbols = 'XAU/USD';
+  const search = 'gold OR XAUUSD OR "Federal Reserve"';
   const url = new URL('https://api.marketaux.com/v1/news/all');
   url.searchParams.set('search', search);
   url.searchParams.set('filter_entities', 'true');
@@ -382,9 +381,9 @@ function computeSignalScore(m) {
   // --- Momentum block: only vote on the event actually happening (crossover
   // / threshold), not on the indicator's ambient level — matches the "ตัดขึ้น
   // / ตัดลง" (crossover) rules rather than "is currently above/below".
-  if (m.rsi >= 55) { score += 1; reasons.push('RSI>=55 (+1 buy)'); }
-  else if (m.rsi <= 45) { score -= 1; reasons.push('RSI<=45 (+1 sell)'); }
-  else { reasons.push('RSI neutral (0)' + (m.rsi > 48 && m.rsi < 52 ? ' — โซนห้ามเข้า 48-52' : '')); }
+  if (m.rsi >= 52) { score += 1; reasons.push('RSI>=52 (+1 buy)'); }
+  else if (m.rsi <= 48) { score -= 1; reasons.push('RSI<=48 (+1 sell)'); }
+  else { reasons.push('RSI neutral (0) — โซนห้ามเข้า 48-52'); }
 
   if (m.macd.crossUp) { score += 1; reasons.push('MACD ตัดขึ้น (+1 buy)'); }
   else if (m.macd.crossDown) { score -= 1; reasons.push('MACD ตัดลง (+1 sell)'); }
@@ -407,12 +406,12 @@ function computeSignalScore(m) {
     else { score -= 1; reasons.push(`Liquidity sweep เหนือ swing high ${m.liquiditySweep.bearish.level.toFixed ? m.liquiditySweep.bearish.level.toFixed(2) : m.liquiditySweep.bearish.level} แล้วปิดกลับลง (+1 sell)`); }
   } else { reasons.push('ไม่มี Liquidity Sweep ใหม่ (0)'); }
 
-  // No real tick volume exists for spot XAU/BTC via this data source, so
+  // No real tick volume exists for spot XAU via this data source, so
   // candle-count momentum stands in as the closest available price-action
   // proxy for "volume above average" rather than a fabricated volume number.
   const candleDiff = m.candleCounts.up - m.candleCounts.down;
-  if (candleDiff >= 3) { score += 1; reasons.push('More up candles recently — proxy for volume/price action (+1 buy)'); }
-  else if (candleDiff <= -3) { score -= 1; reasons.push('More down candles recently — proxy for volume/price action (+1 sell)'); }
+  if (candleDiff >= 2) { score += 1; reasons.push('More up candles recently — proxy for volume/price action (+1 buy)'); }
+  else if (candleDiff <= -2) { score -= 1; reasons.push('More down candles recently — proxy for volume/price action (+1 sell)'); }
   else { reasons.push('Candle count neutral (0)'); }
 
   // RSI divergence is a reversal signal that trend-following votes above can't
@@ -427,20 +426,17 @@ function computeSignalScore(m) {
   const direction = score > 0 ? 'BUY' : score < 0 ? 'SELL' : null;
   const against200 = ema200Direction != null && direction != null && direction !== ema200Direction;
   if (against200) { reasons.push(`=> ทิศทาง ${direction} สวนทาง EMA200 (long-term trend) — ต้องใช้ threshold สูงขึ้นจึงจะถือว่าสัญญาณแรง`); }
-  const strongThreshold = Math.ceil(maxScore * (against200 ? 0.65 : 0.5));
+  const strongThreshold = Math.ceil(maxScore * (against200 ? 0.55 : 0.4));
   const strong = Math.abs(score) >= strongThreshold;
 
-  // ADX >= 22 is the trade gate — a middle ground between the textbook
-  // ">=25 strong trend" threshold (Wilder's own convention: <20 no trend,
-  // 20-25 emerging, 25-40 strong) and the looser >=18 this was briefly set
-  // to for more frequent signals. 22 still blocks dead-flat markets where
-  // the trend-following signals here (EMA cascade, Supertrend, BOS) whipsaw
-  // the most, while firing somewhat more often than the strict 25 bar.
+  // ADX >= 16 is the trade gate — loosened again from 22 to fire signals
+  // more often, at the cost of accepting some weaker/emerging trends
+  // (textbook "no trend" cutoff is 20) that are more prone to whipsaw.
   let tradable = true;
   let waitReason = null;
-  if (m.adx == null || m.adx < 22) {
+  if (m.adx == null || m.adx < 16) {
     tradable = false;
-    waitReason = `ADX=${m.adx != null ? m.adx.toFixed(1) : 'N/A'} (<22) — ตลาดไม่มีเทรนด์แข็งแรงพอ ระบบนี้ไม่เข้าเทรดเว้นแต่ ADX>=22`;
+    waitReason = `ADX=${m.adx != null ? m.adx.toFixed(1) : 'N/A'} (<16) — ตลาดไม่มีเทรนด์แข็งแรงพอ ระบบนี้ไม่เข้าเทรดเว้นแต่ ADX>=16`;
   } else if (score === 0) {
     tradable = false;
     waitReason = `สัญญาณ BUY/SELL หักล้างกันพอดี (score=0) — ไม่มีทิศทางที่ชัดเจนพอให้เข้าเทรด`;
@@ -1021,7 +1017,7 @@ EMA20: ${m.ema20.toFixed(2)}
 EMA50: ${m.ema50.toFixed(2)}
 ${m.ema200 != null ? `EMA200: ${m.ema200.toFixed(2)}\n` : ''}Bollinger Bands (20,2): upper=${m.bollinger.upper.toFixed(2)}, middle=${m.bollinger.middle.toFixed(2)}, lower=${m.bollinger.lower.toFixed(2)}
 ATR (14): ${m.atr.toFixed(2)} (วัดความผันผวนเฉลี่ยต่อแท่ง)
-${m.adx != null ? `ADX (14): ${m.adx.toFixed(1)} (ระบบนี้ต้องการ ADX>=22 จึงจะถือว่าเทรนด์แข็งแรงพอให้เข้าเทรด ต่ำกว่านั้น=ไซด์เวย์)\n` : ''}
+${m.adx != null ? `ADX (14): ${m.adx.toFixed(1)} (ระบบนี้ต้องการ ADX>=16 จึงจะถือว่าเทรนด์แข็งแรงพอให้เข้าเทรด ต่ำกว่านั้น=ไซด์เวย์)\n` : ''}
 Stochastic Oscillator: %K=${m.stochastic.k.toFixed(2)}, %D=${m.stochastic.d.toFixed(2)}
 ${m.swing ? `Swing High ล่าสุด (จุดกลับตัวขาขึ้น→ลง): ${m.swing.high ? `${m.swing.high.price} (${m.swing.high.barsAgo} แท่งก่อนหน้า)` : 'ไม่พบในช่วงข้อมูล'}\nSwing Low ล่าสุด (จุดกลับตัวขาลง→ขึ้น): ${m.swing.low ? `${m.swing.low.price} (${m.swing.low.barsAgo} แท่งก่อนหน้า)` : 'ไม่พบในช่วงข้อมูล'}\n` : ''}
 ความผันผวน 20 แท่งล่าสุด: ช่วงราคาเฉลี่ย/แท่ง=${m.volatility.avgRange.toFixed(2)}, สัดส่วนตัวแท่งเทียนเฉลี่ย=${(m.volatility.avgBodyRatio*100).toFixed(1)}%
@@ -1044,7 +1040,7 @@ ${m.pivot ? `Pivot Point: P=${m.pivot.pivot.toFixed(2)}, R1=${m.pivot.r1.toFixed
 - ใช้ Supertrend ยืนยันทิศทางเทรนด์หลักเพิ่มเติมจาก EMA cascade
 - ใช้โครงสร้างตลาด BOS/CHoCH ประกอบการยืนยันว่าเทรนด์เดิมยังดำเนินต่อ (BOS) หรือมีสัญญาณกลับตัว (CHoCH)
 - ถ้ามี Liquidity Sweep ให้ถือเป็นสัญญาณ stop-hunt/reversal ที่สำคัญ (ราคาแทงทะลุ swing high/low ไปกวาดสภาพคล่องแล้วปิดกลับเข้ากรอบ) และใช้ระดับที่ถูกกวาดนั้นประกอบการวาง entry/sl
-- ระบบต้องการ ADX>=22 จึงจะถือว่ามี edge เพียงพอให้เข้าเทรด — ถ้า ADX<22 ให้เอนเอียงไปทางแนะนำ WAIT/ลด confidence แม้สัญญาณอื่นจะดูดี
+- ระบบต้องการ ADX>=16 จึงจะถือว่ามี edge เพียงพอให้เข้าเทรด — ถ้า ADX<16 ให้เอนเอียงไปทางแนะนำ WAIT/ลด confidence แม้สัญญาณอื่นจะดูดี
 - กำหนด entry ใกล้ราคาปัจจุบัน, tp และ sl โดยอ้างอิงแนวรับ-แนวต้านและ ATR ที่ให้มาจริง (ห้ามให้ tp/sl ขัดกับทิศทางคำแนะนำ) — ตัวเลข entry/tp/sl สุดท้ายที่ผู้ใช้เห็นจะถูกคำนวณใหม่โดยระบบด้วยสูตร SL=ATR×1.5, RR 1:3-1:5 อยู่ดี แต่ให้คุณประมาณค่าที่สมเหตุสมผลไว้ก่อนเพื่อความสอดคล้องของเหตุผลที่อธิบาย
 - risk_reward ต้องคำนวณจาก |tp-entry| ต่อ |entry-sl| ให้ตรงกับตัวเลข entry/tp/sl ที่คุณให้จริง
 - เขียน detailed_analysis เป็นย่อหน้าภาษาไทยอย่างละเอียด (อย่างน้อย 4-6 ประโยค) อธิบายภาพรวมทั้งหมด: โครงสร้างแนวโน้มหลัก/รอง, ตำแหน่งราคาเทียบ Bollinger Bands, โมเมนตัมจาก RSI/MACD/Stochastic, ความผันผวนจาก ATR, และเหตุผลเชิงลึกว่าทำไมจึงให้คำแนะนำ BUY/SELL นี้พร้อมความเสี่ยงที่ควรระวัง
