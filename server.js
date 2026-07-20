@@ -603,8 +603,15 @@ async function getMarketDataPayload(assetKey, interval) {
 
   try {
     const [series, higherSeries] = await Promise.all([
-      fetchTwelveData('time_series', { symbol: asset.symbol, interval, outputsize: 210 }),
-      fetchTwelveData('time_series', { symbol: asset.symbol, interval: higherInterval, outputsize: 150 }),
+      // timezone=UTC pins candle datetimes to a known zone — without it Twelve
+      // Data defaults to the exchange's local time (observed ~10h ahead of
+      // UTC), which the client was parsing as if it were the browser's own
+      // local time. That mismatch shifted every candle's timestamp by however
+      // far the browser's timezone differs from the exchange's, so the
+      // win/loss checker could scan the wrong candles entirely and flag a
+      // "loss" that never actually happened at the real price.
+      fetchTwelveData('time_series', { symbol: asset.symbol, interval, outputsize: 210, timezone: 'UTC' }),
+      fetchTwelveData('time_series', { symbol: asset.symbol, interval: higherInterval, outputsize: 150, timezone: 'UTC' }),
     ]);
 
     // Twelve Data returns newest-first; put oldest-first for trend reading.

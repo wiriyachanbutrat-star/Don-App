@@ -931,8 +931,11 @@
     return patterns;
   }
 
+  // Server requests candles with timezone=UTC, so this string has no offset
+  // of its own — appending 'Z' tells Date.parse to read it as UTC instead of
+  // (wrongly) assuming the browser's own local timezone.
   function parseCandleTime(t){
-    const ts = Date.parse(String(t).replace(' ', 'T'));
+    const ts = Date.parse(String(t).replace(' ', 'T') + 'Z');
     return isFinite(ts) ? ts : null;
   }
 
