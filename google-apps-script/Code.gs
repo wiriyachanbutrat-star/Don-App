@@ -17,6 +17,9 @@
  *    GET <web app url>?asset=XAU on load to pull history down before
  *    rendering, so opening the page on a different phone/PC shows the same
  *    win/loss record instead of each device's own local-only copy.
+ * 7. The "บันทึกการเทรด" (trade journal) section on gold.html — date, ทุน
+ *    (capital), กำไร (profit) — is synced the same way but lives in its own
+ *    "TradeJournal" tab, via POST/GET with type=journal.
  *
  * IMPORTANT: after editing this file, re-deploy (Deploy > Manage deployments
  * > edit > New version) — editing the script alone does NOT update the live
@@ -26,6 +29,11 @@
 function doPost(e) {
   try {
     var data = JSON.parse(e.postData.contents);
+
+    if (data.type === 'journal') {
+      return handleJournalPost(data);
+    }
+
     var asset = data.asset || 'XAU';
     var rows = Array.isArray(data.rows) ? data.rows : [];
 
@@ -92,12 +100,65 @@ function doPost(e) {
   }
 }
 
+// Manual trade journal (date / capital / profit), kept in its own sheet tab
+// separate from the per-asset win/loss tabs above so the two logs don't mix.
+function handleJournalPost(data) {
+  var rows = Array.isArray(data.rows) ? data.rows : [];
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName('TradeJournal');
+  if (!sheet) {
+    sheet = ss.insertSheet('TradeJournal');
+  }
+  sheet.clearContents();
+
+  sheet.appendRow(['Date', 'Capital', 'Profit', 'RawJSON']);
+  rows.forEach(function (r) {
+    sheet.appendRow([
+      r.date || '',
+      r.capital != null ? r.capital : '',
+      r.profit != null ? r.profit : '',
+      JSON.stringify(r),
+    ]);
+  });
+
+  return ContentService
+    .createTextOutput(JSON.stringify({ ok: true, count: rows.length }))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+function handleJournalGet() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName('TradeJournal');
+  if (!sheet) {
+    return ContentService
+      .createTextOutput(JSON.stringify({ ok: true, rows: [] }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+
+  var data = sheet.getDataRange().getValues();
+  var rows = [];
+  // Row 0 is the header; RawJSON lives in column D (index 3).
+  for (var i = 1; i < data.length; i++) {
+    var raw = data[i][3];
+    if (!raw) continue;
+    try { rows.push(JSON.parse(raw)); } catch (parseErr) { /* skip malformed row */ }
+  }
+
+  return ContentService
+    .createTextOutput(JSON.stringify({ ok: true, rows: rows }))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
 // Reads history back so any device loading the page can pull the same
 // trade history that was last synced from any other device — GET
 // /exec?asset=XAU returns { ok: true, rows: [...] } in the same shape
 // gold.html stores in localStorage.
 function doGet(e) {
   try {
+    if (e && e.parameter && e.parameter.type === 'journal') {
+      return handleJournalGet();
+    }
+
     var asset = (e && e.parameter && e.parameter.asset) || 'XAU';
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     var sheet = ss.getSheetByName(asset);

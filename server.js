@@ -429,17 +429,17 @@ function computeSignalScore(m) {
   const strongThreshold = Math.ceil(maxScore * (against200 ? 0.55 : 0.4));
   const strong = Math.abs(score) >= strongThreshold;
 
-  // ADX >= 22 is the trade gate — a middle ground: within Wilder's
-  // "emerging trend" band (20-25) rather than requiring a fully "strong"
-  // trend (25+), trading a bit of quality for more frequent signals.
+  // ADX >= 25 is the trade gate (Wilder's "strong trend" threshold) and the
+  // score must also clear strongThreshold — a bare non-zero score (e.g. a
+  // single +1 vote) is no longer enough confluence to trade on its own.
   let tradable = true;
   let waitReason = null;
-  if (m.adx == null || m.adx < 22) {
+  if (m.adx == null || m.adx < 25) {
     tradable = false;
-    waitReason = `ADX=${m.adx != null ? m.adx.toFixed(1) : 'N/A'} (<22) — ตลาดไม่มีเทรนด์แข็งแรงพอ ระบบนี้ไม่เข้าเทรดเว้นแต่ ADX>=22`;
-  } else if (score === 0) {
+    waitReason = `ADX=${m.adx != null ? m.adx.toFixed(1) : 'N/A'} (<25) — ตลาดไม่มีเทรนด์แข็งแรงพอ ระบบนี้ไม่เข้าเทรดเว้นแต่ ADX>=25`;
+  } else if (!strong) {
     tradable = false;
-    waitReason = `สัญญาณ BUY/SELL หักล้างกันพอดี (score=0) — ไม่มีทิศทางที่ชัดเจนพอให้เข้าเทรด`;
+    waitReason = `score=${score} ยังไม่ถึง strongThreshold=${strongThreshold} — สัญญาณยังไม่หนักแน่นพอให้เข้าเทรด`;
   }
   if (waitReason) reasons.push(`=> WAIT: ${waitReason}`);
 
@@ -959,17 +959,18 @@ app.post('/api/analyze', async (req, res) => {
         }
       }
 
-      // Deterministic SL/TP: fixed formula (SL = ATR×1.5, TP = RR 1:3 for a
-      // normal signal or 1:5 when `strong`) instead of letting the AI pick
-      // arbitrary entry/tp/sl levels — keeps risk sizing consistent and tied
-      // to actual measured volatility rather than free-text guesses.
+      // Deterministic SL/TP: SL = ATR×1.5, TP = fixed 20-point distance from
+      // entry instead of letting the AI pick arbitrary entry/tp/sl levels —
+      // keeps risk sizing consistent and tied to actual measured volatility
+      // rather than free-text guesses.
       if (signal.tradable && isFinite(marketData.atr) && isFinite(marketData.currentPrice)) {
         const entry = marketData.currentPrice;
         const slDistance = marketData.atr * 1.5;
-        const rr = signal.strong ? 5 : 3;
+        const tpDistance = 20;
         parsed.entry = entry;
         parsed.sl = finalIsBuy ? entry - slDistance : entry + slDistance;
-        parsed.tp = finalIsBuy ? entry + slDistance * rr : entry - slDistance * rr;
+        parsed.tp = finalIsBuy ? entry + tpDistance : entry - tpDistance;
+        const rr = slDistance > 0 ? (tpDistance / slDistance).toFixed(2) : '—';
         parsed.risk_reward = `1 : ${rr}`;
       }
 
@@ -1032,7 +1033,7 @@ EMA20: ${m.ema20.toFixed(2)}
 EMA50: ${m.ema50.toFixed(2)}
 ${m.ema200 != null ? `EMA200: ${m.ema200.toFixed(2)}\n` : ''}Bollinger Bands (20,2): upper=${m.bollinger.upper.toFixed(2)}, middle=${m.bollinger.middle.toFixed(2)}, lower=${m.bollinger.lower.toFixed(2)}
 ATR (14): ${m.atr.toFixed(2)} (วัดความผันผวนเฉลี่ยต่อแท่ง)
-${m.adx != null ? `ADX (14): ${m.adx.toFixed(1)} (ระบบนี้ต้องการ ADX>=22 จึงจะถือว่าเทรนด์แข็งแรงพอให้เข้าเทรด ต่ำกว่านั้น=ไซด์เวย์)\n` : ''}
+${m.adx != null ? `ADX (14): ${m.adx.toFixed(1)} (ระบบนี้ต้องการ ADX>=25 จึงจะถือว่าเทรนด์แข็งแรงพอให้เข้าเทรด ต่ำกว่านั้น=ไซด์เวย์)\n` : ''}
 Stochastic Oscillator: %K=${m.stochastic.k.toFixed(2)}, %D=${m.stochastic.d.toFixed(2)}
 ${m.swing ? `Swing High ล่าสุด (จุดกลับตัวขาขึ้น→ลง): ${m.swing.high ? `${m.swing.high.price} (${m.swing.high.barsAgo} แท่งก่อนหน้า)` : 'ไม่พบในช่วงข้อมูล'}\nSwing Low ล่าสุด (จุดกลับตัวขาลง→ขึ้น): ${m.swing.low ? `${m.swing.low.price} (${m.swing.low.barsAgo} แท่งก่อนหน้า)` : 'ไม่พบในช่วงข้อมูล'}\n` : ''}
 ความผันผวน 20 แท่งล่าสุด: ช่วงราคาเฉลี่ย/แท่ง=${m.volatility.avgRange.toFixed(2)}, สัดส่วนตัวแท่งเทียนเฉลี่ย=${(m.volatility.avgBodyRatio*100).toFixed(1)}%
@@ -1055,7 +1056,7 @@ ${m.pivot ? `Pivot Point: P=${m.pivot.pivot.toFixed(2)}, R1=${m.pivot.r1.toFixed
 - ใช้ Supertrend ยืนยันทิศทางเทรนด์หลักเพิ่มเติมจาก EMA cascade
 - ใช้โครงสร้างตลาด BOS/CHoCH ประกอบการยืนยันว่าเทรนด์เดิมยังดำเนินต่อ (BOS) หรือมีสัญญาณกลับตัว (CHoCH)
 - ถ้ามี Liquidity Sweep ให้ถือเป็นสัญญาณ stop-hunt/reversal ที่สำคัญ (ราคาแทงทะลุ swing high/low ไปกวาดสภาพคล่องแล้วปิดกลับเข้ากรอบ) และใช้ระดับที่ถูกกวาดนั้นประกอบการวาง entry/sl
-- ระบบต้องการ ADX>=22 จึงจะถือว่ามี edge เพียงพอให้เข้าเทรด — ถ้า ADX<22 ให้เอนเอียงไปทางแนะนำ WAIT/ลด confidence แม้สัญญาณอื่นจะดูดี
+- ระบบต้องการ ADX>=25 จึงจะถือว่ามี edge เพียงพอให้เข้าเทรด — ถ้า ADX<25 ให้เอนเอียงไปทางแนะนำ WAIT/ลด confidence แม้สัญญาณอื่นจะดูดี
 - กำหนด entry ใกล้ราคาปัจจุบัน, tp และ sl โดยอ้างอิงแนวรับ-แนวต้านและ ATR ที่ให้มาจริง (ห้ามให้ tp/sl ขัดกับทิศทางคำแนะนำ) — ตัวเลข entry/tp/sl สุดท้ายที่ผู้ใช้เห็นจะถูกคำนวณใหม่โดยระบบด้วยสูตร SL=ATR×1.5, RR 1:3-1:5 อยู่ดี แต่ให้คุณประมาณค่าที่สมเหตุสมผลไว้ก่อนเพื่อความสอดคล้องของเหตุผลที่อธิบาย
 - risk_reward ต้องคำนวณจาก |tp-entry| ต่อ |entry-sl| ให้ตรงกับตัวเลข entry/tp/sl ที่คุณให้จริง
 - เขียน detailed_analysis เป็นย่อหน้าภาษาไทยอย่างละเอียด (อย่างน้อย 4-6 ประโยค) อธิบายภาพรวมทั้งหมด: โครงสร้างแนวโน้มหลัก/รอง, ตำแหน่งราคาเทียบ Bollinger Bands, โมเมนตัมจาก RSI/MACD/Stochastic, ความผันผวนจาก ATR, และเหตุผลเชิงลึกว่าทำไมจึงให้คำแนะนำ BUY/SELL นี้พร้อมความเสี่ยงที่ควรระวัง
