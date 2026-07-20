@@ -1074,11 +1074,10 @@
   }
 
   // SL is sized from the user's real $ risk (adjustable via lot size) — that
-  // part stays under the user's control. TP is now derived as SL x the AI's
-  // own risk:reward ratio instead of an independent $ input, so the two
-  // numbers can't silently disagree with the RR the server/AI actually
-  // reasoned about (previously TP/SL were two unrelated $ boxes defaulting
-  // to a fixed 1:1.5, ignoring whatever RR — e.g. 1:3 or 1:5 — the AI gave).
+  // part stays under the user's control. TP is a fixed 20-point price
+  // distance from entry (matching the server's deterministic TP rule),
+  // converted to $ at the user's lot size — it no longer scales off the
+  // user's SL $ input or the AI's risk:reward text.
   function reconcileTrade(a, isBuy, atr){
     let entry = Number(a.entry);
     if(!isFinite(entry)){
@@ -1088,9 +1087,6 @@
     const slUsd = Math.max(Number(document.getElementById('slUsdInput').value) || 20, 0);
     const contractSize = CONTRACT_SIZE[currentAsset] || 100;
     const unitValue = lot * contractSize; // $ P/L per $1 price move at this lot size
-
-    const rrMatch = /1\s*:\s*([\d.]+)/.exec(String(a.risk_reward || ''));
-    const rr = rrMatch ? Math.max(Number(rrMatch[1]) || 3, 1) : 3;
 
     let slDistance = unitValue > 0 ? slUsd / unitValue : 0;
     // A fixed $ stop can be tighter than the market's current volatility,
@@ -1103,7 +1099,7 @@
       slDistance = atrFloor;
       atrWidened = true;
     }
-    const tpDistance = slDistance * rr;
+    const tpDistance = 20;
     const tp = isBuy ? entry + tpDistance : entry - tpDistance;
     const sl = isBuy ? entry - slDistance : entry + slDistance;
 
