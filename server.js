@@ -931,6 +931,14 @@ app.post('/api/analyze', async (req, res) => {
       const sentimentScores = news.filter(a => a.sentiment != null).map(a => a.sentiment);
       if (sentimentScores.length) {
         const avgSentiment = sentimentScores.reduce((a, b) => a + b, 0) / sentimentScores.length;
+        // Exposed so the UI can show a news-direction summary independent of
+        // the trade recommendation — this is "which way is news leaning",
+        // not "does news agree with the AI's call" (that's opposesFinal below).
+        parsed._newsSentiment = {
+          avg: Math.round(avgSentiment * 100) / 100,
+          count: sentimentScores.length,
+          direction: avgSentiment >= 0.15 ? 'BUY' : avgSentiment <= -0.15 ? 'SELL' : 'NEUTRAL',
+        };
         const opposesFinal = (finalDirection === 'BUY' && avgSentiment <= -0.2) || (finalDirection === 'SELL' && avgSentiment >= 0.2);
         if (opposesFinal) {
           const newsCap = 65;

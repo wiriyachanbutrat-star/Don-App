@@ -535,6 +535,12 @@
       </div>
     </div>
 
+    <div class="panel" id="newsPanel" style="display:none;">
+      <div class="grid-label">ทิศทางข่าว</div>
+      <div id="newsDirectionBadge" style="display:inline-flex; align-items:center; gap:6px; font-family:var(--font-mono); font-weight:600; font-size:13px; padding:6px 14px; border-radius:20px; letter-spacing:0.05em; margin-bottom:12px;">—</div>
+      <p class="error-text" id="newsSummaryText" style="margin-bottom:0;"></p>
+    </div>
+
     <div class="panel">
       <div class="grid-label">วิเคราะห์เชิงลึก</div>
       <p class="error-text" id="detailedAnalysis" style="margin-bottom:0;"></p>
@@ -1185,6 +1191,29 @@
     const reasons = Array.isArray(a.reasons) ? a.reasons : [];
     document.getElementById('reasonList').innerHTML = reasons.map(r => '<li>'+r+'</li>').join('');
     document.getElementById('detailedAnalysis').textContent = a.detailed_analysis || '—';
+
+    // News direction: the deterministic sentiment average (_newsSentiment,
+    // computed server-side from real Marketaux scores) drives the badge
+    // color/direction; a.news_summary is the AI's own prose explanation —
+    // both existed in the API response already but were never rendered.
+    const newsPanel = document.getElementById('newsPanel');
+    const ns = a._newsSentiment;
+    if(ns || a.news_summary){
+      newsPanel.style.display = 'block';
+      const badge = document.getElementById('newsDirectionBadge');
+      const dir = ns ? ns.direction : 'NEUTRAL';
+      const badgeStyle = {
+        BUY: { bg: 'var(--buy-dim)', color: 'var(--buy-bright)', label: '📈 ข่าวโน้มเอียงฝั่งซื้อ' },
+        SELL: { bg: 'var(--sell-dim)', color: 'var(--sell-bright)', label: '📉 ข่าวโน้มเอียงฝั่งขาย' },
+        NEUTRAL: { bg: 'var(--wait-dim)', color: 'var(--wait-bright)', label: '➖ ข่าวเป็นกลาง/ไม่มีน้ำหนักชัดเจน' },
+      }[dir];
+      badge.style.background = badgeStyle.bg;
+      badge.style.color = badgeStyle.color;
+      badge.textContent = badgeStyle.label + (ns ? ' (sentiment เฉลี่ย ' + ns.avg.toFixed(2) + ' จาก ' + ns.count + ' ข่าว)' : '');
+      document.getElementById('newsSummaryText').textContent = a.news_summary || '—';
+    } else {
+      newsPanel.style.display = 'none';
+    }
 
     const confBig = document.getElementById('confBig');
     let n = 0;
