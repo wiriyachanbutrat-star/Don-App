@@ -437,14 +437,14 @@
           </div>
           <div>
             <label class="drop-sub" for="tpUsdInput" style="display:block; margin-bottom:6px;">TP ($, auto)</label>
-            <input id="tpUsdInput" type="number" step="1" min="1" value="30" class="btn" readonly style="width:100%; background:var(--bg-panel-raised); color:var(--ink-dim); border:1px solid var(--hairline); text-align:center; cursor:not-allowed;">
+            <input id="tpUsdInput" type="number" step="1" min="1" value="20" class="btn" readonly style="width:100%; background:var(--bg-panel-raised); color:var(--ink-dim); border:1px solid var(--hairline); text-align:center; cursor:not-allowed;">
           </div>
           <div>
             <label class="drop-sub" for="slUsdInput" style="display:block; margin-bottom:6px;">SL ($)</label>
             <input id="slUsdInput" type="number" step="1" min="1" value="20" class="btn" style="width:100%; background:var(--bg-panel-raised); color:var(--ink); border:1px solid var(--hairline); text-align:center;">
           </div>
         </div>
-        <div class="drop-sub" style="margin-bottom:14px;">SL ($) คือความเสี่ยงจริงที่คุณตั้ง (ปรับ lot ได้), TP คำนวณอัตโนมัติจาก SL × risk:reward ที่ AI ให้มา — ไม่ใช่ตัวเลขอิสระที่ตั้งเองอีกต่อไป เพื่อให้ตรงกับเหตุผลที่ AI วิเคราะห์จริง (ทอง 1 lot = 100 oz — ปรับตามสเปคโบรกเกอร์ของคุณถ้าไม่ตรง)</div>
+        <div class="drop-sub" style="margin-bottom:14px;">SL ($) คือความเสี่ยงจริงที่คุณตั้ง (ปรับ lot ได้), TP คำนวณอัตโนมัติจากระยะคงที่ 20 จุดจากราคาเข้า — ไม่ใช่ตัวเลขอิสระที่ตั้งเองอีกต่อไป (ทอง 1 lot = 100 oz — ปรับตามสเปคโบรกเกอร์ของคุณถ้าไม่ตรง)</div>
         <div id="quickCheckBox" style="display:none; border-radius:14px; padding:10px 14px; margin-bottom:14px; font-size:13px; line-height:1.5; backdrop-filter:blur(10px);"></div>
         <button class="btn btn-gold" id="analyzeBtn" type="button">วิเคราะห์ตอนนี้</button>
       </div>
