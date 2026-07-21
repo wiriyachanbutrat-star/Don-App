@@ -1147,12 +1147,25 @@
       arc.style.strokeDashoffset = target;
     });
 
+    // Color each badge from what its own text actually says (bullish/bearish
+    // keywords), not from the overall recommendation — otherwise a bearish
+    // MACD/EMA reading shows green just because the final call was BUY,
+    // which reads as the indicators contradicting the verdict.
+    const bullWords = /ขาขึ้น|ขึ้น|บวก|bullish|uptrend|golden cross|>\s*EMA/i;
+    const bearWords = /ขาลง|ลง|ลบ|bearish|downtrend|death cross|<\s*EMA/i;
+    const dirClass = (text, fallbackIsBuy) => {
+      const s = String(text || '');
+      if (bullWords.test(s)) return 'up';
+      if (bearWords.test(s)) return 'down';
+      return fallbackIsBuy ? 'up' : 'down';
+    };
+    const trendArrow = bullWords.test(String(a.trend||'')) ? '▲ ' : bearWords.test(String(a.trend||'')) ? '▼ ' : (isBuy?'▲ ':'▼ ');
     const indicators = [
-      ['Trend', (isBuy?'▲ ':'▼ ') + (a.trend||'—'), isBuy?'up':'down'],
+      ['Trend', trendArrow + (a.trend||'—'), dirClass(a.trend, isBuy)],
       ['Pattern', a.pattern||'—', ''],
       ['RSI', a.rsi||'—', ''],
-      ['MACD', a.macd||'—', isBuy?'up':'down'],
-      ['EMA', a.ema_relation||'—', isBuy?'up':'down'],
+      ['MACD', a.macd||'—', dirClass(a.macd, isBuy)],
+      ['EMA', a.ema_relation||'—', dirClass(a.ema_relation, isBuy)],
       ['EMA200', a.ema200_relation||'—', ''],
       ['Volume', a.volume||'—', ''],
       ['Bollinger', a.bollinger||'—', ''],
