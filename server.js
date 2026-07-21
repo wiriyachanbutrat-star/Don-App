@@ -429,17 +429,16 @@ function computeSignalScore(m) {
   const strongThreshold = Math.ceil(maxScore * (against200 ? 0.55 : 0.4));
   const strong = Math.abs(score) >= strongThreshold;
 
-  // ADX >= 18 is the trade gate, and the score must also clear
-  // strongThreshold — a bare non-zero score (e.g. a single +1 vote) is not
-  // enough confluence to trade on its own.
+  // ADX >= 18 is the trade gate — a middle ground within Wilder's "emerging
+  // trend" band — trading a bit of quality for more frequent signals.
   let tradable = true;
   let waitReason = null;
   if (m.adx == null || m.adx < 18) {
     tradable = false;
     waitReason = `ADX=${m.adx != null ? m.adx.toFixed(1) : 'N/A'} (<18) — ตลาดไม่มีเทรนด์แข็งแรงพอ ระบบนี้ไม่เข้าเทรดเว้นแต่ ADX>=18`;
-  } else if (!strong) {
+  } else if (score === 0) {
     tradable = false;
-    waitReason = `score=${score} ยังไม่ถึง strongThreshold=${strongThreshold} — สัญญาณยังไม่หนักแน่นพอให้เข้าเทรด`;
+    waitReason = `สัญญาณ BUY/SELL หักล้างกันพอดี (score=0) — ไม่มีทิศทางที่ชัดเจนพอให้เข้าเทรด`;
   }
   if (waitReason) reasons.push(`=> WAIT: ${waitReason}`);
 
