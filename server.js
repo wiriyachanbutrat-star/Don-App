@@ -185,8 +185,16 @@ function adx(candles, period = 14) {
     dxValues.push(diSum > 0 ? (Math.abs(plusDI - minusDI) / diSum) * 100 : 0);
   }
   if (dxValues.length < period) return null;
-  const recentDx = dxValues.slice(-period);
-  return recentDx.reduce((a, b) => a + b, 0) / recentDx.length;
+  // Wilder-smoothed ADX: seed with a simple average of the first `period` DX
+  // values, then recursively smooth every value after that — a plain SMA of
+  // only the last `period` DX values ignores all history before that window
+  // and gives a materially different number from the ADX(14) any broker or
+  // charting platform reports, which threw off the ADX trade-gate threshold.
+  let adxVal = dxValues.slice(0, period).reduce((a, b) => a + b, 0) / period;
+  for (let i = period; i < dxValues.length; i++) {
+    adxVal = (adxVal * (period - 1) + dxValues[i]) / period;
+  }
+  return adxVal;
 }
 
 // Swing high/low (fractal pivots): a candle whose high/low is the most extreme
