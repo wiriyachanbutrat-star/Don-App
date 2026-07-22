@@ -798,28 +798,33 @@ app.post('/api/analyze', async (req, res) => {
     return res.status(400).json({ error: 'ไม่มีข้อมูลราคาทองส่งมาให้วิเคราะห์' });
   }
 
-  const signal = computeSignalScore(marketData);
-  const assetLabel = marketData.assetLabel || ASSETS[marketData.assetKey]?.label || ASSETS.XAU.label;
-  const news = await fetchGoldNews(marketData.assetKey || 'XAU');
-
-  // News blackout: block trading for a window after a high-impact release.
-  // Marketaux only gives us published_at, not a forward-looking economic
-  // calendar, so this can only catch the "just after news" half of the
-  // requested ±15-30min window, not "15min before" — there's no calendar
-  // feed wired up to know a release is imminent.
-  const highImpactPattern = /non-?farm|nfp|\bcpi\b|fomc|federal reserve|fed interest rate|interest rate decision|\bpce\b|powell/i;
-  const blackoutMinutes = 30;
-  const recentHighImpact = news.find(a => highImpactPattern.test(a.title || '') && a.published && (Date.now() - new Date(a.published).getTime()) < blackoutMinutes * 60 * 1000);
-  if (recentHighImpact && signal.tradable) {
-    signal.tradable = false;
-    signal.waitReason = `ข่าวผลกระทบสูงเพิ่งประกาศ ("${recentHighImpact.title}") ภายใน ${blackoutMinutes} นาทีที่ผ่านมา — งดเข้าเทรดช่วงตลาดผันผวนจากข่าว`;
-    signal.reasons.push(`=> WAIT: ${signal.waitReason}`);
-  }
-
-  const lossPatterns = Array.isArray(req.body.lossPatterns) ? req.body.lossPatterns : [];
-  const prompt = buildPrompt(marketData, signal, assetLabel, news, lossPatterns);
-
+  // Everything below reads fields off the client-supplied marketData object
+  // without guarding each one — wrapping the whole handler (not just the
+  // Anthropic fetch) means a malformed/incomplete marketData throws a caught
+  // 500 instead of an uncaught rejection that crashes the entire Node
+  // process (and takes the site down for every user, not just this request).
   try {
+    const signal = computeSignalScore(marketData);
+    const assetLabel = marketData.assetLabel || ASSETS[marketData.assetKey]?.label || ASSETS.XAU.label;
+    const news = await fetchGoldNews(marketData.assetKey || 'XAU');
+
+    // News blackout: block trading for a window after a high-impact release.
+    // Marketaux only gives us published_at, not a forward-looking economic
+    // calendar, so this can only catch the "just after news" half of the
+    // requested ±15-30min window, not "15min before" — there's no calendar
+    // feed wired up to know a release is imminent.
+    const highImpactPattern = /non-?farm|nfp|\bcpi\b|fomc|federal reserve|fed interest rate|interest rate decision|\bpce\b|powell/i;
+    const blackoutMinutes = 30;
+    const recentHighImpact = news.find(a => highImpactPattern.test(a.title || '') && a.published && (Date.now() - new Date(a.published).getTime()) < blackoutMinutes * 60 * 1000);
+    if (recentHighImpact && signal.tradable) {
+      signal.tradable = false;
+      signal.waitReason = `ข่าวผลกระทบสูงเพิ่งประกาศ ("${recentHighImpact.title}") ภายใน ${blackoutMinutes} นาทีที่ผ่านมา — งดเข้าเทรดช่วงตลาดผันผวนจากข่าว`;
+      signal.reasons.push(`=> WAIT: ${signal.waitReason}`);
+    }
+
+    const lossPatterns = Array.isArray(req.body.lossPatterns) ? req.body.lossPatterns : [];
+    const prompt = buildPrompt(marketData, signal, assetLabel, news, lossPatterns);
+
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
