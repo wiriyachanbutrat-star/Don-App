@@ -972,30 +972,22 @@ app.post('/api/analyze', async (req, res) => {
         }
       }
 
-      // Deterministic SL/TP: SL = ATR×1.5, TP = fixed 20-point distance from
-      // entry instead of letting the AI pick arbitrary entry/tp/sl levels —
-      // keeps risk sizing consistent and tied to actual measured volatility
-      // rather than free-text guesses.
-      const MIN_RR = 1;
+      // Deterministic SL/TP: SL = ATR×1.5, TP = SL × fixed RR (1:1.5) instead
+      // of letting the AI pick arbitrary entry/tp/sl levels — keeps risk
+      // sizing consistent and tied to actual measured volatility. TP scales
+      // with SL (both off ATR) rather than a flat point distance, since a
+      // flat TP against an ATR-scaled SL let the ratio drift below 1:1 in
+      // high volatility (risking more than the potential reward) precisely
+      // when the ADX≥25 "strong trend" gate is most likely to be open.
+      const RR = 1.5;
       if (signal.tradable && isFinite(marketData.atr) && isFinite(marketData.currentPrice)) {
         const entry = marketData.currentPrice;
         const slDistance = marketData.atr * 1.5;
-        const tpDistance = 20;
-        const rrRatio = slDistance > 0 ? tpDistance / slDistance : 0;
-        // A fixed 20-point TP against an ATR-scaled SL means the ratio isn't
-        // constant — in high volatility (wide SL) it can fall below 1:1,
-        // risking more than the potential reward. Rather than take that trade
-        // and lose the edge, veto it the same way the ADX/score gate does.
-        if (rrRatio < MIN_RR) {
-          signal.tradable = false;
-          signal.waitReason = `RR=1:${rrRatio.toFixed(2)} ต่ำกว่าเกณฑ์ขั้นต่ำ 1:${MIN_RR} (ATR สูง ทำให้ SL กว้างกว่า TP คงที่ 20 จุด) — เสี่ยงมากกว่าผลตอบแทนที่คาดหวัง`;
-          signal.reasons.push(`=> WAIT: ${signal.waitReason}`);
-        } else {
-          parsed.entry = entry;
-          parsed.sl = finalIsBuy ? entry - slDistance : entry + slDistance;
-          parsed.tp = finalIsBuy ? entry + tpDistance : entry - tpDistance;
-          parsed.risk_reward = `1 : ${rrRatio.toFixed(2)}`;
-        }
+        const tpDistance = slDistance * RR;
+        parsed.entry = entry;
+        parsed.sl = finalIsBuy ? entry - slDistance : entry + slDistance;
+        parsed.tp = finalIsBuy ? entry + tpDistance : entry - tpDistance;
+        parsed.risk_reward = `1 : ${RR}`;
       }
 
       // Deterministic no-trade veto: when the quantitative signal says there's
