@@ -633,9 +633,16 @@
       if(data.tradable){
         box.style.background = data.direction === 'BUY' ? 'var(--buy-dim)' : 'var(--sell-dim)';
         box.style.color = data.direction === 'BUY' ? 'var(--buy-bright)' : 'var(--sell-bright)';
+        // This is the raw indicator score only (no AI reasoning yet). The
+        // server only forces the full AI analysis to match this direction
+        // when the score is "strong" — a "ปานกลาง" (not-strong) reading here
+        // can still come back the opposite direction after the full AI call,
+        // so flag that explicitly instead of leaving two badges silently
+        // disagreeing.
         box.innerHTML = '✓ <b>เทรดได้ตอนนี้</b> — สัญญาณเบื้องต้นเอนไปทาง ' + data.direction +
           (data.strong ? ' (ชัดเจน)' : ' (ปานกลาง)') + ' · ADX=' + (data.adx != null ? data.adx.toFixed(1) : '—') +
-          ' · คะแนน ' + data.score + '/' + data.maxScore;
+          ' · คะแนน ' + data.score + '/' + data.maxScore +
+          (data.strong ? '' : ' — <i>สัญญาณยังไม่ชัดเจนมาก ผลวิเคราะห์เต็มจาก AI อาจให้ทิศทางตรงข้ามได้</i>');
       } else {
         box.style.background = 'var(--wait-dim)';
         box.style.color = 'var(--wait-bright)';
