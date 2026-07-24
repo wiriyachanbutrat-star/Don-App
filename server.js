@@ -102,6 +102,31 @@ function rsi(closes, period = 21) {
   return 100 - 100 / (1 + rs);
 }
 
+// Same Wilder smoothing as rsi() above, but returns the full rolling series
+// (one value per bar once enough history exists) instead of just the latest
+// value — used for sparkline tiles on the dashboard.
+function rsiSeries(closes, period = 21) {
+  const out = new Array(closes.length).fill(null);
+  if (closes.length < period + 1) return out;
+  let gains = 0, losses = 0;
+  for (let i = 1; i <= period; i++) {
+    const diff = closes[i] - closes[i - 1];
+    if (diff >= 0) gains += diff; else losses -= diff;
+  }
+  let avgGain = gains / period;
+  let avgLoss = losses / period;
+  out[period] = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
+  for (let i = period + 1; i < closes.length; i++) {
+    const diff = closes[i] - closes[i - 1];
+    const gain = diff > 0 ? diff : 0;
+    const loss = diff < 0 ? -diff : 0;
+    avgGain = (avgGain * (period - 1) + gain) / period;
+    avgLoss = (avgLoss * (period - 1) + loss) / period;
+    out[i] = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
+  }
+  return out;
+}
+
 function macd(closes) {
   const ema12 = ema(closes, 12);
   const ema26 = ema(closes, 26);
@@ -118,7 +143,10 @@ function macd(closes) {
   const histogramPrev = (macdPrev != null && signalPrev != null) ? macdPrev - signalPrev : null;
   const crossUp = histogramPrev != null && histogramPrev <= 0 && histogram > 0;
   const crossDown = histogramPrev != null && histogramPrev >= 0 && histogram < 0;
-  return { macd: macdNow, signal, histogram, crossUp, crossDown };
+  // Histogram sparkline series, aligned to macdValues' own index space (both
+  // built from the same filtered array so indices line up 1:1).
+  const histogramSeries = macdValues.map((v, i) => (signalSeries[i] != null) ? v - signalSeries[i] : null);
+  return { macd: macdNow, signal, histogram, crossUp, crossDown, histogramSeries };
 }
 
 function sma(values, period) {
@@ -155,6 +183,26 @@ function atr(candles, period = 14) {
   }
   const relevant = trs.slice(-period);
   return relevant.reduce((a, b) => a + b, 0) / relevant.length;
+}
+
+// Rolling Wilder-smoothed ATR (one value per bar) instead of just the latest
+// average — used for the ATR sparkline tile on the dashboard.
+function atrSeries(candles, period = 14) {
+  const out = new Array(candles.length).fill(null);
+  const trs = [];
+  for (let i = 1; i < candles.length; i++) {
+    const cur = candles[i];
+    const prevClose = candles[i - 1].close;
+    trs.push(Math.max(cur.high - cur.low, Math.abs(cur.high - prevClose), Math.abs(cur.low - prevClose)));
+  }
+  if (trs.length < period) return out;
+  let avg = trs.slice(0, period).reduce((a, b) => a + b, 0) / period;
+  out[period] = avg;
+  for (let i = period; i < trs.length; i++) {
+    avg = (avg * (period - 1) + trs[i]) / period;
+    out[i + 1] = avg;
+  }
+  return out;
 }
 
 // ADX measures trend *strength* (not direction) — low ADX means the market is
@@ -659,6 +707,10 @@ async function getMarketDataPayload(assetKey, interval) {
     const higherEma50 = higherEma50Series[higherEma50Series.length - 1];
     const higherTrend = higherEma20 > higherEma50 ? 'ขาขึ้น (Uptrend)' : 'ขาลง (Downtrend)';
 
+    const macdResult = macd(closes);
+    const rsiSeriesFull = rsiSeries(closes, 21);
+    const atrSeriesFull = atrSeries(candles);
+
     const payload = {
       symbol: asset.symbol,
       assetKey,
@@ -669,14 +721,26 @@ async function getMarketDataPayload(assetKey, interval) {
       resistance,
       candleCounts: { up: recentUp, down: recentDown },
       recentCandles: recent,
-      rsi: rsi(closes, 21),
-      macd: macd(closes),
+      rsi: rsiSeriesFull[rsiSeriesFull.length - 1],
+      macd: macdResult,
       ema20: ema20Series[ema20Series.length - 1],
       ema50: ema50Series[ema50Series.length - 1],
       ema200: ema200Series ? ema200Series[ema200Series.length - 1] : null,
       bollinger: bollingerBands(closes),
       atr: atr(candles),
       adx: adx(candles),
+      // Rolling series (last 30 bars) for the dashboard's sparkline tiles —
+      // reuses the same indicator math above rather than recomputing on the
+      // client, which doesn't have the full candle history to do so anyway.
+      sparklines: {
+        closes: closes.slice(-30),
+        ema20: ema20Series.slice(-30),
+        ema50: ema50Series.slice(-30),
+        rsi: rsiSeriesFull.slice(-30),
+        macdHistogram: macdResult.histogramSeries.slice(-30),
+        atr: atrSeriesFull.slice(-30),
+        range: candles.slice(-30).map(c => c.high - c.low), // volume proxy (no real tick volume for spot XAU)
+      },
       stochastic: stochasticOscillator(candles),
       swing: swingPoints(candles),
       volatility: volatilityStats(candles),

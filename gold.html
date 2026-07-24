@@ -8,16 +8,16 @@
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root{
-    --bg: #eee9fb;
-    --bg-panel: rgba(255,255,255,0.55);
-    --bg-panel-raised: rgba(255,255,255,0.68);
-    --glass-border: rgba(255,255,255,0.6);
-    --hairline: rgba(120,100,180,0.16);
+    --bg: #0a0e17;
+    --bg-panel: rgba(20,26,41,0.75);
+    --bg-panel-raised: rgba(27,34,53,0.85);
+    --glass-border: rgba(255,255,255,0.07);
+    --hairline: rgba(255,255,255,0.08);
     --gold: #d19700;
     --gold-bright: #ffcc33;
     --gold-soft: rgba(224,169,0,0.12);
-    --ink: #241b3d;
-    --ink-dim: #6d6389;
+    --ink: #e8ecf6;
+    --ink-dim: #8892a8;
     --buy: #00a367;
     --buy-bright: #00d685;
     --buy-dim: rgba(0,184,113,0.14);
@@ -30,7 +30,7 @@
     --font-display: 'Space Grotesk', sans-serif;
     --font-body: 'Sarabun', sans-serif;
     --font-mono: 'IBM Plex Mono', monospace;
-    --shadow-panel: 0 20px 50px -20px rgba(88,40,180,0.28), 0 1px 0 rgba(255,255,255,0.5) inset;
+    --shadow-panel: 0 20px 50px -20px rgba(0,0,0,0.55), 0 1px 0 rgba(255,255,255,0.04) inset;
     --glass-blur: blur(24px) saturate(180%);
   }
   *{box-sizing:border-box; margin:0; padding:0;}
@@ -43,13 +43,25 @@
     justify-content:center;
     padding: 32px 16px 80px;
     background-image:
-      radial-gradient(ellipse 700px 500px at 15% -10%, rgba(255,204,51,0.35), transparent 55%),
-      radial-gradient(ellipse 600px 500px at 100% 10%, rgba(0,214,133,0.28), transparent 50%),
-      radial-gradient(ellipse 650px 600px at 90% 90%, rgba(124,58,237,0.30), transparent 55%),
-      radial-gradient(ellipse 600px 500px at 0% 100%, rgba(255,77,106,0.18), transparent 55%);
+      radial-gradient(ellipse 900px 600px at 15% -10%, rgba(255,204,51,0.08), transparent 55%),
+      radial-gradient(ellipse 800px 600px at 100% 10%, rgba(0,214,133,0.10), transparent 50%),
+      radial-gradient(ellipse 700px 700px at 90% 90%, rgba(124,58,237,0.10), transparent 55%),
+      radial-gradient(ellipse 700px 600px at 0% 100%, rgba(255,77,106,0.06), transparent 55%);
     background-attachment: fixed;
   }
   .app{ width:100%; max-width: 480px; }
+  @media (min-width: 980px){
+    .app{ max-width: 1080px; }
+    #view-upload .panel, #view-results{ display:grid; grid-template-columns: 380px 1fr; gap:18px; align-items:start; }
+    #view-upload .panel > *{ grid-column: 1; }
+    #view-results{ grid-template-columns: 1fr 1fr; }
+    #view-results > .btn-gold{ grid-column: 1 / -1; }
+    #view-results > .verdict-panel{ grid-column: 1; }
+    #view-results > .panel{ grid-column: 2; }
+    .indicator-grid{ grid-template-columns: repeat(3,1fr) !important; }
+    .spark-grid{ grid-template-columns: repeat(5,1fr) !important; }
+    #historyPanel, #journalPanel{ max-width:1080px; }
+  }
 
   .ticker{
     display:flex; align-items:baseline; justify-content:space-between;
@@ -301,6 +313,20 @@
   .indicator-value.up{ color: var(--buy); }
   .indicator-value.down{ color: var(--sell); }
 
+  .spark-grid{ display:grid; grid-template-columns: 1fr 1fr; gap:8px; }
+  .spark-tile{
+    background: var(--bg-panel-raised);
+    border: 1px solid var(--hairline);
+    border-radius: 14px;
+    padding: 12px 14px 8px;
+  }
+  .spark-tile-head{ display:flex; align-items:baseline; justify-content:space-between; margin-bottom:6px; }
+  .spark-tile-name{ font-family: var(--font-mono); font-size:10px; color: var(--ink-dim); letter-spacing:0.06em; text-transform:uppercase; }
+  .spark-tile-value{ font-family: var(--font-mono); font-size:13px; font-weight:600; }
+  .spark-tile-value.up{ color: var(--buy-bright); }
+  .spark-tile-value.down{ color: var(--sell-bright); }
+  .spark-tile svg{ display:block; width:100%; height:40px; }
+
   .reco-panel{
     background: linear-gradient(165deg, var(--bg-panel-raised), var(--bg-panel));
     backdrop-filter: var(--glass-blur);
@@ -517,6 +543,11 @@
         </div>
       </div>
       <div class="stars" id="starsRow">—<span class="score" id="scoreLine"></span></div>
+    </div>
+
+    <div class="panel">
+      <div class="grid-label">กราฟอินดิเคเตอร์ (30 แท่งล่าสุด)</div>
+      <div class="spark-grid" id="sparkGrid"></div>
     </div>
 
     <div class="panel">
@@ -1119,6 +1150,114 @@
     return { entry, tp, sl, riskReward, lot, tpUsd, slUsd, atrWidened };
   }
 
+  // Builds an SVG polyline path from a value series, sharing one min/max
+  // scale when drawn alongside other series (e.g. close + EMA20 + EMA50 on
+  // the same tile) so their relative positions stay meaningful. Null/NaN
+  // entries (indicator warm-up period) are skipped rather than plotted as 0.
+  function sparkLinePath(values, w, h, min, max){
+    const range = (max - min) || 1;
+    const n = values.length;
+    const step = n > 1 ? w / (n - 1) : 0;
+    let d = '';
+    values.forEach((v, i) => {
+      if (v == null || !isFinite(v)) return;
+      const x = i * step;
+      const y = h - ((v - min) / range) * h;
+      d += (d ? ' L ' : 'M ') + x.toFixed(1) + ' ' + y.toFixed(1);
+    });
+    return d;
+  }
+
+  function sparkBars(values, w, h, color){
+    const vals = values.filter(v => v != null && isFinite(v));
+    if (!vals.length) return '';
+    const maxAbs = Math.max(...vals.map(v => Math.abs(v))) || 1;
+    const n = values.length;
+    const barW = Math.max(w / n - 2, 1);
+    const mid = h / 2;
+    return values.map((v, i) => {
+      if (v == null || !isFinite(v)) return '';
+      const x = i * (w / n);
+      const barH = Math.max(Math.abs(v) / maxAbs * mid, 1);
+      const y = v >= 0 ? mid - barH : mid;
+      const fill = typeof color === 'function' ? color(v) : color;
+      return '<rect x="' + x.toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + barW.toFixed(1) + '" height="' + barH.toFixed(1) + '" fill="' + fill + '" />';
+    }).join('');
+  }
+
+  function renderSparklines(marketData){
+    const container = document.getElementById('sparkGrid');
+    const sp = marketData && marketData.sparklines;
+    if (!container) return;
+    if (!sp){ container.innerHTML = ''; return; }
+    const W = 200, H = 40;
+    const buy = getComputedStyle(document.documentElement).getPropertyValue('--buy-bright').trim() || '#00d685';
+    const sell = getComputedStyle(document.documentElement).getPropertyValue('--sell-bright').trim() || '#ff4d6a';
+    const gold = getComputedStyle(document.documentElement).getPropertyValue('--gold-bright').trim() || '#ffcc33';
+
+    const tiles = [];
+
+    // EMA Trend: close price with EMA20/EMA50 overlaid on one shared scale.
+    {
+      const all = [...sp.closes, ...sp.ema20, ...sp.ema50].filter(v => v != null && isFinite(v));
+      const min = Math.min(...all), max = Math.max(...all);
+      const last = sp.closes[sp.closes.length - 1], first = sp.closes.find(v => v != null);
+      const up = last != null && first != null && last >= first;
+      tiles.push({
+        name: 'EMA Trend', value: up ? 'Bullish' : 'Bearish', cls: up ? 'up' : 'down',
+        svg: '<path d="' + sparkLinePath(sp.closes, W, H, min, max) + '" fill="none" stroke="' + (up?buy:sell) + '" stroke-width="1.5"/>' +
+             '<path d="' + sparkLinePath(sp.ema20, W, H, min, max) + '" fill="none" stroke="' + gold + '" stroke-width="1" opacity="0.7"/>' +
+             '<path d="' + sparkLinePath(sp.ema50, W, H, min, max) + '" fill="none" stroke="#8892a8" stroke-width="1" opacity="0.6"/>',
+      });
+    }
+    // RSI: single line 0-100.
+    {
+      const last = sp.rsi[sp.rsi.length - 1];
+      const up = last != null && last >= 50;
+      tiles.push({
+        name: 'RSI (21)', value: last != null ? last.toFixed(0) : '—', cls: up ? 'up' : 'down',
+        svg: '<path d="' + sparkLinePath(sp.rsi, W, H, 0, 100) + '" fill="none" stroke="' + (up?buy:sell) + '" stroke-width="1.5"/>',
+      });
+    }
+    // MACD histogram: bars colored per sign.
+    {
+      const last = sp.macdHistogram[sp.macdHistogram.length - 1];
+      const up = last != null && last >= 0;
+      tiles.push({
+        name: 'MACD Histogram', value: last != null ? last.toFixed(2) : '—', cls: up ? 'up' : 'down',
+        svg: sparkBars(sp.macdHistogram, W, H, v => v >= 0 ? buy : sell),
+      });
+    }
+    // Volume proxy (candle range — no real tick volume for spot XAU).
+    {
+      const last = sp.range[sp.range.length - 1];
+      // sparkBars' bars grow from the vertical midline, so passing h=H*2
+      // makes mid=H — bars reach up to the full H-tall viewBox exactly.
+      tiles.push({
+        name: 'Volume (range proxy)', value: last != null ? last.toFixed(2) : '—', cls: '',
+        svg: sparkBars(sp.range, W, H * 2, gold),
+      });
+    }
+    // ATR: single line.
+    {
+      const vals = sp.atr.filter(v => v != null && isFinite(v));
+      const last = sp.atr[sp.atr.length - 1];
+      const first = sp.atr.find(v => v != null);
+      const up = last != null && first != null && last >= first;
+      const min = vals.length ? Math.min(...vals) : 0, max = vals.length ? Math.max(...vals) : 1;
+      tiles.push({
+        name: 'ATR (14)', value: last != null ? last.toFixed(2) : '—', cls: up ? 'up' : 'down',
+        svg: '<path d="' + sparkLinePath(sp.atr, W, H, min, max) + '" fill="none" stroke="' + gold + '" stroke-width="1.5"/>',
+      });
+    }
+
+    container.innerHTML = tiles.map(t =>
+      '<div class="spark-tile"><div class="spark-tile-head"><span class="spark-tile-name">' + t.name + '</span>' +
+      '<span class="spark-tile-value ' + t.cls + '">' + t.value + '</span></div>' +
+      '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none">' + t.svg + '</svg></div>'
+    ).join('');
+  }
+
   function renderResults(a, marketData){
     const isWait = String(a.recommendation).toUpperCase() === 'WAIT';
     const isBuy = !isWait && String(a.recommendation).toUpperCase().indexOf('BUY') !== -1;
@@ -1192,6 +1331,8 @@
     grid.innerHTML = indicators.map(([name,val,cls]) =>
       '<div class="indicator"><div class="indicator-name">'+name+'</div><div class="indicator-value '+cls+'">'+val+'</div></div>'
     ).join('');
+
+    renderSparklines(marketData);
 
     const badge = document.getElementById('recoBadge');
     badge.textContent = isWait ? '⏸ WAIT' : (isBuy ? '✓ BUY' : '✓ SELL');
