@@ -1330,7 +1330,8 @@
       ['Smart Money (OB/FVG)', a.smart_money||'—', ''],
       ['Supertrend', a.supertrend||'—', ''],
       ['BOS/CHoCH', a.structure_break||'—', ''],
-      ['Liquidity Sweep', a.liquidity_sweep||'—', '']
+      ['Liquidity Sweep', a.liquidity_sweep||'—', ''],
+      ['ICT (Premium/Discount/OTE)', a.ict_analysis||'—', '']
     ];
     const grid = document.getElementById('indicatorGrid');
     grid.innerHTML = indicators.map(([name,val,cls]) =>

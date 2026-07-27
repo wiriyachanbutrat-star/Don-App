@@ -402,6 +402,47 @@ function liquiditySweep(candles, wing = 3, lookback = 80, recentBars = 5) {
   return { bullish, bearish };
 }
 
+// ICT Premium/Discount + Optimal Trade Entry (OTE): the range between the
+// nearest swing high/low is treated as a dealing range. The upper half
+// ("premium") is where ICT looks to sell/short, the lower half ("discount")
+// is where it looks to buy/long, with the 61.8%-79% Fibonacci retracement of
+// that range (the "OTE zone") marking the specific pullback entry pocket
+// after an impulsive move, rather than just "somewhere in the discount half".
+function ictZones(swing, currentPrice) {
+  if (!swing || !swing.high || !swing.low) return null;
+  const high = Math.max(swing.high.price, swing.low.price);
+  const low = Math.min(swing.high.price, swing.low.price);
+  const range = high - low;
+  if (!(range > 0)) return null;
+  const eq = (high + low) / 2;
+  // A small buffer around eq so prices right on the midpoint read as
+  // "equilibrium" rather than flipping premium/discount on tiny noise.
+  const buffer = range * 0.05;
+  const zone = currentPrice > eq + buffer ? 'premium' : currentPrice < eq - buffer ? 'discount' : 'equilibrium';
+  // Pullback-to-buy zone after an up-leg (low -> high): 61.8%-79% retracement
+  // measured down from the high.
+  const oteBuyZone = { low: high - range * 0.79, high: high - range * 0.618 };
+  // Pullback-to-sell zone after a down-leg (high -> low): 61.8%-79%
+  // retracement measured up from the low.
+  const oteSellZone = { low: low + range * 0.618, high: low + range * 0.79 };
+  const inOteBuy = currentPrice >= oteBuyZone.low && currentPrice <= oteBuyZone.high;
+  const inOteSell = currentPrice >= oteSellZone.low && currentPrice <= oteSellZone.high;
+  return { high, low, eq, zone, oteBuyZone, oteSellZone, inOteBuy, inOteSell };
+}
+
+// ICT Killzones: specific UTC session windows (London open, New York open,
+// the Asian session) where ICT concentrates entries because that's when
+// institutional volume/liquidity is highest — informational context for the
+// AI prompt, not a hard trade gate, since gold/BTC can still move outside
+// these windows.
+function ictKillzone(timeStr) {
+  const hour = new Date(timeStr).getUTCHours();
+  if (hour >= 0 && hour < 3) return 'Asian Killzone (00:00-03:00 UTC)';
+  if (hour >= 7 && hour < 10) return 'London Killzone (07:00-10:00 UTC)';
+  if (hour >= 12 && hour < 15) return 'New York Killzone (12:00-15:00 UTC)';
+  return null;
+}
+
 // Per-asset gating: BTC swings faster and whipsaws more than XAU on the same
 // indicators, so it needs a stronger trend (higher ADX gate) and a higher
 // bar of confluence (higher strong-signal fraction, and tradable requires
@@ -495,7 +536,19 @@ function computeSignalScore(m) {
     else { reasons.push('No RSI divergence (0)'); }
   }
 
-  const maxScore = 6 + (m.divergence ? 1 : 0) + (m.liquiditySweep ? 1 : 0);
+  // ICT Optimal Trade Entry: being inside the 61.8-79% pullback pocket of the
+  // last swing leg is treated as its own confluence vote, separate from the
+  // premium/discount half-range check below — OTE is a tighter, higher-
+  // conviction entry pocket than simply "somewhere in the discount half".
+  if (m.ict) {
+    if (m.ict.inOteBuy) { score += 1; reasons.push('ราคาอยู่ใน ICT OTE zone (61.8-79% retracement) ฝั่งซื้อ (+1 buy)'); }
+    else if (m.ict.inOteSell) { score -= 1; reasons.push('ราคาอยู่ใน ICT OTE zone (61.8-79% retracement) ฝั่งขาย (+1 sell)'); }
+    else if (m.ict.zone === 'discount') { score += 1; reasons.push('ราคาอยู่โซน Discount ของ dealing range (+1 buy)'); }
+    else if (m.ict.zone === 'premium') { score -= 1; reasons.push('ราคาอยู่โซน Premium ของ dealing range (+1 sell)'); }
+    else { reasons.push('ราคาอยู่โซน Equilibrium (0)'); }
+  }
+
+  const maxScore = 6 + (m.divergence ? 1 : 0) + (m.liquiditySweep ? 1 : 0) + (m.ict ? 1 : 0);
   const direction = score > 0 ? 'BUY' : score < 0 ? 'SELL' : null;
   const against200 = ema200Direction != null && direction != null && direction !== ema200Direction;
   if (against200) { reasons.push(`=> ทิศทาง ${direction} สวนทาง EMA200 (long-term trend) — ต้องใช้ threshold สูงขึ้นจึงจะถือว่าสัญญาณแรง`); }
@@ -733,6 +786,7 @@ async function getMarketDataPayload(assetKey, interval) {
     const macdResult = macd(closes);
     const rsiSeriesFull = rsiSeries(closes, 21);
     const atrSeriesFull = atrSeries(candles);
+    const swingResult = swingPoints(candles);
 
     const payload = {
       symbol: asset.symbol,
@@ -765,7 +819,7 @@ async function getMarketDataPayload(assetKey, interval) {
         range: candles.slice(-30).map(c => c.high - c.low), // volume proxy (no real tick volume for spot XAU)
       },
       stochastic: stochasticOscillator(candles),
-      swing: swingPoints(candles),
+      swing: swingResult,
       volatility: volatilityStats(candles),
       pivot: pivotPoints(candles),
       vwap: vwap(candles.slice(-30)),
@@ -775,6 +829,8 @@ async function getMarketDataPayload(assetKey, interval) {
       supertrend: supertrend(candles),
       structure: structureBreak(candles),
       liquiditySweep: liquiditySweep(candles),
+      ict: ictZones(swingResult, currentPrice),
+      ictKillzone: ictKillzone(candles[candles.length - 1].time),
       higherTimeframe: {
         interval: higherInterval,
         trend: higherTrend,
@@ -1146,7 +1202,7 @@ Stochastic Oscillator: %K=${m.stochastic.k.toFixed(2)}, %D=${m.stochastic.d.toFi
 ${m.swing ? `Swing High ล่าสุด (จุดกลับตัวขาขึ้น→ลง): ${m.swing.high ? `${m.swing.high.price} (${m.swing.high.barsAgo} แท่งก่อนหน้า)` : 'ไม่พบในช่วงข้อมูล'}\nSwing Low ล่าสุด (จุดกลับตัวขาลง→ขึ้น): ${m.swing.low ? `${m.swing.low.price} (${m.swing.low.barsAgo} แท่งก่อนหน้า)` : 'ไม่พบในช่วงข้อมูล'}\n` : ''}
 ความผันผวน 20 แท่งล่าสุด: ช่วงราคาเฉลี่ย/แท่ง=${m.volatility.avgRange.toFixed(2)}, สัดส่วนตัวแท่งเทียนเฉลี่ย=${(m.volatility.avgBodyRatio*100).toFixed(1)}%
 แนวโน้มกรอบเวลาใหญ่กว่า (${m.higherTimeframe.interval}): ${m.higherTimeframe.trend} (EMA20=${m.higherTimeframe.ema20.toFixed(2)}, EMA50=${m.higherTimeframe.ema50.toFixed(2)})
-${m.pivot ? `Pivot Point: P=${m.pivot.pivot.toFixed(2)}, R1=${m.pivot.r1.toFixed(2)}, R2=${m.pivot.r2.toFixed(2)}, S1=${m.pivot.s1.toFixed(2)}, S2=${m.pivot.s2.toFixed(2)}\n` : ''}${m.vwap && m.vwap.value != null ? `VWAP${m.vwap.approx ? ' (โดยประมาณ ไม่มีข้อมูล volume จริง)' : ''}: ${m.vwap.value.toFixed(2)} (ราคาปัจจุบัน${m.currentPrice > m.vwap.value ? 'อยู่เหนือ' : 'อยู่ใต้'} VWAP)\n` : ''}${m.volumeProfile ? `Volume Profile POC${m.volumeProfile.approx ? ' (โดยประมาณจากเวลาที่ราคาพักอยู่ เพราะไม่มี volume จริง)' : ''}: ${m.volumeProfile.poc.toFixed(2)}\n` : ''}${m.divergence && (m.divergence.bullish || m.divergence.bearish) ? `Divergence: ${m.divergence.bullish ? `Bullish (ราคาทำ low ใหม่ต่ำกว่าเดิมที่ ${m.divergence.bullish.recentPrice} แต่ RSI สูงขึ้น)` : `Bearish (ราคาทำ high ใหม่สูงกว่าเดิมที่ ${m.divergence.bearish.recentPrice} แต่ RSI ต่ำลง)`}\n` : ''}${m.smc ? `Order Block: ${m.smc.bullishOB ? `Bullish OB ${m.smc.bullishOB.low.toFixed(2)}-${m.smc.bullishOB.high.toFixed(2)}` : 'ไม่พบ'} / ${m.smc.bearishOB ? `Bearish OB ${m.smc.bearishOB.low.toFixed(2)}-${m.smc.bearishOB.high.toFixed(2)}` : 'ไม่พบ'}\nFair Value Gap: ${m.smc.bullishFvg ? `Bullish FVG ${m.smc.bullishFvg.gapLow.toFixed(2)}-${m.smc.bullishFvg.gapHigh.toFixed(2)}` : 'ไม่พบ'} / ${m.smc.bearishFvg ? `Bearish FVG ${m.smc.bearishFvg.gapLow.toFixed(2)}-${m.smc.bearishFvg.gapHigh.toFixed(2)}` : 'ไม่พบ'}\n` : ''}${m.supertrend ? `Supertrend (10,3): ${m.supertrend.trend === 'up' ? 'ขาขึ้น (เขียว)' : 'ขาลง (แดง)'} เส้นอยู่ที่ ${m.supertrend.value.toFixed(2)}\n` : ''}${m.structure ? `โครงสร้างตลาด (multi-swing): ${m.structure.structure}${m.structure.event ? ` — ${m.structure.event}` : ' — ไม่มี BOS/CHoCH ใหม่'}\n` : ''}${m.liquiditySweep && (m.liquiditySweep.bullish || m.liquiditySweep.bearish) ? `Liquidity Sweep: ${m.liquiditySweep.bullish ? `กวาดใต้ swing low ${m.liquiditySweep.bullish.level.toFixed(2)} (wick ต่ำสุด ${m.liquiditySweep.bullish.wickLow.toFixed(2)}) แล้วปิดกลับเข้ากรอบ — สัญญาณ stop-hunt ฝั่งซื้อ` : `กวาดเหนือ swing high ${m.liquiditySweep.bearish.level.toFixed(2)} (wick สูงสุด ${m.liquiditySweep.bearish.wickHigh.toFixed(2)}) แล้วปิดกลับเข้ากรอบ — สัญญาณ stop-hunt ฝั่งขาย`}\n` : ''}
+${m.pivot ? `Pivot Point: P=${m.pivot.pivot.toFixed(2)}, R1=${m.pivot.r1.toFixed(2)}, R2=${m.pivot.r2.toFixed(2)}, S1=${m.pivot.s1.toFixed(2)}, S2=${m.pivot.s2.toFixed(2)}\n` : ''}${m.vwap && m.vwap.value != null ? `VWAP${m.vwap.approx ? ' (โดยประมาณ ไม่มีข้อมูล volume จริง)' : ''}: ${m.vwap.value.toFixed(2)} (ราคาปัจจุบัน${m.currentPrice > m.vwap.value ? 'อยู่เหนือ' : 'อยู่ใต้'} VWAP)\n` : ''}${m.volumeProfile ? `Volume Profile POC${m.volumeProfile.approx ? ' (โดยประมาณจากเวลาที่ราคาพักอยู่ เพราะไม่มี volume จริง)' : ''}: ${m.volumeProfile.poc.toFixed(2)}\n` : ''}${m.divergence && (m.divergence.bullish || m.divergence.bearish) ? `Divergence: ${m.divergence.bullish ? `Bullish (ราคาทำ low ใหม่ต่ำกว่าเดิมที่ ${m.divergence.bullish.recentPrice} แต่ RSI สูงขึ้น)` : `Bearish (ราคาทำ high ใหม่สูงกว่าเดิมที่ ${m.divergence.bearish.recentPrice} แต่ RSI ต่ำลง)`}\n` : ''}${m.smc ? `Order Block: ${m.smc.bullishOB ? `Bullish OB ${m.smc.bullishOB.low.toFixed(2)}-${m.smc.bullishOB.high.toFixed(2)}` : 'ไม่พบ'} / ${m.smc.bearishOB ? `Bearish OB ${m.smc.bearishOB.low.toFixed(2)}-${m.smc.bearishOB.high.toFixed(2)}` : 'ไม่พบ'}\nFair Value Gap: ${m.smc.bullishFvg ? `Bullish FVG ${m.smc.bullishFvg.gapLow.toFixed(2)}-${m.smc.bullishFvg.gapHigh.toFixed(2)}` : 'ไม่พบ'} / ${m.smc.bearishFvg ? `Bearish FVG ${m.smc.bearishFvg.gapLow.toFixed(2)}-${m.smc.bearishFvg.gapHigh.toFixed(2)}` : 'ไม่พบ'}\n` : ''}${m.supertrend ? `Supertrend (10,3): ${m.supertrend.trend === 'up' ? 'ขาขึ้น (เขียว)' : 'ขาลง (แดง)'} เส้นอยู่ที่ ${m.supertrend.value.toFixed(2)}\n` : ''}${m.structure ? `โครงสร้างตลาด (multi-swing): ${m.structure.structure}${m.structure.event ? ` — ${m.structure.event}` : ' — ไม่มี BOS/CHoCH ใหม่'}\n` : ''}${m.liquiditySweep && (m.liquiditySweep.bullish || m.liquiditySweep.bearish) ? `Liquidity Sweep: ${m.liquiditySweep.bullish ? `กวาดใต้ swing low ${m.liquiditySweep.bullish.level.toFixed(2)} (wick ต่ำสุด ${m.liquiditySweep.bullish.wickLow.toFixed(2)}) แล้วปิดกลับเข้ากรอบ — สัญญาณ stop-hunt ฝั่งซื้อ` : `กวาดเหนือ swing high ${m.liquiditySweep.bearish.level.toFixed(2)} (wick สูงสุด ${m.liquiditySweep.bearish.wickHigh.toFixed(2)}) แล้วปิดกลับเข้ากรอบ — สัญญาณ stop-hunt ฝั่งขาย`}\n` : ''}${m.ict ? `ICT Premium/Discount: dealing range ${m.ict.low.toFixed(2)}-${m.ict.high.toFixed(2)} (equilibrium=${m.ict.eq.toFixed(2)}) → ราคาปัจจุบันอยู่โซน ${m.ict.zone === 'premium' ? 'Premium (โซนขายของ ICT)' : m.ict.zone === 'discount' ? 'Discount (โซนซื้อของ ICT)' : 'Equilibrium (กึ่งกลาง ยังไม่ชัดเจน)'}\nICT OTE (Optimal Trade Entry, fib 61.8-79%): โซนซื้อ ${m.ict.oteBuyZone.low.toFixed(2)}-${m.ict.oteBuyZone.high.toFixed(2)} / โซนขาย ${m.ict.oteSellZone.low.toFixed(2)}-${m.ict.oteSellZone.high.toFixed(2)} → ${m.ict.inOteBuy ? 'ราคาปัจจุบันอยู่ใน OTE ฝั่งซื้อพอดี' : m.ict.inOteSell ? 'ราคาปัจจุบันอยู่ใน OTE ฝั่งขายพอดี' : 'ราคาปัจจุบันยังไม่เข้าโซน OTE'}\n` : ''}${m.ictKillzone ? `ICT Killzone ปัจจุบัน: ${m.ictKillzone} (ช่วงเวลาที่ ICT ให้น้ำหนักสภาพคล่อง/สถาบันสูงเป็นพิเศษ)\n` : ''}
 
 หน้าที่ของคุณ:
 - พิจารณาข่าวล่าสุดข้างต้นประกอบด้วย ถ้าข่าวมีผลกระทบสูงต่อทองคำ/สินทรัพย์นี้ (เช่น ผลการประชุม Fed, ตัวเลขเงินเฟ้อ, ความตึงเครียดภูมิรัฐศาสตร์) และ sentiment ขัดแย้งกับสัญญาณทางเทคนิค ให้ลด confidence_percent ลงและระบุความขัดแย้งนี้ใน reasons ห้ามให้ข่าวมีน้ำหนักเกินกว่าข้อมูลราคาจริง แต่ใช้เป็นปัจจัยเสริมความเสี่ยง
@@ -1164,6 +1220,7 @@ ${m.pivot ? `Pivot Point: P=${m.pivot.pivot.toFixed(2)}, R1=${m.pivot.r1.toFixed
 - ใช้ Supertrend ยืนยันทิศทางเทรนด์หลักเพิ่มเติมจาก EMA cascade
 - ใช้โครงสร้างตลาด BOS/CHoCH ประกอบการยืนยันว่าเทรนด์เดิมยังดำเนินต่อ (BOS) หรือมีสัญญาณกลับตัว (CHoCH)
 - ถ้ามี Liquidity Sweep ให้ถือเป็นสัญญาณ stop-hunt/reversal ที่สำคัญ (ราคาแทงทะลุ swing high/low ไปกวาดสภาพคล่องแล้วปิดกลับเข้ากรอบ) และใช้ระดับที่ถูกกวาดนั้นประกอบการวาง entry/sl
+- ใช้หลัก ICT (Inner Circle Trader): พิจารณาว่าราคาปัจจุบันอยู่โซน Premium หรือ Discount ของ dealing range (Premium=เอนเอียงหาจังหวะขาย, Discount=เอนเอียงหาจังหวะซื้อ, Equilibrium=ยังไม่ชัดเจน) และถ้าราคาอยู่ใน OTE zone (fib retracement 61.8-79% ของ swing leg ล่าสุด) ให้ถือเป็นจุดเข้าที่มีคุณภาพสูงตามหลัก ICT โดยเฉพาะเมื่อสอดคล้องกับ Order Block/FVG/Liquidity Sweep ในทิศทางเดียวกัน (confluence ของ ICT concepts หลายตัวพร้อมกัน = ความมั่นใจสูงขึ้นมาก) ถ้าอยู่ระหว่าง ICT Killzone (London/New York/Asian session) ให้ถือเป็นปัจจัยบวกเสริมความน่าเชื่อถือของสัญญาณ เพราะเป็นช่วงที่สภาพคล่องสถาบันสูง แต่ไม่ใช่เงื่อนไขบังคับ
 - ระบบต้องการ ADX>=${adxGate} จึงจะถือว่ามี edge เพียงพอให้เข้าเทรด — ถ้า ADX<${adxGate} ให้เอนเอียงไปทางแนะนำ WAIT/ลด confidence แม้สัญญาณอื่นจะดูดี${m.assetKey === 'BTC' ? ' (BTC ต้องการสัญญาณ confluence ที่ "strong" เท่านั้นจึงจะเข้าเทรด เข้มงวดกว่าทองคำเพราะราคาผันผวนและหลอกสัญญาณได้ง่ายกว่า)' : ''}
 - กำหนด entry ใกล้ราคาปัจจุบัน, tp และ sl โดยอ้างอิงแนวรับ-แนวต้านและ ATR ที่ให้มาจริง (ห้ามให้ tp/sl ขัดกับทิศทางคำแนะนำ) — ตัวเลข entry/tp/sl สุดท้ายที่ผู้ใช้เห็นจะถูกคำนวณใหม่โดยระบบด้วยสูตร SL=ATR×1.5, RR 1:3-1:5 อยู่ดี แต่ให้คุณประมาณค่าที่สมเหตุสมผลไว้ก่อนเพื่อความสอดคล้องของเหตุผลที่อธิบาย
 - risk_reward ต้องคำนวณจาก |tp-entry| ต่อ |entry-sl| ให้ตรงกับตัวเลข entry/tp/sl ที่คุณให้จริง
@@ -1201,6 +1258,7 @@ buy_probability/sell_probability ต้องรวมกันได้ 100 แ
   "supertrend": "สถานะ Supertrend เช่น ขาขึ้น (เขียว) และราคาอยู่เหนือเส้นหรือไม่",
   "structure_break": "สรุปโครงสร้างตลาดและ BOS/CHoCH ที่พบ หรือ \\"ไม่มี BOS/CHoCH ใหม่\\"",
   "liquidity_sweep": "สรุป Liquidity Sweep ที่พบ (ระดับที่ถูกกวาดและทิศทาง reversal) หรือ \\"ไม่พบ\\"",
+  "ict_analysis": "สรุปหลัก ICT: โซน Premium/Discount/Equilibrium ปัจจุบัน, อยู่ใน OTE zone หรือไม่, และอยู่ใน Killzone ช่วงไหนหรือไม่ พร้อมนัยต่อ entry/tp/sl",
   "news_summary": "สรุปข่าวสำคัญที่มีผลต่อการตัดสินใจสั้นๆ ภาษาไทย และว่าสอดคล้องหรือขัดแย้งกับสัญญาณเทคนิค (ถ้าไม่มีข่าวสำคัญ ให้ตอบว่า \\"ไม่มีข่าวสำคัญ\\")",
   "entry": ราคาตัวเลข,
   "tp": ราคาตัวเลข,
