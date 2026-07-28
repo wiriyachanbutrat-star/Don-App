@@ -164,16 +164,6 @@ function sma(values, period) {
   return out;
 }
 
-function bollingerBands(closes, period = 20, mult = 2) {
-  const middle = sma(closes, period);
-  const idx = closes.length - 1;
-  const mid = middle[idx];
-  const slice = closes.slice(idx - period + 1, idx + 1);
-  const variance = slice.reduce((acc, v) => acc + Math.pow(v - mid, 2), 0) / period;
-  const stdDev = Math.sqrt(variance);
-  return { middle: mid, upper: mid + mult * stdDev, lower: mid - mult * stdDev, stdDev };
-}
-
 function atr(candles, period = 14) {
   const trs = [];
   for (let i = 1; i < candles.length; i++) {
@@ -430,19 +420,6 @@ function ictZones(swing, currentPrice) {
   return { high, low, eq, zone, oteBuyZone, oteSellZone, inOteBuy, inOteSell };
 }
 
-// ICT Killzones: specific UTC session windows (London open, New York open,
-// the Asian session) where ICT concentrates entries because that's when
-// institutional volume/liquidity is highest — informational context for the
-// AI prompt, not a hard trade gate, since gold/BTC can still move outside
-// these windows.
-function ictKillzone(timeStr) {
-  const hour = new Date(timeStr).getUTCHours();
-  if (hour >= 0 && hour < 3) return 'Asian Killzone (00:00-03:00 UTC)';
-  if (hour >= 7 && hour < 10) return 'London Killzone (07:00-10:00 UTC)';
-  if (hour >= 12 && hour < 15) return 'New York Killzone (12:00-15:00 UTC)';
-  return null;
-}
-
 // Per-asset gating: BTC swings faster and whipsaws more than XAU on the same
 // indicators, so it needs a stronger trend (higher ADX gate) and a higher
 // bar of confluence (higher strong-signal fraction, and tradable requires
@@ -576,59 +553,6 @@ function computeSignalScore(m) {
   if (waitReason) reasons.push(`=> WAIT: ${waitReason}`);
 
   return { score, direction, strong, strongThreshold, against200, reasons, maxScore, tradable, waitReason, adx: m.adx };
-}
-
-// Classical (Floor Trader) pivot points computed from the prior period's H/L/C.
-// Gives static support/resistance levels independent of the lookback-window
-// max/min used elsewhere, useful for day-trading style entries.
-function pivotPoints(candles) {
-  if (candles.length < 2) return null;
-  const prev = candles[candles.length - 2];
-  const pivot = (prev.high + prev.low + prev.close) / 3;
-  const r1 = 2 * pivot - prev.low;
-  const s1 = 2 * pivot - prev.high;
-  const r2 = pivot + (prev.high - prev.low);
-  const s2 = pivot - (prev.high - prev.low);
-  return { pivot, r1, r2, s1, s2 };
-}
-
-// VWAP anchored to the visible window. Twelve Data doesn't return real volume
-// for spot FX/metals, so when volume is missing/zero for every candle we fall
-// back to an unweighted typical-price average and flag it as an approximation
-// rather than silently pretending it's volume-weighted.
-function vwap(candles) {
-  const hasVolume = candles.some(c => c.volume > 0);
-  let cumPV = 0, cumV = 0;
-  for (const c of candles) {
-    const typical = (c.high + c.low + c.close) / 3;
-    const w = hasVolume ? c.volume : 1;
-    cumPV += typical * w;
-    cumV += w;
-  }
-  return { value: cumV > 0 ? cumPV / cumV : null, approx: !hasVolume };
-}
-
-// Volume Profile Point of Control: the price bucket with the most traded
-// volume (or, without real volume data, the most time spent) over the window.
-// Falls back to a time-at-price proxy for the same reason as vwap() above.
-function volumeProfile(candles, buckets = 20) {
-  const hasVolume = candles.some(c => c.volume > 0);
-  const highs = candles.map(c => c.high);
-  const lows = candles.map(c => c.low);
-  const max = Math.max(...highs);
-  const min = Math.min(...lows);
-  if (!(max > min)) return null;
-  const bucketSize = (max - min) / buckets;
-  const weights = new Array(buckets).fill(0);
-  for (const c of candles) {
-    const typical = (c.high + c.low + c.close) / 3;
-    const idx = Math.min(buckets - 1, Math.max(0, Math.floor((typical - min) / bucketSize)));
-    weights[idx] += hasVolume ? c.volume : 1;
-  }
-  let pocIdx = 0;
-  for (let i = 1; i < buckets; i++) if (weights[i] > weights[pocIdx]) pocIdx = i;
-  const poc = min + bucketSize * (pocIdx + 0.5);
-  return { poc, approx: !hasVolume };
 }
 
 // Regular divergence: price makes a lower low / higher high while the
@@ -803,7 +727,6 @@ async function getMarketDataPayload(assetKey, interval) {
       ema20: ema20Series[ema20Series.length - 1],
       ema50: ema50Series[ema50Series.length - 1],
       ema200: ema200Series ? ema200Series[ema200Series.length - 1] : null,
-      bollinger: bollingerBands(closes),
       atr: atr(candles),
       adx: adx(candles),
       // Rolling series (last 30 bars) for the dashboard's sparkline tiles —
@@ -821,16 +744,12 @@ async function getMarketDataPayload(assetKey, interval) {
       stochastic: stochasticOscillator(candles),
       swing: swingResult,
       volatility: volatilityStats(candles),
-      pivot: pivotPoints(candles),
-      vwap: vwap(candles.slice(-30)),
-      volumeProfile: volumeProfile(candles.slice(-60)),
       divergence: detectDivergence(candles, closes),
       smc: orderBlocksAndFvg(candles),
       supertrend: supertrend(candles),
       structure: structureBreak(candles),
       liquiditySweep: liquiditySweep(candles),
       ict: ictZones(swingResult, currentPrice),
-      ictKillzone: ictKillzone(candles[candles.length - 1].time),
       higherTimeframe: {
         interval: higherInterval,
         trend: higherTrend,
@@ -1199,21 +1118,19 @@ RSI (14): ${m.rsi.toFixed(2)}
 MACD: macd=${m.macd.macd.toFixed(4)}, signal=${m.macd.signal.toFixed(4)}, histogram=${m.macd.histogram.toFixed(4)}
 EMA20: ${m.ema20.toFixed(2)}
 EMA50: ${m.ema50.toFixed(2)}
-${m.ema200 != null ? `EMA200: ${m.ema200.toFixed(2)}\n` : ''}Bollinger Bands (20,2): upper=${m.bollinger.upper.toFixed(2)}, middle=${m.bollinger.middle.toFixed(2)}, lower=${m.bollinger.lower.toFixed(2)}
-ATR (14): ${m.atr.toFixed(2)} (วัดความผันผวนเฉลี่ยต่อแท่ง)
+${m.ema200 != null ? `EMA200: ${m.ema200.toFixed(2)}\n` : ''}ATR (14): ${m.atr.toFixed(2)} (วัดความผันผวนเฉลี่ยต่อแท่ง)
 ${m.adx != null ? `ADX (14): ${m.adx.toFixed(1)} (ระบบนี้ต้องการ ADX>=${adxGate} จึงจะถือว่าเทรนด์แข็งแรงพอให้เข้าเทรด ต่ำกว่านั้น=ไซด์เวย์)\n` : ''}
 Stochastic Oscillator: %K=${m.stochastic.k.toFixed(2)}, %D=${m.stochastic.d.toFixed(2)}
 ${m.swing ? `Swing High ล่าสุด (จุดกลับตัวขาขึ้น→ลง): ${m.swing.high ? `${m.swing.high.price} (${m.swing.high.barsAgo} แท่งก่อนหน้า)` : 'ไม่พบในช่วงข้อมูล'}\nSwing Low ล่าสุด (จุดกลับตัวขาลง→ขึ้น): ${m.swing.low ? `${m.swing.low.price} (${m.swing.low.barsAgo} แท่งก่อนหน้า)` : 'ไม่พบในช่วงข้อมูล'}\n` : ''}
 ความผันผวน 20 แท่งล่าสุด: ช่วงราคาเฉลี่ย/แท่ง=${m.volatility.avgRange.toFixed(2)}, สัดส่วนตัวแท่งเทียนเฉลี่ย=${(m.volatility.avgBodyRatio*100).toFixed(1)}%
 แนวโน้มกรอบเวลาใหญ่กว่า (${m.higherTimeframe.interval}): ${m.higherTimeframe.trend} (EMA20=${m.higherTimeframe.ema20.toFixed(2)}, EMA50=${m.higherTimeframe.ema50.toFixed(2)})
-${m.pivot ? `Pivot Point: P=${m.pivot.pivot.toFixed(2)}, R1=${m.pivot.r1.toFixed(2)}, R2=${m.pivot.r2.toFixed(2)}, S1=${m.pivot.s1.toFixed(2)}, S2=${m.pivot.s2.toFixed(2)}\n` : ''}${m.vwap && m.vwap.value != null ? `VWAP${m.vwap.approx ? ' (โดยประมาณ ไม่มีข้อมูล volume จริง)' : ''}: ${m.vwap.value.toFixed(2)} (ราคาปัจจุบัน${m.currentPrice > m.vwap.value ? 'อยู่เหนือ' : 'อยู่ใต้'} VWAP)\n` : ''}${m.volumeProfile ? `Volume Profile POC${m.volumeProfile.approx ? ' (โดยประมาณจากเวลาที่ราคาพักอยู่ เพราะไม่มี volume จริง)' : ''}: ${m.volumeProfile.poc.toFixed(2)}\n` : ''}${m.divergence && (m.divergence.bullish || m.divergence.bearish) ? `Divergence: ${m.divergence.bullish ? `Bullish (ราคาทำ low ใหม่ต่ำกว่าเดิมที่ ${m.divergence.bullish.recentPrice} แต่ RSI สูงขึ้น)` : `Bearish (ราคาทำ high ใหม่สูงกว่าเดิมที่ ${m.divergence.bearish.recentPrice} แต่ RSI ต่ำลง)`}\n` : ''}${m.smc ? `Order Block: ${m.smc.bullishOB ? `Bullish OB ${m.smc.bullishOB.low.toFixed(2)}-${m.smc.bullishOB.high.toFixed(2)}` : 'ไม่พบ'} / ${m.smc.bearishOB ? `Bearish OB ${m.smc.bearishOB.low.toFixed(2)}-${m.smc.bearishOB.high.toFixed(2)}` : 'ไม่พบ'}\nFair Value Gap: ${m.smc.bullishFvg ? `Bullish FVG ${m.smc.bullishFvg.gapLow.toFixed(2)}-${m.smc.bullishFvg.gapHigh.toFixed(2)}` : 'ไม่พบ'} / ${m.smc.bearishFvg ? `Bearish FVG ${m.smc.bearishFvg.gapLow.toFixed(2)}-${m.smc.bearishFvg.gapHigh.toFixed(2)}` : 'ไม่พบ'}\n` : ''}${m.supertrend ? `Supertrend (10,3): ${m.supertrend.trend === 'up' ? 'ขาขึ้น (เขียว)' : 'ขาลง (แดง)'} เส้นอยู่ที่ ${m.supertrend.value.toFixed(2)}\n` : ''}${m.structure ? `โครงสร้างตลาด (multi-swing): ${m.structure.structure}${m.structure.event ? ` — ${m.structure.event}` : ' — ไม่มี BOS/CHoCH ใหม่'}\n` : ''}${m.liquiditySweep && (m.liquiditySweep.bullish || m.liquiditySweep.bearish) ? `Liquidity Sweep: ${m.liquiditySweep.bullish ? `กวาดใต้ swing low ${m.liquiditySweep.bullish.level.toFixed(2)} (wick ต่ำสุด ${m.liquiditySweep.bullish.wickLow.toFixed(2)}) แล้วปิดกลับเข้ากรอบ — สัญญาณ stop-hunt ฝั่งซื้อ` : `กวาดเหนือ swing high ${m.liquiditySweep.bearish.level.toFixed(2)} (wick สูงสุด ${m.liquiditySweep.bearish.wickHigh.toFixed(2)}) แล้วปิดกลับเข้ากรอบ — สัญญาณ stop-hunt ฝั่งขาย`}\n` : ''}${m.ict ? `ICT Premium/Discount: dealing range ${m.ict.low.toFixed(2)}-${m.ict.high.toFixed(2)} (equilibrium=${m.ict.eq.toFixed(2)}) → ราคาปัจจุบันอยู่โซน ${m.ict.zone === 'premium' ? 'Premium (โซนขายของ ICT)' : m.ict.zone === 'discount' ? 'Discount (โซนซื้อของ ICT)' : 'Equilibrium (กึ่งกลาง ยังไม่ชัดเจน)'}\nICT OTE (Optimal Trade Entry, fib 61.8-79%): โซนซื้อ ${m.ict.oteBuyZone.low.toFixed(2)}-${m.ict.oteBuyZone.high.toFixed(2)} / โซนขาย ${m.ict.oteSellZone.low.toFixed(2)}-${m.ict.oteSellZone.high.toFixed(2)} → ${m.ict.inOteBuy ? 'ราคาปัจจุบันอยู่ใน OTE ฝั่งซื้อพอดี' : m.ict.inOteSell ? 'ราคาปัจจุบันอยู่ใน OTE ฝั่งขายพอดี' : 'ราคาปัจจุบันยังไม่เข้าโซน OTE'}\n` : ''}${m.ictKillzone ? `ICT Killzone ปัจจุบัน: ${m.ictKillzone} (ช่วงเวลาที่ ICT ให้น้ำหนักสภาพคล่อง/สถาบันสูงเป็นพิเศษ)\n` : ''}
+${m.divergence && (m.divergence.bullish || m.divergence.bearish) ? `Divergence: ${m.divergence.bullish ? `Bullish (ราคาทำ low ใหม่ต่ำกว่าเดิมที่ ${m.divergence.bullish.recentPrice} แต่ RSI สูงขึ้น)` : `Bearish (ราคาทำ high ใหม่สูงกว่าเดิมที่ ${m.divergence.bearish.recentPrice} แต่ RSI ต่ำลง)`}\n` : ''}${m.smc ? `Order Block: ${m.smc.bullishOB ? `Bullish OB ${m.smc.bullishOB.low.toFixed(2)}-${m.smc.bullishOB.high.toFixed(2)}` : 'ไม่พบ'} / ${m.smc.bearishOB ? `Bearish OB ${m.smc.bearishOB.low.toFixed(2)}-${m.smc.bearishOB.high.toFixed(2)}` : 'ไม่พบ'}\nFair Value Gap: ${m.smc.bullishFvg ? `Bullish FVG ${m.smc.bullishFvg.gapLow.toFixed(2)}-${m.smc.bullishFvg.gapHigh.toFixed(2)}` : 'ไม่พบ'} / ${m.smc.bearishFvg ? `Bearish FVG ${m.smc.bearishFvg.gapLow.toFixed(2)}-${m.smc.bearishFvg.gapHigh.toFixed(2)}` : 'ไม่พบ'}\n` : ''}${m.supertrend ? `Supertrend (10,3): ${m.supertrend.trend === 'up' ? 'ขาขึ้น (เขียว)' : 'ขาลง (แดง)'} เส้นอยู่ที่ ${m.supertrend.value.toFixed(2)}\n` : ''}${m.structure ? `โครงสร้างตลาด (multi-swing): ${m.structure.structure}${m.structure.event ? ` — ${m.structure.event}` : ' — ไม่มี BOS/CHoCH ใหม่'}\n` : ''}${m.liquiditySweep && (m.liquiditySweep.bullish || m.liquiditySweep.bearish) ? `Liquidity Sweep: ${m.liquiditySweep.bullish ? `กวาดใต้ swing low ${m.liquiditySweep.bullish.level.toFixed(2)} (wick ต่ำสุด ${m.liquiditySweep.bullish.wickLow.toFixed(2)}) แล้วปิดกลับเข้ากรอบ — สัญญาณ stop-hunt ฝั่งซื้อ` : `กวาดเหนือ swing high ${m.liquiditySweep.bearish.level.toFixed(2)} (wick สูงสุด ${m.liquiditySweep.bearish.wickHigh.toFixed(2)}) แล้วปิดกลับเข้ากรอบ — สัญญาณ stop-hunt ฝั่งขาย`}\n` : ''}${m.ict ? `ICT Premium/Discount: dealing range ${m.ict.low.toFixed(2)}-${m.ict.high.toFixed(2)} (equilibrium=${m.ict.eq.toFixed(2)}) → ราคาปัจจุบันอยู่โซน ${m.ict.zone === 'premium' ? 'Premium (โซนขายของ ICT)' : m.ict.zone === 'discount' ? 'Discount (โซนซื้อของ ICT)' : 'Equilibrium (กึ่งกลาง ยังไม่ชัดเจน)'}\nICT OTE (Optimal Trade Entry, fib 61.8-79%): โซนซื้อ ${m.ict.oteBuyZone.low.toFixed(2)}-${m.ict.oteBuyZone.high.toFixed(2)} / โซนขาย ${m.ict.oteSellZone.low.toFixed(2)}-${m.ict.oteSellZone.high.toFixed(2)} → ${m.ict.inOteBuy ? 'ราคาปัจจุบันอยู่ใน OTE ฝั่งซื้อพอดี' : m.ict.inOteSell ? 'ราคาปัจจุบันอยู่ใน OTE ฝั่งขายพอดี' : 'ราคาปัจจุบันยังไม่เข้าโซน OTE'}\n` : ''}
 
 หน้าที่ของคุณ:
 - ก่อนสรุปคำแนะนำ ให้ทวนรายการอินดิเคเตอร์ทั้งหมดข้างต้นทีละตัวในใจว่าแต่ละตัวเอนไปทาง BUY, SELL หรือเป็นกลาง แล้วตรวจสอบว่าคำแนะนำสุดท้ายสอดคล้องกับเสียงส่วนใหญ่จริงหรือไม่ ถ้ามีอินดิเคเตอร์สำคัญ (เช่น เทรนด์กรอบเวลาใหญ่, ADX, ICT zone) ขัดแย้งกับคำแนะนำที่จะให้ ต้องลด confidence_percent ลงและระบุความขัดแย้งนั้นใน reasons อย่างตรงไปตรงมา ห้ามเลือกหยิบเฉพาะอินดิเคเตอร์ที่สนับสนุนทิศทางที่อยากแนะนำ (cherry-picking)
 - พิจารณาข่าวล่าสุดข้างต้นประกอบด้วย ถ้าข่าวมีผลกระทบสูงต่อทองคำ/สินทรัพย์นี้ (เช่น ผลการประชุม Fed, ตัวเลขเงินเฟ้อ, ความตึงเครียดภูมิรัฐศาสตร์) และ sentiment ขัดแย้งกับสัญญาณทางเทคนิค ให้ลด confidence_percent ลงและระบุความขัดแย้งนี้ใน reasons ห้ามให้ข่าวมีน้ำหนักเกินกว่าข้อมูลราคาจริง แต่ใช้เป็นปัจจัยเสริมความเสี่ยง
 - ถ้ามีสถิติจุดที่เคยแพ้บ่อยด้านบน และสถานการณ์ปัจจุบันเข้าเงื่อนไขเดียวกัน ให้ลด confidence_percent ลงและเตือนไว้ใน reasons อย่างชัดเจน
 - สรุปแนวโน้ม (trend) และ pattern จากข้อมูลข้างต้นเท่านั้น โดยพิจารณาแนวโน้มกรอบเวลาใหญ่กว่าประกอบด้วยเสมอ (ถ้าแนวโน้มเล็กสวนทางกับแนวโน้มใหญ่ ถือเป็นสัญญาณขัดแย้งที่ต้องลด confidence)
-- ใช้ Bollinger Bands ประเมินว่าราคาอยู่ใกล้ขอบบน/ล่าง/กลาง (โซน overbought/oversold หรือ breakout)
 - ใช้ ATR และความผันผวนเฉลี่ยประกอบการประเมินความเสี่ยง และช่วยกำหนดระยะ tp/sl ให้สมเหตุสมผลกับความผันผวนจริง (อย่าตั้ง sl แคบกว่า ATR มากเกินไป)
 - ใช้ Stochastic Oscillator (%K, %D) ยืนยันโซน overbought (>80) / oversold (<20) และสัญญาณ crossover
 - ใช้ Swing High/Low ประเมินโครงสร้างตลาด (higher high/higher low = ขาขึ้น, lower high/lower low = ขาลง) และใช้เป็นแนวรับ-แนวต้านระยะสั้นประกอบการวาง tp/sl
@@ -1229,7 +1146,7 @@ ${m.pivot ? `Pivot Point: P=${m.pivot.pivot.toFixed(2)}, R1=${m.pivot.r1.toFixed
 - ระบบต้องการ ADX>=${adxGate} จึงจะถือว่ามี edge เพียงพอให้เข้าเทรด — ถ้า ADX<${adxGate} ให้เอนเอียงไปทางแนะนำ WAIT/ลด confidence แม้สัญญาณอื่นจะดูดี${m.assetKey === 'BTC' ? ' (BTC ต้องการสัญญาณ confluence ที่ "strong" เท่านั้นจึงจะเข้าเทรด เข้มงวดกว่าทองคำเพราะราคาผันผวนและหลอกสัญญาณได้ง่ายกว่า)' : ''}
 - กำหนด entry ใกล้ราคาปัจจุบัน, tp และ sl โดยอ้างอิงแนวรับ-แนวต้านและ ATR ที่ให้มาจริง (ห้ามให้ tp/sl ขัดกับทิศทางคำแนะนำ) — ตัวเลข entry/tp/sl สุดท้ายที่ผู้ใช้เห็นจะถูกคำนวณใหม่โดยระบบด้วยสูตร SL=ATR×1.5, RR 1:3-1:5 อยู่ดี แต่ให้คุณประมาณค่าที่สมเหตุสมผลไว้ก่อนเพื่อความสอดคล้องของเหตุผลที่อธิบาย
 - risk_reward ต้องคำนวณจาก |tp-entry| ต่อ |entry-sl| ให้ตรงกับตัวเลข entry/tp/sl ที่คุณให้จริง
-- เขียน detailed_analysis เป็นย่อหน้าภาษาไทยอย่างละเอียด (อย่างน้อย 4-6 ประโยค) อธิบายภาพรวมทั้งหมด: โครงสร้างแนวโน้มหลัก/รอง, ตำแหน่งราคาเทียบ Bollinger Bands, โมเมนตัมจาก RSI/MACD/Stochastic, ความผันผวนจาก ATR, และเหตุผลเชิงลึกว่าทำไมจึงให้คำแนะนำ BUY/SELL นี้พร้อมความเสี่ยงที่ควรระวัง
+- เขียน detailed_analysis เป็นย่อหน้าภาษาไทยอย่างละเอียด (อย่างน้อย 4-6 ประโยค) อธิบายภาพรวมทั้งหมด: โครงสร้างแนวโน้มหลัก/รอง, โมเมนตัมจาก RSI/MACD/Stochastic, ความผันผวนจาก ATR, และเหตุผลเชิงลึกว่าทำไมจึงให้คำแนะนำ BUY/SELL นี้พร้อมความเสี่ยงที่ควรระวัง
 
 กติกาการให้คะแนน confidence_percent (0-100) พิจารณาจาก "ความสอดคล้องกัน" ของสัญญาณทั้งหมดข้างต้น:
 - ถ้า trend, RSI, MACD, EMA20/50 และแท่งเทียนขึ้น/ลง ทุกตัวชี้ไปทิศทางเดียวกันอย่างชัดเจน (confluence สูง) ให้ confidence_percent อยู่ในช่วง 90-99
@@ -1251,13 +1168,9 @@ buy_probability/sell_probability ต้องรวมกันได้ 100 แ
   "ema_relation": "ความสัมพันธ์ EMA20/50 เช่น EMA20 > EMA50",
   "ema200_relation": "${m.ema200 != null ? 'ตำแหน่งราคาเทียบ EMA200 เช่น ราคาอยู่เหนือ EMA200 (ขาขึ้นระยะยาว)' : 'ไม่มีข้อมูลเพียงพอ'}",
   "volume": "ลักษณะ momentum จากแท่งเทียนขึ้น/ลง",
-  "bollinger": "ตำแหน่งราคาเทียบ Bollinger Bands เช่น ราคาใกล้ขอบบน (overbought zone)",
   "stochastic": "สถานะ Stochastic เช่น %K ตัดขึ้นเหนือ %D ในโซน oversold",
   "swing_structure": "โครงสร้างตลาดจาก Swing High/Low เช่น Higher High / Higher Low (ขาขึ้น) พร้อมระบุราคา swing high/low ล่าสุด",
   "higher_timeframe": "สรุปแนวโน้มกรอบเวลาใหญ่กว่าและว่าสอดคล้องหรือขัดแย้งกับกรอบเวลาปัจจุบัน",
-  "pivot_point": "สรุประดับ pivot/R1/R2/S1/S2 ที่เกี่ยวข้องกับการวาง entry/tp/sl",
-  "vwap_relation": "ตำแหน่งราคาปัจจุบันเทียบ VWAP เช่น ราคาอยู่เหนือ VWAP (โน้มเอียงฝั่งซื้อ)",
-  "volume_profile": "สรุประดับ POC (Volume Profile) และนัยสำคัญต่อแนวรับ-แนวต้าน",
   "divergence": "สรุป divergence ที่พบ (bullish/bearish) หรือ \\"ไม่พบ divergence\\"",
   "smart_money": "สรุป Order Block และ Fair Value Gap ที่พบและนัยต่อ entry/tp/sl หรือ \\"ไม่พบ\\"",
   "supertrend": "สถานะ Supertrend เช่น ขาขึ้น (เขียว) และราคาอยู่เหนือเส้นหรือไม่",
