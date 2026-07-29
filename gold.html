@@ -394,6 +394,7 @@
 
   <div class="ticker">
     <span><span class="dot"></span><span id="tickerLabel">XAUUSD LIVE</span></span>
+    <span id="syncStatus" style="display:none; color:var(--wait-bright, #d9a441);"></span>
     <span id="clock">--:--:--</span>
   </div>
 
@@ -646,6 +647,8 @@
   assetSelect.addEventListener('change', applyAssetUI);
   intervalSelect.addEventListener('change', runQuickCheck);
   applyAssetUI();
+  updateSyncStatusUI();
+  if(navigator.onLine) retryPendingSyncs(); // flush anything left pending from a previous offline session
 
   // Free pre-check (no AI call, just the deterministic indicator gate) so
   // someone can glance at "เทรดได้ตอนนี้"/"รอก่อน" before spending a Claude
@@ -871,19 +874,66 @@
   function saveHistory(list){
     const trimmed = list.slice(-50);
     localStorage.setItem(historyKey(), JSON.stringify(trimmed));
-    syncHistoryToSheet(trimmed);
+    syncHistoryToSheet(trimmed, currentAsset);
   }
 
   // ---- Google Sheet sync (Apps Script Web App) ----
   const SHEET_WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbxiPj9PBqUrF0eCnT7keL5By2kVIUqrA30RGXEbDVtsyL-cblwV8vBeXfp6atkLbXma/exec';
 
-  function syncHistoryToSheet(list){
+  // ---- Offline-safe sync: if a POST to the Apps Script webhook fails (no
+  // network, sheet unreachable), the write already landed in localStorage —
+  // mark it "pending" so it gets retried automatically once the browser
+  // fires the 'online' event, instead of silently staying out of sync with
+  // the sheet until the user happens to save something else.
+  function pendingSyncKey(kind, asset){ return 'syncPending_' + kind + (asset ? '_' + asset : ''); }
+  function markSyncPending(kind, asset){ localStorage.setItem(pendingSyncKey(kind, asset), '1'); updateSyncStatusUI(); }
+  function clearSyncPending(kind, asset){ localStorage.removeItem(pendingSyncKey(kind, asset)); updateSyncStatusUI(); }
+  function hasSyncPending(){
+    for(let i = 0; i < localStorage.length; i++){
+      if((localStorage.key(i) || '').indexOf('syncPending_') === 0) return true;
+    }
+    return false;
+  }
+  function updateSyncStatusUI(){
+    const el = document.getElementById('syncStatus');
+    if(!el) return;
+    if(!navigator.onLine){
+      el.style.display = 'inline';
+      el.textContent = '⚠ ออฟไลน์ — บันทึกไว้ในเครื่อง รอซิงค์เมื่อเน็ตกลับมา';
+    } else if(hasSyncPending()){
+      el.style.display = 'inline';
+      el.textContent = '↻ กำลังซิงค์ข้อมูลที่ค้างอยู่...';
+    } else {
+      el.style.display = 'none';
+      el.textContent = '';
+    }
+  }
+  function retryPendingSyncs(){
+    Object.keys(ASSET_META).forEach(asset => {
+      if(localStorage.getItem(pendingSyncKey('history', asset))){
+        let list = [];
+        try { list = JSON.parse(localStorage.getItem('goldAnalysisHistory_' + asset)) || []; } catch(e){}
+        syncHistoryToSheet(list, asset);
+      }
+    });
+    if(localStorage.getItem(pendingSyncKey('journal'))){
+      let list = [];
+      try { list = JSON.parse(localStorage.getItem(JOURNAL_KEY)) || []; } catch(e){}
+      syncJournalToSheet(list);
+    }
+  }
+  window.addEventListener('online', retryPendingSyncs);
+  window.addEventListener('offline', updateSyncStatusUI);
+
+  function syncHistoryToSheet(list, asset){
+    const targetAsset = asset || currentAsset;
     // text/plain avoids a CORS preflight against the Apps Script endpoint.
     fetch(SHEET_WEBHOOK_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ asset: currentAsset, rows: list }),
-    }).catch(() => {});
+      body: JSON.stringify({ asset: targetAsset, rows: list }),
+    }).then(() => clearSyncPending('history', targetAsset))
+      .catch(() => markSyncPending('history', targetAsset));
   }
 
   // The Google Sheet is the source of truth across devices — localStorage is
@@ -896,9 +946,10 @@
       const data = await res.json();
       if(data && data.ok && Array.isArray(data.rows)){
         localStorage.setItem('goldAnalysisHistory_' + asset, JSON.stringify(data.rows.slice(-50)));
+        updateSyncStatusUI();
         return true;
       }
-    } catch(e){ /* offline or webhook unreachable — fall back to local cache */ }
+    } catch(e){ updateSyncStatusUI(); /* offline or webhook unreachable — fall back to local cache */ }
     return false;
   }
 
@@ -921,7 +972,8 @@
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify({ type: 'journal', rows: list }),
-    }).catch(() => {});
+    }).then(() => clearSyncPending('journal'))
+      .catch(() => markSyncPending('journal'));
   }
   async function loadJournalFromSheet(){
     try {
@@ -929,9 +981,10 @@
       const data = await res.json();
       if(data && data.ok && Array.isArray(data.rows)){
         localStorage.setItem(JOURNAL_KEY, JSON.stringify(data.rows.slice(-200)));
+        updateSyncStatusUI();
         return true;
       }
-    } catch(e){ /* offline or webhook unreachable — fall back to local cache */ }
+    } catch(e){ updateSyncStatusUI(); /* offline or webhook unreachable — fall back to local cache */ }
     return false;
   }
   function renderJournal(){
