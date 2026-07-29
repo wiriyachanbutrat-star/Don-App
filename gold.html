@@ -411,6 +411,8 @@
     <div class="rr-line" style="margin-bottom:12px;">อัตราชนะ &nbsp;<b id="winRateVal">—</b></div>
     <ul class="reason-list" id="lossPatternList" style="gap:6px; display:none; margin-bottom:12px;"></ul>
     <ul class="reason-list" id="historyList" style="gap:8px; margin-bottom:14px;"></ul>
+    <button class="btn" id="suggestConfigBtn" type="button" style="width:100%; margin-bottom:8px;">วิเคราะห์ & แนะนำค่าตั้งค่าจากประวัติเทรด</button>
+    <div id="configSuggestionBox" style="display:none; border-radius:14px; padding:12px 14px; margin-bottom:8px; font-size:13px; line-height:1.6; background:var(--bg-panel-raised); border:1px solid var(--hairline);"></div>
     <button class="btn" id="clearHistoryBtn" type="button" style="width:100%; background:var(--sell-dim); color:var(--sell-bright);">ล้างประวัติทั้งหมด (เครื่อง + ชีต)</button>
   </div>
 
@@ -699,6 +701,49 @@
     viewUpload.style.display = 'block';
   });
 
+  document.getElementById('suggestConfigBtn').addEventListener('click', async () => {
+    const box = document.getElementById('configSuggestionBox');
+    box.style.display = 'block';
+    box.textContent = '— กำลังวิเคราะห์ประวัติเทรด...';
+    try {
+      const history = loadHistory();
+      const res = await fetch('/api/config-suggestion', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ assetKey: currentAsset, history }),
+      });
+      const data = await res.json();
+      if(!res.ok || data.error){
+        box.innerHTML = '⚠ วิเคราะห์ไม่สำเร็จ: ' + (data.error || 'ไม่ทราบสาเหตุ');
+        return;
+      }
+      if(!data.ready){
+        box.innerHTML = '— ' + data.message;
+        return;
+      }
+      const c = data.currentConfig, s = data.suggestedConfig;
+      let html = '<div style="margin-bottom:8px;">จากประวัติเทรดที่ปิดแล้ว ' + data.sampleSize + ' รายการ — win rate โดยรวม <b>' +
+        (data.overallWinRate != null ? (data.overallWinRate*100).toFixed(0)+'%' : '—') + '</b></div>';
+      if(data.changed){
+        html += '<div style="margin-bottom:8px; padding:8px 10px; border-radius:10px; background:var(--buy-dim); color:var(--buy-bright);">' +
+          '<b>แนะนำปรับค่าตั้งค่า</b><br>' +
+          'ADX gate: ' + c.adxGate + ' → <b>' + s.adxGate + '</b><br>' +
+          'strongFactor: ' + c.strongFactor + ' → <b>' + s.strongFactor + '</b><br>' +
+          'Risk:Reward: 1:' + c.rr + ' → <b>1:' + s.rr + '</b>' +
+          '</div>';
+      } else {
+        html += '<div style="margin-bottom:8px; padding:8px 10px; border-radius:10px; background:var(--hairline); color:var(--ink-dim);">ค่าตั้งค่าปัจจุบันยังเหมาะสมกับผลเทรดจริง ไม่มีคำแนะนำให้ปรับตอนนี้</div>';
+      }
+      html += '<ul class="reason-list" style="gap:4px;">' + data.reasons.map(r => '<li>' + r + '</li>').join('') + '</ul>';
+      if(data.changed){
+        html += '<div style="margin-top:8px; color:var(--ink-dim); font-size:12px;">ค่าที่แนะนำนี้ยังไม่ถูกนำไปใช้อัตโนมัติ — แจ้งผู้ดูแลระบบให้ปรับ ASSET_CONFIG ใน server.js ตามตัวเลขข้างต้นถ้าต้องการใช้จริง</div>';
+      }
+      box.innerHTML = html;
+    } catch(e){
+      box.innerHTML = '⚠ วิเคราะห์ไม่สำเร็จ — ลองใหม่อีกครั้ง';
+    }
+  });
+
   document.getElementById('clearHistoryBtn').addEventListener('click', () => {
     const meta = ASSET_META[currentAsset] || ASSET_META.XAU;
     if(!confirm('ล้างประวัติผลวิเคราะห์ของ ' + meta.title + ' ทั้งหมด (ทั้งในเครื่องนี้และในชีต Google) ใช่ไหม?')) return;
@@ -916,6 +961,7 @@
     // Snapshot of the market condition at entry, used later to spot which
     // recurring setups this system tends to lose on (see analyzeLossPatterns).
     const snapshot = marketData ? {
+      adx: marketData.adx,
       rsi: marketData.rsi,
       emaAligned: marketData.ema20 != null && marketData.ema50 != null
         ? (isBuy ? marketData.ema20 > marketData.ema50 : marketData.ema20 < marketData.ema50)

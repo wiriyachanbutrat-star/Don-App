@@ -821,6 +821,125 @@ app.get('/api/quick-check', async (req, res) => {
   }
 });
 
+// Suggests new ASSET_CONFIG thresholds (ADX gate, strong-signal fraction, RR)
+// from the client's own closed win/loss history — not a price backtest.
+// Backtesting years of historical candles would let thresholds overfit to
+// noise in the past; the trader's actual closed trades on this exact system
+// reflect current market behavior and how the tool is really being used.
+// Deterministic (no AI call) since this is plain win-rate arithmetic, not
+// reasoning — a model would just be restating the same numbers.
+const MIN_SAMPLE_FOR_SUGGESTION = 15;
+
+function winRate(records) {
+  if (!records.length) return null;
+  return records.filter(r => r.status === 'win').length / records.length;
+}
+
+app.post('/api/config-suggestion', (req, res) => {
+  const assetKey = ASSETS[req.body.assetKey] ? req.body.assetKey : 'XAU';
+  const history = Array.isArray(req.body.history) ? req.body.history : [];
+  const config = ASSET_CONFIG[assetKey] || ASSET_CONFIG.XAU;
+
+  const closed = history.filter(r => (r.status === 'win' || r.status === 'loss') && r.snapshot);
+  if (closed.length < MIN_SAMPLE_FOR_SUGGESTION) {
+    return res.json({
+      assetKey,
+      sampleSize: closed.length,
+      minSampleRequired: MIN_SAMPLE_FOR_SUGGESTION,
+      ready: false,
+      message: `มีประวัติเทรดที่ปิดแล้วแค่ ${closed.length} รายการ (ต้องการอย่างน้อย ${MIN_SAMPLE_FOR_SUGGESTION}) — ยังน้อยเกินไปที่จะแนะนำค่าตั้งค่าใหม่ได้อย่างน่าเชื่อถือ เทรดต่อไปเรื่อยๆ แล้วกลับมาเช็คอีกครั้ง`,
+    });
+  }
+
+  const overall = winRate(closed);
+  const strongRecords = closed.filter(r => r.snapshot.signalStrong === true);
+  const weakRecords = closed.filter(r => r.snapshot.signalStrong === false);
+  const strongWinRate = winRate(strongRecords);
+  const weakWinRate = winRate(weakRecords);
+
+  // ADX buckets around the current gate, so the suggestion is grounded in
+  // "what actually happened in each band" rather than a single average.
+  const adxRecords = closed.filter(r => isFinite(r.snapshot.adx));
+  const bucketDefs = [
+    { label: `<${config.adxGate}`, match: v => v < config.adxGate },
+    { label: `${config.adxGate}-${config.adxGate + 5}`, match: v => v >= config.adxGate && v < config.adxGate + 5 },
+    { label: `${config.adxGate + 5}-${config.adxGate + 10}`, match: v => v >= config.adxGate + 5 && v < config.adxGate + 10 },
+    { label: `>=${config.adxGate + 10}`, match: v => v >= config.adxGate + 10 },
+  ];
+  const adxBuckets = bucketDefs.map(b => {
+    const records = adxRecords.filter(r => b.match(r.snapshot.adx));
+    return { range: b.label, count: records.length, winRate: winRate(records) };
+  }).filter(b => b.count > 0);
+
+  const reasons = [];
+  const suggestion = { adxGate: config.adxGate, strongFactor: config.strongFactor, rr: config.rr };
+
+  // If non-strong setups are meaningfully worse than strong ones, the
+  // strong-signal fraction is doing its job — no change needed there. If
+  // they're about the same, the current fraction isn't actually filtering
+  // anything, so raise the bar. Require both buckets to have enough samples
+  // before comparing, otherwise the gap is just noise.
+  if (strongRecords.length >= 5 && weakRecords.length >= 5) {
+    if (strongWinRate - weakWinRate < 0.05) {
+      suggestion.strongFactor = Math.min(config.strongFactor + 0.1, 0.85);
+      reasons.push(`สัญญาณ "strong" (win rate ${(strongWinRate * 100).toFixed(0)}%) กับ "ไม่ strong" (win rate ${(weakWinRate * 100).toFixed(0)}%) ผลใกล้เคียงกันมาก — เกณฑ์ strong ปัจจุบันไม่ได้กรองอะไรจริงๆ แนะนำปรับ strongFactor จาก ${config.strongFactor} เป็น ${suggestion.strongFactor.toFixed(2)} ให้เข้มขึ้น`);
+    } else {
+      reasons.push(`สัญญาณ "strong" (win rate ${(strongWinRate * 100).toFixed(0)}%) ดีกว่า "ไม่ strong" (win rate ${(weakWinRate * 100).toFixed(0)}%) ชัดเจน — เกณฑ์ strongFactor ปัจจุบัน (${config.strongFactor}) ใช้ได้ดีอยู่แล้ว ไม่ต้องปรับ`);
+    }
+  } else {
+    reasons.push(`ยังมีข้อมูลไม่พอแยกเปรียบเทียบ strong vs ไม่ strong (strong=${strongRecords.length}, ไม่strong=${weakRecords.length} รายการ ต้องการอย่างน้อยฝั่งละ 5)`);
+  }
+
+  // If trades taken right at/just above the current ADX gate lose more than
+  // trades taken well above it, the gate itself is too loose.
+  const nearGateBucket = adxBuckets.find(b => b.range === `${config.adxGate}-${config.adxGate + 5}`);
+  const wellAboveBucket = adxBuckets.find(b => b.range === `${config.adxGate + 5}-${config.adxGate + 10}` || b.range === `>=${config.adxGate + 10}`);
+  if (nearGateBucket && wellAboveBucket && nearGateBucket.count >= 5 && wellAboveBucket.count >= 5) {
+    if (wellAboveBucket.winRate - nearGateBucket.winRate > 0.15) {
+      suggestion.adxGate = config.adxGate + 5;
+      reasons.push(`เทรดที่ ADX อยู่โซน ${nearGateBucket.range} (win rate ${(nearGateBucket.winRate * 100).toFixed(0)}%) แพ้บ่อยกว่าเทรดที่ ADX สูงกว่า (win rate ${(wellAboveBucket.winRate * 100).toFixed(0)}%) มาก — แนะนำยก ADX gate จาก ${config.adxGate} เป็น ${suggestion.adxGate}`);
+    } else {
+      reasons.push(`เทรดใกล้เกณฑ์ ADX gate ปัจจุบัน (${nearGateBucket.range}) win rate ไม่ได้แย่กว่าโซนสูงกว่าอย่างมีนัยสำคัญ — เกณฑ์ ADX gate ปัจจุบัน (${config.adxGate}) ใช้ได้อยู่`);
+    }
+  } else {
+    reasons.push('ยังมีข้อมูลไม่พอแยกเปรียบเทียบ win rate ตามช่วง ADX');
+  }
+
+  // RR: if the system is winning more than half its trades at the current
+  // RR, a wider RR would very likely still hit TP just as often while paying
+  // out more per win — suggest widening. If win rate is below what the
+  // current RR needs to break even, suggest narrowing rather than raising
+  // risk further.
+  const breakEvenWinRate = 1 / (1 + config.rr);
+  if (overall != null) {
+    if (overall > breakEvenWinRate + 0.15) {
+      suggestion.rr = Math.round((config.rr + 0.5) * 100) / 100;
+      reasons.push(`win rate โดยรวม ${(overall * 100).toFixed(0)}% สูงกว่าจุดคุ้มทุนของ RR ปัจจุบัน (${(breakEvenWinRate * 100).toFixed(0)}%) มาก — มีช่องขยาย RR จาก 1:${config.rr} เป็น 1:${suggestion.rr} เพื่อเพิ่มกำไรต่อไม้โดยไม่กระทบอัตราชนะมากนัก`);
+    } else if (overall < breakEvenWinRate - 0.05) {
+      reasons.push(`win rate โดยรวม ${(overall * 100).toFixed(0)}% ต่ำกว่าจุดคุ้มทุนของ RR ปัจจุบัน (${(breakEvenWinRate * 100).toFixed(0)}%) — ระบบขาดทุนสุทธิที่ RR นี้ ควรเข้มงวดเงื่อนไขเข้าเทรดเพิ่ม (ADX gate/strongFactor) มากกว่าลด RR ลง เพราะ RR ต่ำเกินไปจะยิ่งทำให้ต้อง win rate สูงขึ้นไปอีก`);
+    } else {
+      reasons.push(`win rate โดยรวม ${(overall * 100).toFixed(0)}% ใกล้เคียงจุดคุ้มทุนของ RR ปัจจุบัน (${(breakEvenWinRate * 100).toFixed(0)}%) — RR 1:${config.rr} ยังเหมาะสมอยู่ ไม่แนะนำให้ปรับตอนนี้`);
+    }
+  }
+
+  const changed = suggestion.adxGate !== config.adxGate || suggestion.strongFactor !== config.strongFactor || suggestion.rr !== config.rr;
+
+  res.json({
+    assetKey,
+    sampleSize: closed.length,
+    minSampleRequired: MIN_SAMPLE_FOR_SUGGESTION,
+    ready: true,
+    overallWinRate: overall,
+    strongWinRate,
+    weakWinRate,
+    adxBuckets,
+    currentConfig: { adxGate: config.adxGate, strongFactor: config.strongFactor, rr: config.rr },
+    suggestedConfig: suggestion,
+    changed,
+    reasons,
+  });
+});
+
 // Mirrors the bucket definitions in gold.html's analyzeLossPatterns so a
 // historically bad setup (sent from the client as lossPatternKeys) can be
 // enforced deterministically here, instead of only hinted to the AI as prose
