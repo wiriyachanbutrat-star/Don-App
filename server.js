@@ -427,7 +427,7 @@ function ictZones(swing, currentPrice) {
 // the goal is fewer, higher-conviction BTC signals rather than the same
 // confidence bar as gold.
 const ASSET_CONFIG = {
-  XAU: { adxGate: 25, strongFactor: 0.4, strongFactorAgainst200: 0.55, requireStrong: false, rr: 1.5, atrMult: 1.5 },
+  XAU: { adxGate: 25, strongFactor: 0.4, strongFactorAgainst200: 0.55, requireStrong: true, rr: 1.5, atrMult: 1.5 },
   BTC: { adxGate: 30, strongFactor: 0.6, strongFactorAgainst200: 0.75, requireStrong: true, rr: 2, atrMult: 1.5 },
 };
 
@@ -1009,6 +1009,29 @@ app.post('/api/analyze', async (req, res) => {
         ];
       }
 
+      // Deterministic entry-quality gate: entry is always set to the live
+      // market price below (never a level the AI invents), but "current
+      // price" can itself be a bad place to chase into — buying while price
+      // sits in the ICT Premium half of the range (or selling in Discount)
+      // means paying up for/selling into the worse half of the dealing
+      // range even when the broader direction call is correct. Cap
+      // confidence when the entry itself isn't in a favorable zone, instead
+      // of only checking direction.
+      if (marketData.ict && marketData.ict.zone !== 'equilibrium') {
+        const entryAgainstZone = (finalDirection === 'BUY' && marketData.ict.zone === 'premium')
+          || (finalDirection === 'SELL' && marketData.ict.zone === 'discount');
+        if (entryAgainstZone) {
+          const entryCap = 60;
+          const currentConf = Number(parsed.confidence_percent) || entryCap;
+          parsed.confidence_percent = Math.min(currentConf, entryCap);
+          parsed.confidence_score = Math.round((parsed.confidence_percent / 10) * 10) / 10;
+          parsed.reasons = [
+            `⚠ ราคาปัจจุบัน (จุดเข้า) อยู่โซน ${marketData.ict.zone === 'premium' ? 'Premium' : 'Discount'} ของ dealing range ซึ่งเป็นโซนที่ไม่เหมาะกับทิศทาง ${finalDirection} ตามหลัก ICT (เข้าตอนนี้คือไล่ราคาเข้าไปในโซนที่แพงกว่า/ถูกกว่าที่ควร) — จำกัด confidence ไม่เกิน ${entryCap}% ควรรอราคาย่อกลับเข้าโซน ${finalDirection === 'BUY' ? 'Discount หรือ OTE ฝั่งซื้อ' : 'Premium หรือ OTE ฝั่งขาย'} ก่อนเข้าจริง`,
+            ...(Array.isArray(parsed.reasons) ? parsed.reasons : []),
+          ];
+        }
+      }
+
       // Deterministic news-sentiment weighting: Marketaux gives a per-article
       // sentiment score, but the prompt only asked the AI to "consider" it as
       // prose, which it may or may not actually act on. Average the real
@@ -1143,7 +1166,7 @@ ${m.divergence && (m.divergence.bullish || m.divergence.bearish) ? `Divergence: 
 - ใช้โครงสร้างตลาด BOS/CHoCH ประกอบการยืนยันว่าเทรนด์เดิมยังดำเนินต่อ (BOS) หรือมีสัญญาณกลับตัว (CHoCH)
 - ถ้ามี Liquidity Sweep ให้ถือเป็นสัญญาณ stop-hunt/reversal ที่สำคัญ (ราคาแทงทะลุ swing high/low ไปกวาดสภาพคล่องแล้วปิดกลับเข้ากรอบ) และใช้ระดับที่ถูกกวาดนั้นประกอบการวาง entry/sl
 - ใช้หลัก ICT (Inner Circle Trader): พิจารณาว่าราคาปัจจุบันอยู่โซน Premium หรือ Discount ของ dealing range (Premium=เอนเอียงหาจังหวะขาย, Discount=เอนเอียงหาจังหวะซื้อ, Equilibrium=ยังไม่ชัดเจน) และถ้าราคาอยู่ใน OTE zone (fib retracement 61.8-79% ของ swing leg ล่าสุด) ให้ถือเป็นจุดเข้าที่มีคุณภาพสูงตามหลัก ICT โดยเฉพาะเมื่อสอดคล้องกับ Order Block/FVG/Liquidity Sweep ในทิศทางเดียวกัน (confluence ของ ICT concepts หลายตัวพร้อมกัน = ความมั่นใจสูงขึ้นมาก) ถ้าอยู่ระหว่าง ICT Killzone (London/New York/Asian session) ให้ถือเป็นปัจจัยบวกเสริมความน่าเชื่อถือของสัญญาณ เพราะเป็นช่วงที่สภาพคล่องสถาบันสูง แต่ไม่ใช่เงื่อนไขบังคับ
-- ระบบต้องการ ADX>=${adxGate} จึงจะถือว่ามี edge เพียงพอให้เข้าเทรด — ถ้า ADX<${adxGate} ให้เอนเอียงไปทางแนะนำ WAIT/ลด confidence แม้สัญญาณอื่นจะดูดี${m.assetKey === 'BTC' ? ' (BTC ต้องการสัญญาณ confluence ที่ "strong" เท่านั้นจึงจะเข้าเทรด เข้มงวดกว่าทองคำเพราะราคาผันผวนและหลอกสัญญาณได้ง่ายกว่า)' : ''}
+- ระบบต้องการ ADX>=${adxGate} จึงจะถือว่ามี edge เพียงพอให้เข้าเทรด — ถ้า ADX<${adxGate} ให้เอนเอียงไปทางแนะนำ WAIT/ลด confidence แม้สัญญาณอื่นจะดูดี ระบบนี้ยังต้องการสัญญาณ confluence ระดับ "strong" เท่านั้นจึงจะแนะนำเข้าเทรดจริง (ไม่ใช่แค่ score ≠ 0) — ถ้าคะแนนไม่ถึงเกณฑ์ strong ให้เอนเอียงไปทาง WAIT/ลด confidence แม้ทิศทางจะดูมีเหตุผล
 - กำหนด entry ใกล้ราคาปัจจุบัน, tp และ sl โดยอ้างอิงแนวรับ-แนวต้านและ ATR ที่ให้มาจริง (ห้ามให้ tp/sl ขัดกับทิศทางคำแนะนำ) — ตัวเลข entry/tp/sl สุดท้ายที่ผู้ใช้เห็นจะถูกคำนวณใหม่โดยระบบด้วยสูตร SL=ATR×1.5, RR 1:3-1:5 อยู่ดี แต่ให้คุณประมาณค่าที่สมเหตุสมผลไว้ก่อนเพื่อความสอดคล้องของเหตุผลที่อธิบาย
 - risk_reward ต้องคำนวณจาก |tp-entry| ต่อ |entry-sl| ให้ตรงกับตัวเลข entry/tp/sl ที่คุณให้จริง
 - เขียน detailed_analysis เป็นย่อหน้าภาษาไทยอย่างละเอียด (อย่างน้อย 4-6 ประโยค) อธิบายภาพรวมทั้งหมด: โครงสร้างแนวโน้มหลัก/รอง, โมเมนตัมจาก RSI/MACD/Stochastic, ความผันผวนจาก ATR, และเหตุผลเชิงลึกว่าทำไมจึงให้คำแนะนำ BUY/SELL นี้พร้อมความเสี่ยงที่ควรระวัง

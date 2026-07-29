@@ -633,7 +633,7 @@
     document.title = 'AI วิเคราะห์กราฟ' + meta.title + ' · ' + meta.ticker.replace(' LIVE', '');
     document.getElementById('dropTitle').textContent = meta.dropTitle;
     const lotHintEl = document.getElementById('lotHint');
-    lotHintEl.textContent = 'SL ($) คือความเสี่ยงจริงที่คุณตั้ง (ปรับ lot ได้), TP คำนวณอัตโนมัติจาก SL × ' + meta.rr + ' (RR 1:' + meta.rr + ' คงที่) — ไม่ใช่ตัวเลขอิสระที่ตั้งเองอีกต่อไป (' + meta.lotHint + ')' + (currentAsset === 'BTC' ? ' — BTC เข้มงวดกว่าทอง: ต้องการ ADX>=30 และสัญญาณ confluence ระดับ "ชัดเจนมาก" เท่านั้นจึงจะแนะนำเข้าเทรด' : '');
+    lotHintEl.textContent = 'SL ($) คือความเสี่ยงจริงที่คุณตั้ง (ปรับ lot ได้), TP คำนวณอัตโนมัติจาก SL × ' + meta.rr + ' (RR 1:' + meta.rr + ' คงที่) — ไม่ใช่ตัวเลขอิสระที่ตั้งเองอีกต่อไป (' + meta.lotHint + ') — ต้องการ ADX>=' + (currentAsset === 'BTC' ? '30' : '25') + ' และสัญญาณ confluence ระดับ "ชัดเจนมาก" เท่านั้นจึงจะแนะนำเข้าเทรด';
     renderHistory(); // show cached/local history immediately
     const asset = currentAsset;
     loadHistoryFromSheet(asset).then(() => {
