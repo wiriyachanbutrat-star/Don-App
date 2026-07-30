@@ -10,7 +10,6 @@ const CLAUDE_MODEL = 'claude-opus-5';
 
 const ASSETS = {
   XAU: { symbol: 'XAU/USD', label: 'ทองคำ (XAUUSD)' },
-  BTC: { symbol: 'BTC/USD', label: 'บิทคอยน์ (BTCUSD)' },
 };
 
 app.use(express.json({ limit: '15mb' }));
@@ -40,7 +39,6 @@ const NEWS_CACHE_MS = 5 * 60 * 1000;
 
 const NEWS_QUERY = {
   XAU: { symbol: 'XAU/USD', search: 'gold OR XAUUSD OR "Federal Reserve"' },
-  BTC: { symbol: 'BTC/USD', search: 'bitcoin OR BTCUSD OR crypto ETF OR SEC crypto' },
 };
 
 async function fetchGoldNews(assetKey) {
@@ -420,18 +418,14 @@ function ictZones(swing, currentPrice) {
   return { high, low, eq, zone, oteBuyZone, oteSellZone, inOteBuy, inOteSell };
 }
 
-// Per-asset gating: BTC swings faster and whipsaws more than XAU on the same
-// indicators, so it needs a stronger trend (higher ADX gate) and a higher
-// bar of confluence (higher strong-signal fraction, and tradable requires
-// "strong" rather than just any nonzero score) before we call it tradable —
-// the goal is fewer, higher-conviction BTC signals rather than the same
-// confidence bar as gold.
+// Per-asset gating (currently only gold) — kept as a lookup rather than
+// bare constants so future assets can plug in their own thresholds without
+// touching computeSignalScore.
 const ASSET_CONFIG = {
   // strongFactor 0.4->0.3 actually lowers the strong-signal threshold (with
   // maxScore=9, ceil(9*0.4)=4 and ceil(9*0.3)=3 — 0.35 alone rounds back up
   // to the same 4, so it has to drop below the 1/3 mark to move the bar).
   XAU: { adxGate: 22, strongFactor: 0.3, strongFactorAgainst200: 0.44, requireStrong: true, rr: 1.5, atrMult: 1.5 },
-  BTC: { adxGate: 30, strongFactor: 0.6, strongFactorAgainst200: 0.75, requireStrong: true, rr: 2, atrMult: 1.5 },
 };
 
 function computeSignalScore(m) {
@@ -537,10 +531,8 @@ function computeSignalScore(m) {
 
   // ADX >= gate is the trade gate — Wilder's "strong trend" threshold —
   // needed alongside the ATR-scaled TP/SL so trades only fire in conditions
-  // strong enough to actually reach that target. BTC uses a higher gate
-  // (config.adxGate) and additionally requires a "strong" confluence score
-  // (config.requireStrong), not just any nonzero score, since a merely
-  // nonzero score on BTC still whipsaws far more often than on gold.
+  // strong enough to actually reach that target. Also requires a "strong"
+  // confluence score (config.requireStrong), not just any nonzero score.
   let tradable = true;
   let waitReason = null;
   if (m.adx == null || m.adx < config.adxGate) {
@@ -551,7 +543,7 @@ function computeSignalScore(m) {
     waitReason = `สัญญาณ BUY/SELL หักล้างกันพอดี (score=0) — ไม่มีทิศทางที่ชัดเจนพอให้เข้าเทรด`;
   } else if (config.requireStrong && !strong) {
     tradable = false;
-    waitReason = `สัญญาณยังไม่ชัดเจนพอ (score=${score}, ต้องการอย่างน้อย ${strongThreshold}/${maxScore} สำหรับ BTC ที่ผันผวนสูง) — รอสัญญาณที่มั่นใจกว่านี้`;
+    waitReason = `สัญญาณยังไม่ชัดเจนพอ (score=${score}, ต้องการอย่างน้อย ${strongThreshold}/${maxScore}) — รอสัญญาณที่มั่นใจกว่านี้`;
   }
   if (waitReason) reasons.push(`=> WAIT: ${waitReason}`);
 
@@ -998,7 +990,7 @@ app.post('/api/analyze', async (req, res) => {
     // calendar, so this can only catch the "just after news" half of the
     // requested ±15-30min window, not "15min before" — there's no calendar
     // feed wired up to know a release is imminent.
-    const highImpactPattern = /non-?farm|nfp|\bcpi\b|fomc|federal reserve|fed interest rate|interest rate decision|\bpce\b|powell|sec (lawsuit|approval|ruling)|etf approval|bitcoin etf|exchange hack|halving/i;
+    const highImpactPattern = /non-?farm|nfp|\bcpi\b|fomc|federal reserve|fed interest rate|interest rate decision|\bpce\b|powell/i;
     const blackoutMinutes = 30;
     const recentHighImpact = news.find(a => highImpactPattern.test(a.title || '') && a.published && (Date.now() - new Date(a.published).getTime()) < blackoutMinutes * 60 * 1000);
     if (recentHighImpact && signal.tradable) {
@@ -1189,10 +1181,7 @@ app.post('/api/analyze', async (req, res) => {
       // with SL (both off ATR) rather than a flat point distance, since a
       // flat TP against an ATR-scaled SL let the ratio drift below 1:1 in
       // high volatility (risking more than the potential reward) precisely
-      // when the ADX strong-trend gate is most likely to be open. BTC uses a
-      // wider RR (config.rr) since its entries are already gated to only the
-      // most confident (strong-confluence) setups, so the reward target can
-      // afford to be more ambitious per trade.
+      // when the ADX strong-trend gate is most likely to be open.
       const assetConfig = ASSET_CONFIG[marketData.assetKey] || ASSET_CONFIG.XAU;
       const RR = assetConfig.rr;
       if (signal.tradable && isFinite(marketData.atr) && isFinite(marketData.currentPrice)) {
