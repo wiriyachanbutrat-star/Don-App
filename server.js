@@ -427,7 +427,10 @@ function ictZones(swing, currentPrice) {
 // the goal is fewer, higher-conviction BTC signals rather than the same
 // confidence bar as gold.
 const ASSET_CONFIG = {
-  XAU: { adxGate: 23, strongFactor: 0.4, strongFactorAgainst200: 0.55, requireStrong: true, rr: 1.5, atrMult: 1.5 },
+  // strongFactor 0.4->0.3 actually lowers the strong-signal threshold (with
+  // maxScore=9, ceil(9*0.4)=4 and ceil(9*0.3)=3 — 0.35 alone rounds back up
+  // to the same 4, so it has to drop below the 1/3 mark to move the bar).
+  XAU: { adxGate: 22, strongFactor: 0.3, strongFactorAgainst200: 0.44, requireStrong: true, rr: 1.5, atrMult: 1.5 },
   BTC: { adxGate: 30, strongFactor: 0.6, strongFactorAgainst200: 0.75, requireStrong: true, rr: 2, atrMult: 1.5 },
 };
 
