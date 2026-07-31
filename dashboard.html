@@ -722,7 +722,7 @@
     const cards = [
       ['💧', 'Liquidity', liq ? (m.liquiditySweep.bullish ? 'Bullish Sweep' : 'Bearish Sweep') : 'ไม่มี'],
       ['🧱', 'Order Block', ob ? (m.smc.bullishOB ? 'Bullish @ ' + m.smc.bullishOB.low.toFixed(1) + '-' + m.smc.bullishOB.high.toFixed(1) : 'Bearish @ ' + m.smc.bearishOB.low.toFixed(1) + '-' + m.smc.bearishOB.high.toFixed(1)) : 'ไม่มี'],
-      ['⬜', 'Fair Value Gap', fvg ? (m.smc.bullishFvg ? 'Bullish @ ' + m.smc.bullishFvg.low.toFixed(1) + '-' + m.smc.bullishFvg.high.toFixed(1) : 'Bearish @ ' + m.smc.bearishFvg.low.toFixed(1) + '-' + m.smc.bearishFvg.high.toFixed(1)) : 'ไม่มี'],
+      ['⬜', 'Fair Value Gap', fvg ? (m.smc.bullishFvg ? 'Bullish @ ' + m.smc.bullishFvg.gapLow.toFixed(1) + '-' + m.smc.bullishFvg.gapHigh.toFixed(1) : 'Bearish @ ' + m.smc.bearishFvg.gapLow.toFixed(1) + '-' + m.smc.bearishFvg.gapHigh.toFixed(1)) : 'ไม่มี'],
       ['🧭', 'Market Structure', structureText],
     ];
     document.getElementById('smcGrid').innerHTML = cards.map(([ic, name, val]) =>
