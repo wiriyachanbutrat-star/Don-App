@@ -652,7 +652,7 @@ async function getMarketDataPayload(assetKey, interval) {
     return { payload: cached.data, fromCache: true };
   }
 
-  const higherIntervalMap = { '1min': '15min', '5min': '1h', '15min': '4h', '1h': '4h', '4h': '1day', '1day': '1week' };
+  const higherIntervalMap = { '1min': '15min', '5min': '1h', '15min': '4h', '30min': '4h', '1h': '4h', '4h': '1day', '1day': '1week' };
   const higherInterval = higherIntervalMap[interval] || '4h';
 
   try {
@@ -770,7 +770,7 @@ app.get('/api/market-data', async (req, res) => {
   if (!TWELVE_DATA_API_KEY) {
     return res.status(500).json({ error: 'ยังไม่ได้ตั้งค่า TWELVE_DATA_API_KEY บนเซิร์ฟเวอร์' });
   }
-  const interval = ['1min', '5min', '15min', '1h', '4h', '1day'].includes(req.query.interval)
+  const interval = ['1min', '5min', '15min', '30min', '1h', '4h', '1day'].includes(req.query.interval)
     ? req.query.interval
     : '1h';
   const assetKey = ASSETS[req.query.asset] ? req.query.asset : 'XAU';
@@ -793,7 +793,7 @@ app.get('/api/quick-check', async (req, res) => {
   if (!TWELVE_DATA_API_KEY) {
     return res.status(500).json({ error: 'ยังไม่ได้ตั้งค่า TWELVE_DATA_API_KEY บนเซิร์ฟเวอร์' });
   }
-  const interval = ['1min', '5min', '15min', '1h', '4h', '1day'].includes(req.query.interval)
+  const interval = ['1min', '5min', '15min', '30min', '1h', '4h', '1day'].includes(req.query.interval)
     ? req.query.interval
     : '1h';
   const assetKey = ASSETS[req.query.asset] ? req.query.asset : 'XAU';
@@ -816,6 +816,19 @@ app.get('/api/quick-check', async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(502).json({ error: 'เช็คสัญญาณไม่สำเร็จ: ' + err.message });
+  }
+});
+
+// Exposes the same cached news lookup /api/analyze already uses internally,
+// so a page can show real headlines without paying for a full AI analysis.
+app.get('/api/news', async (req, res) => {
+  const assetKey = ASSETS[req.query.asset] ? req.query.asset : 'XAU';
+  try {
+    const articles = await fetchGoldNews(assetKey);
+    res.json({ assetKey, articles });
+  } catch (err) {
+    console.error(err);
+    res.status(502).json({ error: 'ดึงข่าวไม่สำเร็จ: ' + err.message });
   }
 });
 
