@@ -662,7 +662,7 @@ async function getMarketDataPayload(assetKey, interval) {
       // win/loss checker could scan the wrong candles entirely and flag a
       // "loss" that never actually happened at the real price.
       fetchTwelveData('time_series', { symbol: asset.symbol, interval, outputsize: 210, timezone: 'UTC' }),
-      fetchTwelveData('time_series', { symbol: asset.symbol, interval: higherInterval, outputsize: 150, timezone: 'UTC' }),
+      fetchTwelveData('time_series', { symbol: asset.symbol, interval: higherInterval, outputsize: 100, timezone: 'UTC' }),
     ]);
 
     // Twelve Data returns newest-first; put oldest-first for trend reading.
