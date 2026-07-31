@@ -821,11 +821,57 @@ app.get('/api/quick-check', async (req, res) => {
 
 // Exposes the same cached news lookup /api/analyze already uses internally,
 // so a page can show real headlines without paying for a full AI analysis.
+// Headline translation is cached separately from the raw news fetch (same
+// TTL) so repeated /api/news requests within the window don't re-spend a
+// Claude call — only a fresh set of headlines triggers a new translation.
+const newsTranslationCache = new Map();
+
+async function translateHeadlines(assetKey, articles) {
+  if (!ANTHROPIC_API_KEY || !articles.length) return articles;
+  const cacheKeySource = articles.map(a => a.title).join('|');
+  const cached = newsTranslationCache.get(assetKey);
+  if (cached && cached.source === cacheKeySource) return cached.translated;
+
+  try {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: CLAUDE_MODEL,
+        max_tokens: 1024,
+        messages: [{
+          role: 'user',
+          content: 'แปลหัวข้อข่าวต่อไปนี้เป็นภาษาไทยแบบกระชับ ตอบกลับเป็น JSON array ของ string เรียงลำดับเดิม ไม่ต้องมีข้อความอื่นนอกจาก JSON array:\n' +
+            JSON.stringify(articles.map(a => a.title)),
+        }],
+      }),
+    });
+    const data = await response.json();
+    const textBlock = Array.isArray(data?.content) ? data.content.find(b => b.type === 'text') : null;
+    let text = textBlock?.text;
+    if (!text) return articles;
+    text = text.trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '');
+    const titlesTh = JSON.parse(text);
+    if (!Array.isArray(titlesTh) || titlesTh.length !== articles.length) return articles;
+    const translated = articles.map((a, i) => ({ ...a, titleTh: titlesTh[i] }));
+    newsTranslationCache.set(assetKey, { source: cacheKeySource, translated });
+    return translated;
+  } catch (err) {
+    console.error('translateHeadlines failed', err);
+    return articles;
+  }
+}
+
 app.get('/api/news', async (req, res) => {
   const assetKey = ASSETS[req.query.asset] ? req.query.asset : 'XAU';
   try {
     const articles = await fetchGoldNews(assetKey);
-    res.json({ assetKey, articles });
+    const translated = await translateHeadlines(assetKey, articles);
+    res.json({ assetKey, articles: translated });
   } catch (err) {
     console.error(err);
     res.status(502).json({ error: 'ดึงข่าวไม่สำเร็จ: ' + err.message });
