@@ -422,13 +422,11 @@ function ictZones(swing, currentPrice) {
 // bare constants so future assets can plug in their own thresholds without
 // touching computeSignalScore.
 const ASSET_CONFIG = {
-  // strongFactor 0.4->0.3 actually lowers the strong-signal threshold (with
-  // maxScore=9, ceil(9*0.4)=4 and ceil(9*0.3)=3 — 0.35 alone rounds back up
-  // to the same 4, so it has to drop below the 1/3 mark to move the bar).
-  // 0.3->0.22 moves it again: ceil(9*0.3)=3 vs ceil(9*0.22)=2 — same logic,
-  // has to clear the 2/9 mark. strongFactorAgainst200 stays put so
-  // counter-trend entries still need the stricter bar.
-  XAU: { adxGate: 18, strongFactor: 0.22, strongFactorAgainst200: 0.44, requireStrong: true, rr: 1.5, atrMult: 1.5 },
+  // Reverted 2026-07-31: adxGate 18->20 and strongFactor 0.22->0.3 had been
+  // lowered earlier in search of more frequent signals, but with no closed
+  // trade history yet to confirm the looser gate actually holds up, rolled
+  // back to the previous, more selective values pending real win-rate data.
+  XAU: { adxGate: 20, strongFactor: 0.3, strongFactorAgainst200: 0.44, requireStrong: true, rr: 1.5, atrMult: 1.5 },
 };
 
 function computeSignalScore(m) {
