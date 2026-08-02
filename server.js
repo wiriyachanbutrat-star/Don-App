@@ -10,6 +10,7 @@ const CLAUDE_MODEL = 'claude-opus-5';
 
 const ASSETS = {
   XAU: { symbol: 'XAU/USD', label: 'ทองคำ (XAUUSD)' },
+  BTC: { symbol: 'BTC/USD', label: 'บิตคอยน์ (BTCUSD)' },
 };
 
 app.use(express.json({ limit: '15mb' }));
@@ -39,6 +40,7 @@ const NEWS_CACHE_MS = 5 * 60 * 1000;
 
 const NEWS_QUERY = {
   XAU: { symbol: 'XAU/USD', search: 'gold OR XAUUSD OR "Federal Reserve"' },
+  BTC: { symbol: 'BTC/USD', search: 'bitcoin OR BTCUSD OR crypto' },
 };
 
 async function fetchGoldNews(assetKey) {
@@ -418,15 +420,19 @@ function ictZones(swing, currentPrice) {
   return { high, low, eq, zone, oteBuyZone, oteSellZone, inOteBuy, inOteSell };
 }
 
-// Per-asset gating (currently only gold) — kept as a lookup rather than
-// bare constants so future assets can plug in their own thresholds without
-// touching computeSignalScore.
+// Per-asset gating — kept as a lookup rather than bare constants so each
+// asset can plug in its own thresholds without touching computeSignalScore.
 const ASSET_CONFIG = {
   // Reverted 2026-07-31: adxGate 18->20 and strongFactor 0.22->0.3 had been
   // lowered earlier in search of more frequent signals, but with no closed
   // trade history yet to confirm the looser gate actually holds up, rolled
   // back to the previous, more selective values pending real win-rate data.
   XAU: { adxGate: 20, strongFactor: 0.3, strongFactorAgainst200: 0.44, requireStrong: true, rr: 1.5, atrMult: 1.5 },
+  // BTC starts on the same thresholds as XAU as a baseline — untuned for
+  // crypto's different volatility/session behavior (trades 24/7, no
+  // session gaps). Use /api/config-suggestion once real BTC trade history
+  // exists rather than guessing crypto-specific numbers up front.
+  BTC: { adxGate: 20, strongFactor: 0.3, strongFactorAgainst200: 0.44, requireStrong: true, rr: 1.5, atrMult: 1.5 },
 };
 
 function computeSignalScore(m) {

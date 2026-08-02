@@ -208,12 +208,16 @@
 
     <div class="panel topbar">
       <div>
-        <div class="symbol">XAU/USD GOLD ANALYSIS DASHBOARD</div>
+        <div class="symbol" id="dashboardTitle">XAU/USD GOLD ANALYSIS DASHBOARD</div>
         <div class="subtitle">Real-time Market Intelligence</div>
         <div class="live-badge"><span class="live-dot"></span>LIVE</div>
       </div>
       <div style="display:flex; align-items:center; gap:14px;">
         <div class="price"><span id="priceVal">—</span><span class="chg" id="priceChg"></span></div>
+        <select id="assetSelect">
+          <option value="XAU" selected>XAU/USD (Gold)</option>
+          <option value="BTC">BTC/USD (Bitcoin)</option>
+        </select>
         <select id="intervalSelect">
           <option value="15min">15min</option>
           <option value="1h" selected>1h</option>
@@ -402,7 +406,11 @@
 
 <script src="https://s3.tradingview.com/tv.js"></script>
 <script>
-  const ASSET = 'XAU';
+  let ASSET = 'XAU';
+  const ASSET_META = {
+    XAU: { title: 'XAU/USD GOLD ANALYSIS DASHBOARD', tvSymbol: 'OANDA:XAUUSD' },
+    BTC: { title: 'BTC/USD BITCOIN ANALYSIS DASHBOARD', tvSymbol: 'BITSTAMP:BTCUSD' },
+  };
   const GAUGE_CIRCUMFERENCE = 326.7; // 2 * PI * r(52)
   const MTF_LIST = [
     { key: '1min', label: 'M1' },
@@ -477,8 +485,9 @@
 
   // ---- Position sizing ----
   // Units per 1.00 lot, i.e. $ profit/loss per $1 price move at lot=1.
-  // Standard XAUUSD CFD spec is 100oz/lot — adjust if your broker differs.
-  const CONTRACT_SIZE = { XAU: 100 };
+  // Standard XAUUSD CFD spec is 100oz/lot; BTC CFDs are commonly quoted
+  // 1 lot = 1 BTC. Adjust either if your broker's contract size differs.
+  const CONTRACT_SIZE = { XAU: 100, BTC: 1 };
 
   // SL is sized from the user's real $ risk (adjustable via lot size); TP =
   // SL x 1.5 (matching the server's deterministic RR rule) so the ratio
@@ -919,13 +928,15 @@
   }
 
   function initChart(){
+    const container = document.getElementById('tvChart');
     if(typeof TradingView === 'undefined'){
-      document.getElementById('tvChart').innerHTML = '<div class="empty" style="padding:20px;">โหลดกราฟไม่สำเร็จ</div>';
+      container.innerHTML = '<div class="empty" style="padding:20px;">โหลดกราฟไม่สำเร็จ</div>';
       return;
     }
+    container.innerHTML = ''; // clear the previous widget when switching assets
     new TradingView.widget({
       autosize: true,
-      symbol: 'OANDA:XAUUSD',
+      symbol: ASSET_META[ASSET].tvSymbol,
       interval: '60',
       timezone: 'Etc/UTC',
       theme: 'dark',
@@ -1008,6 +1019,23 @@
     loadPrimary().catch(e => console.error(e));
   });
   document.getElementById('analyzeBtn').addEventListener('click', runAI);
+
+  document.getElementById('assetSelect').addEventListener('change', (e) => {
+    ASSET = e.target.value;
+    document.getElementById('dashboardTitle').textContent = ASSET_META[ASSET].title;
+    lastMarketData = null;
+    initChart();
+    loadPrimary().catch(err => console.error(err));
+    loadMultiTimeframe().catch(err => console.error(err));
+    loadNews();
+    renderHistory(); // historyKey() reads ASSET, so this switches to the other asset's local history
+    document.getElementById('aiResult').innerHTML = 'ยังไม่ได้วิเคราะห์ — กดปุ่มด้านบนเพื่อเรียก AI (มีค่าใช้จ่ายต่อครั้ง)';
+    document.getElementById('aiTiles').innerHTML =
+      '<div class="ai-tile"><div class="lbl">Entry</div><div class="v">—</div></div>' +
+      '<div class="ai-tile"><div class="lbl">Stop Loss</div><div class="v">—</div></div>' +
+      '<div class="ai-tile"><div class="lbl">Take Profit</div><div class="v">—</div></div>' +
+      '<div class="ai-tile"><div class="lbl">Risk / Reward</div><div class="v">—</div></div>';
+  });
 
   document.getElementById('suggestConfigBtn').addEventListener('click', async () => {
     const box = document.getElementById('configSuggestionBox');
