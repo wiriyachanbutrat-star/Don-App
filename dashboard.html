@@ -837,6 +837,17 @@
     const macdRel = m.macd && m.macd.crossUp ? { text: 'Bull Cross', cls: 'up' } : (m.macd && m.macd.crossDown ? { text: 'Bear Cross', cls: 'down' } : { text: 'No Cross', cls: '' });
     const stoch = m.stochastic ? (m.stochastic.crossUpFromOversold ? { text: 'Buy Signal (K=' + m.stochastic.k.toFixed(1) + ')', cls: 'up' } : m.stochastic.crossDownFromOverbought ? { text: 'Sell Signal (K=' + m.stochastic.k.toFixed(1) + ')', cls: 'down' } : { text: 'K=' + m.stochastic.k.toFixed(1) + ' D=' + m.stochastic.d.toFixed(1), cls: '' }) : { text: '—', cls: '' };
     const adxStrong = m.adx != null && m.adx >= 18;
+    const bb = m.bollinger ? (
+      m.currentPrice > m.bollinger.upper ? { text: 'หลุดกรอบบน (ยืดเกิน)', cls: 'down' }
+      : m.currentPrice < m.bollinger.lower ? { text: 'หลุดกรอบล่าง (ยืดเกิน)', cls: 'up' }
+      : { text: 'อยู่ในกรอบ (' + m.bollinger.lower.toFixed(1) + '-' + m.bollinger.upper.toFixed(1) + ')', cls: '' }
+    ) : { text: '—', cls: '' };
+    const kc = m.keltner ? (
+      m.currentPrice > m.keltner.upper ? { text: 'ทะลุกรอบบน (Breakout)', cls: 'up' }
+      : m.currentPrice < m.keltner.lower ? { text: 'ทะลุกรอบล่าง (Breakout)', cls: 'down' }
+      : { text: 'อยู่ในกรอบ (' + m.keltner.lower.toFixed(1) + '-' + m.keltner.upper.toFixed(1) + ')', cls: '' }
+    ) : { text: '—', cls: '' };
+    const squeeze = !!(m.bollinger && m.keltner && m.bollinger.upper < m.keltner.upper && m.bollinger.lower > m.keltner.lower);
     const items = [
       ['EMA20 vs EMA50', emaRel.text, emaRel.cls],
       ['EMA50 vs EMA200', ema200Rel.text, ema200Rel.cls],
@@ -844,6 +855,9 @@
       ['MACD', macdRel.text, macdRel.cls],
       ['Stochastic', stoch.text, stoch.cls],
       ['ADX', m.adx != null ? m.adx.toFixed(1) + (adxStrong ? ' (Strong Trend)' : ' (Weak/Range)') : '—', adxStrong ? 'up' : ''],
+      ['Bollinger Bands (20, 2σ)', bb.text, bb.cls],
+      ['Keltner Channel (20, ATR×2)', kc.text, kc.cls],
+      ['Squeeze (BB in Keltner)', squeeze ? 'ใช่ — ผันผวนต่ำ' : 'ไม่', squeeze ? 'up' : ''],
       ['Volume (proxy: candle count)', m.candleCounts ? (m.candleCounts.up + ' up / ' + m.candleCounts.down + ' down') : '—', ''],
     ];
     document.getElementById('indicatorGrid').innerHTML = items.map(([name, val, cls]) =>

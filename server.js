@@ -523,7 +523,31 @@ function computeSignalScore(m) {
     else { reasons.push('ราคาอยู่โซน Equilibrium (0)'); }
   }
 
-  const maxScore = 6 + (m.divergence ? 1 : 0) + (m.liquiditySweep ? 1 : 0) + (m.ict ? 1 : 0);
+  // Bollinger Bands: a mean-reversion vote — price outside its own recent
+  // 2-std-dev range is "stretched" and more likely to snap back, independent
+  // of trend direction (unlike the trend-confluence block above).
+  if (m.bollinger) {
+    if (m.currentPrice > m.bollinger.upper) { score -= 1; reasons.push('ราคาหลุดกรอบบนของ Bollinger Bands — ยืดเกินค่าเฉลี่ย (+1 sell, mean-reversion)'); }
+    else if (m.currentPrice < m.bollinger.lower) { score += 1; reasons.push('ราคาหลุดกรอบล่างของ Bollinger Bands — ยืดเกินค่าเฉลี่ย (+1 buy, mean-reversion)'); }
+    else { reasons.push('ราคาอยู่ในกรอบ Bollinger Bands (0)'); }
+  }
+
+  // Keltner Channel: the opposite read from Bollinger above — breaking the
+  // ATR-based channel is a volatility breakout (trend continuation), not a
+  // stretch to fade. The two together can and do disagree by design.
+  if (m.keltner) {
+    if (m.currentPrice > m.keltner.upper) { score += 1; reasons.push('ราคาทะลุกรอบบนของ Keltner Channel — breakout ตามเทรนด์ (+1 buy)'); }
+    else if (m.currentPrice < m.keltner.lower) { score -= 1; reasons.push('ราคาทะลุกรอบล่างของ Keltner Channel — breakout ตามเทรนด์ (+1 sell)'); }
+    else { reasons.push('ราคาอยู่ในกรอบ Keltner Channel (0)'); }
+  }
+
+  // Squeeze (Bollinger Bands pinched inside the Keltner Channel) flags low
+  // volatility that often precedes a breakout — informational only, no
+  // score vote, since a squeeze has no direction of its own yet.
+  const squeeze = !!(m.bollinger && m.keltner && m.bollinger.upper < m.keltner.upper && m.bollinger.lower > m.keltner.lower);
+  if (squeeze) reasons.push('=> Bollinger Bands หดตัวเข้าไปในกรอบ Keltner Channel (squeeze) — ความผันผวนต่ำ อาจมี breakout เร็วๆ นี้');
+
+  const maxScore = 6 + (m.divergence ? 1 : 0) + (m.liquiditySweep ? 1 : 0) + (m.ict ? 1 : 0) + (m.bollinger ? 1 : 0) + (m.keltner ? 1 : 0);
   const direction = score > 0 ? 'BUY' : score < 0 ? 'SELL' : null;
   const against200 = ema200Direction != null && direction != null && direction !== ema200Direction;
   if (against200) { reasons.push(`=> ทิศทาง ${direction} สวนทาง EMA200 (long-term trend) — ต้องใช้ threshold สูงขึ้นจึงจะถือว่าสัญญาณแรง`); }
@@ -567,7 +591,7 @@ function computeSignalScore(m) {
     }
   }
 
-  return { score, direction, strong, strongThreshold, against200, reasons, maxScore, tradable, waitReason, adx: m.adx, developing, developingReason };
+  return { score, direction, strong, strongThreshold, against200, reasons, maxScore, tradable, waitReason, adx: m.adx, developing, developingReason, squeeze };
 }
 
 // Regular divergence: price makes a lower low / higher high while the
@@ -635,6 +659,42 @@ function orderBlocksAndFvg(candles, lookback = 30) {
 
 function isValidJson(str) {
   try { JSON.parse(str); return true; } catch { return false; }
+}
+
+function sma(values, period) {
+  const out = new Array(values.length).fill(null);
+  for (let i = period - 1; i < values.length; i++) {
+    let sum = 0;
+    for (let j = i - period + 1; j <= i; j++) sum += values[j];
+    out[i] = sum / period;
+  }
+  return out;
+}
+
+// SMA20 +/- 2 std dev — the standard Bollinger parameters. Used as a
+// mean-reversion read: price outside the bands is "stretched" relative to
+// its own recent volatility, independent of trend direction.
+function bollingerBands(closes, period = 20, mult = 2) {
+  const smaSeries = sma(closes, period);
+  let latest = null;
+  const i = closes.length - 1;
+  if (smaSeries[i] != null) {
+    let sumSq = 0;
+    for (let j = i - period + 1; j <= i; j++) sumSq += (closes[j] - smaSeries[i]) ** 2;
+    const stdDev = Math.sqrt(sumSq / period);
+    latest = { middle: smaSeries[i], upper: smaSeries[i] + mult * stdDev, lower: smaSeries[i] - mult * stdDev };
+  }
+  return latest;
+}
+
+// EMA20 +/- ATR x2 — reads as a trend/breakout channel rather than
+// Bollinger's mean-reversion read, since it's centered on volatility (ATR)
+// rather than standard deviation of price itself.
+function keltnerChannel(closes, atrSeriesFull, period = 20, mult = 2) {
+  const emaSeries = ema(closes, period);
+  const i = closes.length - 1;
+  if (emaSeries[i] == null || atrSeriesFull[i] == null) return null;
+  return { middle: emaSeries[i], upper: emaSeries[i] + mult * atrSeriesFull[i], lower: emaSeries[i] - mult * atrSeriesFull[i] };
 }
 
 function volatilityStats(candles, period = 20) {
@@ -759,6 +819,8 @@ async function getMarketDataPayload(assetKey, interval) {
       stochastic: stochasticOscillator(candles),
       swing: swingResult,
       volatility: volatilityStats(candles),
+      bollinger: bollingerBands(closes),
+      keltner: keltnerChannel(closes, atrSeriesFull),
       divergence: detectDivergence(candles, closes),
       smc: orderBlocksAndFvg(candles),
       supertrend: supertrend(candles),
@@ -831,6 +893,7 @@ app.get('/api/quick-check', async (req, res) => {
       waitReason: signal.waitReason,
       developing: signal.developing,
       developingReason: signal.developingReason,
+      squeeze: signal.squeeze,
     });
   } catch (err) {
     console.error(err);
