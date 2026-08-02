@@ -723,6 +723,38 @@ function volatilityStats(candles, period = 20) {
 const marketDataCache = new Map();
 const MARKET_DATA_CACHE_MS = 45 * 1000;
 
+// Raw candle series are cached one level below the computed payload above,
+// keyed only by asset+interval (not by which role — "main" vs "higher
+// timeframe" — requested it). Several timeframes share the same higher-
+// timeframe context (15min/30min/1h all use 4h), so without this a page
+// that checks all 7 timeframes at once (the dashboard's multi-timeframe
+// table) fires up to 14 credits in one burst and blows the 8/min cap. An
+// in-flight map dedupes concurrent requests for the same key too — the
+// 7 timeframes are fetched via Promise.all, so several would otherwise
+// race to fetch the same interval before any of them finished caching it.
+const rawSeriesCache = new Map();
+const rawSeriesInflight = new Map();
+
+async function fetchSeriesCached(assetKey, symbol, interval) {
+  const key = `${assetKey}:${interval}`;
+  const cached = rawSeriesCache.get(key);
+  if (cached && Date.now() - cached.time < MARKET_DATA_CACHE_MS) return cached.data;
+  if (rawSeriesInflight.has(key)) return rawSeriesInflight.get(key);
+
+  const promise = fetchTwelveData('time_series', { symbol, interval, outputsize: 210, timezone: 'UTC' })
+    .then(data => {
+      rawSeriesCache.set(key, { time: Date.now(), data });
+      rawSeriesInflight.delete(key);
+      return data;
+    })
+    .catch(err => {
+      rawSeriesInflight.delete(key);
+      throw err;
+    });
+  rawSeriesInflight.set(key, promise);
+  return promise;
+}
+
 // Shared by /api/market-data and /api/quick-check — fetches + computes every
 // indicator, using the same cache, without either route needing to know how
 // the other gets its data. Throws on a hard failure (caller decides whether
@@ -747,8 +779,8 @@ async function getMarketDataPayload(assetKey, interval) {
       // far the browser's timezone differs from the exchange's, so the
       // win/loss checker could scan the wrong candles entirely and flag a
       // "loss" that never actually happened at the real price.
-      fetchTwelveData('time_series', { symbol: asset.symbol, interval, outputsize: 210, timezone: 'UTC' }),
-      fetchTwelveData('time_series', { symbol: asset.symbol, interval: higherInterval, outputsize: 100, timezone: 'UTC' }),
+      fetchSeriesCached(assetKey, asset.symbol, interval),
+      fetchSeriesCached(assetKey, asset.symbol, higherInterval),
     ]);
 
     // Twelve Data returns newest-first; put oldest-first for trend reading.
