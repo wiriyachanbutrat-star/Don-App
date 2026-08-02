@@ -107,14 +107,16 @@
   .meta-row{ display:flex; justify-content:space-between; font-size:13px; color: var(--ink-dim); margin-top:8px; }
   #tvChart{ height: 720px; border-radius: 12px; overflow:hidden; }
 
-  table{ width:100%; border-collapse: collapse; font-size:14px; }
-  th{ text-align:left; color: var(--ink-dim); font-weight:500; font-size:12px; text-transform:uppercase; letter-spacing:0.04em; padding: 6px 8px; border-bottom:1px solid var(--hairline); }
-  td{ padding: 8px; border-bottom:1px solid var(--hairline); }
+  .table-scroll{ overflow-x:auto; }
+  table{ width:100%; min-width:480px; border-collapse: collapse; font-size:14px; }
+  th{ text-align:left; color: var(--ink-dim); font-weight:500; font-size:12px; text-transform:uppercase; letter-spacing:0.04em; padding: 6px 8px; white-space:nowrap; border-bottom:1px solid var(--hairline); }
+  td{ padding: 8px; white-space:nowrap; border-bottom:1px solid var(--hairline); }
   tr:last-child td{ border-bottom:none; }
-  .tag{ display:inline-flex; align-items:center; gap:4px; padding:2px 8px; border-radius:6px; font-size:12px; font-weight:600; }
+  .tag{ display:inline-flex; align-items:center; gap:5px; padding:3px 9px; border-radius:6px; font-size:12px; font-weight:600; white-space:nowrap; }
   .tag.buy{ background: var(--buy-dim); color: var(--buy-bright); }
   .tag.sell{ background: var(--sell-dim); color: var(--sell-bright); }
   .tag.wait{ background: var(--wait-dim); color: var(--wait-bright); }
+  .tag-dot{ width:7px; height:7px; border-radius:50%; background: currentColor; flex: none; }
   .trend-arrow.up{ color: var(--buy-bright); } .trend-arrow.down{ color: var(--sell-bright); } .trend-arrow.flat{ color: var(--ink-dim); }
 
   .indicator-grid{ display:grid; grid-template-columns: repeat(2, 1fr); gap:10px; }
@@ -250,10 +252,12 @@
 
     <div class="panel" id="mtf">
       <h2>Multi-Timeframe Analysis</h2>
-      <table>
-        <thead><tr><th>Timeframe</th><th>Signal</th><th>Score</th><th>Trend</th><th>Strength</th></tr></thead>
-        <tbody id="mtfBody"><tr><td colspan="5" class="empty">กำลังโหลด…</td></tr></tbody>
-      </table>
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th>Timeframe</th><th>Signal</th><th>Score</th><th>Trend</th><th>Strength</th></tr></thead>
+          <tbody id="mtfBody"><tr><td colspan="5" class="empty">กำลังโหลด…</td></tr></tbody>
+        </table>
+      </div>
     </div>
 
     <div class="panel" id="setup">
@@ -330,13 +334,15 @@
       <div id="configSuggestionBox" style="display:none; border-radius:10px; padding:10px 12px; margin-top:10px; font-size:13px; line-height:1.6; background:var(--bg-panel-raised); border:1px solid var(--hairline);"></div>
     </div>
 
-    <div class="top-grid" id="signalsRow" style="display:none;">
+    <div class="top-grid" id="signalsRow" style="display:none; grid-template-columns: 1fr;">
       <div class="panel">
         <h2>Recent Signals</h2>
-        <table>
-          <thead><tr><th>Time</th><th>Timeframe</th><th>Signal</th><th>Price</th><th>Result</th></tr></thead>
-          <tbody id="recentSignalsBody"></tbody>
-        </table>
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th>Time</th><th>Timeframe</th><th>Signal</th><th>Price</th><th>Result</th></tr></thead>
+            <tbody id="recentSignalsBody"></tbody>
+          </table>
+        </div>
       </div>
       <div class="panel">
         <h2>Signal Accuracy (all-time local history)</h2>
@@ -414,13 +420,12 @@
   // it never changes tradable/strong, just flags setups close to the gate.
   function tagHtml(direction, strong, tradable, developing){
     if(!tradable || !direction){
-      if(developing) return '<span class="tag wait">🟡 กำลังก่อตัว</span>';
-      return '<span class="tag wait">⏸ WAIT</span>';
+      if(developing) return '<span class="tag wait"><span class="tag-dot"></span>กำลังก่อตัว</span>';
+      return '<span class="tag wait"><span class="tag-dot"></span>WAIT</span>';
     }
     const cls = direction === 'BUY' ? 'buy' : 'sell';
-    const icon = direction === 'BUY' ? '🟢' : '🔴';
     const label = (strong ? 'Strong ' : '') + direction;
-    return '<span class="tag ' + cls + '">' + icon + ' ' + label + '</span>';
+    return '<span class="tag ' + cls + '"><span class="tag-dot"></span>' + label + '</span>';
   }
 
   function trendHtml(direction){
