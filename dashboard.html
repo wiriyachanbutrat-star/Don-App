@@ -161,6 +161,20 @@
   .smc-card .val{ font-size:13px; margin-top:4px; font-weight:600; }
   .market-context{ margin-top:10px; background: var(--bg-panel-raised); border-radius:10px; padding:12px; font-size:13px; color: var(--ink-dim); display:flex; gap:10px; align-items:center; }
 
+  .strength-dots{ display:inline-flex; gap:3px; }
+  .strength-dots span{ width:7px; height:7px; border-radius:50%; background: rgba(255,255,255,0.12); }
+  .strength-dots span.on.buy{ background: var(--buy-bright); }
+  .strength-dots span.on.sell{ background: var(--sell-bright); }
+  .strength-dots span.on.wait{ background: var(--wait-bright); }
+
+  .setup-grid{ display:grid; grid-template-columns: 1fr; gap:10px; }
+  @media (min-width: 700px){ .setup-grid{ grid-template-columns: repeat(3, 1fr); } }
+  .setup-card{ background: var(--bg-panel-raised); border-radius:10px; padding:14px; }
+  .setup-card .name{ font-size:12px; color: var(--ink-dim); text-transform:uppercase; letter-spacing:0.04em; }
+  .setup-card .verdict{ font-family: var(--font-display); font-size:20px; font-weight:700; margin-top:6px; }
+  .setup-card .verdict.buy{ color: var(--buy-bright); } .setup-card .verdict.sell{ color: var(--sell-bright); } .setup-card .verdict.wait{ color: var(--wait-bright); }
+  .setup-card .hint{ font-size:12px; color: var(--ink-dim); margin-top:4px; }
+
   .news-item{ padding:10px 0; border-bottom:1px solid var(--hairline); font-size:13px; display:flex; justify-content:space-between; gap:10px; align-items:baseline; }
   .news-item:last-child{ border-bottom:none; }
   .news-item .headline{ flex:1; }
@@ -226,6 +240,7 @@
         </div>
         <div class="meta-row"><span>Trend</span><span id="trendVal">—</span></div>
         <div class="meta-row"><span>Session</span><span id="sessionVal">—</span></div>
+        <div class="meta-row"><span>Volatility</span><span id="volatilityVal">—</span></div>
       </div>
       <div class="panel">
         <h2>Chart</h2>
@@ -236,9 +251,14 @@
     <div class="panel" id="mtf">
       <h2>Multi-Timeframe Analysis</h2>
       <table>
-        <thead><tr><th>Timeframe</th><th>Signal</th><th>Score</th><th>Trend</th></tr></thead>
-        <tbody id="mtfBody"><tr><td colspan="4" class="empty">กำลังโหลด…</td></tr></tbody>
+        <thead><tr><th>Timeframe</th><th>Signal</th><th>Score</th><th>Trend</th><th>Strength</th></tr></thead>
+        <tbody id="mtfBody"><tr><td colspan="5" class="empty">กำลังโหลด…</td></tr></tbody>
       </table>
+    </div>
+
+    <div class="panel" id="setup">
+      <h2>Trading Setup Suggestion</h2>
+      <div class="setup-grid" id="setupGrid"><div class="empty">กำลังโหลด…</div></div>
     </div>
 
     <div class="panel" id="indicators">
@@ -308,6 +328,28 @@
         <button id="clearHistoryBtn" style="background:var(--sell-dim); color:var(--sell-bright);">ล้างประวัติทั้งหมด</button>
       </div>
       <div id="configSuggestionBox" style="display:none; border-radius:10px; padding:10px 12px; margin-top:10px; font-size:13px; line-height:1.6; background:var(--bg-panel-raised); border:1px solid var(--hairline);"></div>
+    </div>
+
+    <div class="top-grid" id="signalsRow" style="display:none;">
+      <div class="panel">
+        <h2>Recent Signals</h2>
+        <table>
+          <thead><tr><th>Time</th><th>Timeframe</th><th>Signal</th><th>Price</th><th>Result</th></tr></thead>
+          <tbody id="recentSignalsBody"></tbody>
+        </table>
+      </div>
+      <div class="panel">
+        <h2>Signal Accuracy (all-time local history)</h2>
+        <div class="gauge-wrap">
+          <svg class="gauge-svg" viewBox="0 0 120 120">
+            <circle cx="60" cy="60" r="52" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="10"/>
+            <circle id="accuracyArc" cx="60" cy="60" r="52" fill="none" stroke="var(--buy-bright)" stroke-width="10"
+              stroke-linecap="round" stroke-dasharray="326.7" stroke-dashoffset="326.7" transform="rotate(-90 60 60)"/>
+            <text id="accuracyArcLabel" x="60" y="66" text-anchor="middle" font-family="Space Grotesk" font-size="20" font-weight="700" fill="var(--buy-bright)">—</text>
+          </svg>
+          <div class="gauge-sub" id="accuracySub">—</div>
+        </div>
+      </div>
     </div>
 
     <div class="panel" id="journalPanel">
@@ -380,6 +422,17 @@
     if(direction === 'BUY') return '<span class="trend-arrow up">↗ ขึ้น</span>';
     if(direction === 'SELL') return '<span class="trend-arrow down">↘ ลง</span>';
     return '<span class="trend-arrow flat">→ เป็นกลาง</span>';
+  }
+
+  // 5-dot strength meter from the real quick-check score/maxScore ratio.
+  function strengthDotsHtml(pct, direction){
+    const cls = direction === 'BUY' ? 'buy' : direction === 'SELL' ? 'sell' : 'wait';
+    const filled = Math.max(0, Math.min(5, Math.round(pct / 20)));
+    let html = '<span class="strength-dots">';
+    for(let i = 0; i < 5; i++){
+      html += '<span class="' + (i < filled ? 'on ' + cls : '') + '"></span>';
+    }
+    return html + '</span>';
   }
 
   // Shared ring-gauge renderer for Market Bias + AI Recommendation.
@@ -486,6 +539,7 @@
     list.push({
       time: Date.now(),
       direction: isBuy ? 'BUY' : 'SELL',
+      interval: marketData ? marketData.interval : null,
       entry, tp, sl,
       status: 'pending',
       closedPrice: null,
@@ -601,6 +655,36 @@
       const color = rec.status === 'win' ? 'var(--buy-bright)' : rec.status === 'loss' ? 'var(--sell-bright)' : 'var(--ink-dim)';
       return '<li>' + dt + ' · ' + rec.direction + ' @ ' + rec.entry + ' → <b style="color:' + color + '">' + statusLabel + '</b></li>';
     }).join('');
+
+    renderRecentSignals(list);
+    renderSignalAccuracy(list);
+  }
+
+  // Real recent-signals table and win-rate gauge, both sourced from the same
+  // local win/loss history used above — no fabricated numbers.
+  function renderRecentSignals(list){
+    const row = document.getElementById('signalsRow');
+    if(!list.length){ row.style.display = 'none'; return; }
+    row.style.display = 'grid';
+    const recent = list.slice(-8).reverse();
+    document.getElementById('recentSignalsBody').innerHTML = recent.map(rec => {
+      const dt = new Date(rec.time).toLocaleString('th-TH', { hour:'2-digit', minute:'2-digit', day:'2-digit', month:'2-digit' });
+      const resultLabel = rec.status === 'win' ? 'WIN' : rec.status === 'loss' ? 'LOSS' : '—';
+      const resultColor = rec.status === 'win' ? 'var(--buy-bright)' : rec.status === 'loss' ? 'var(--sell-bright)' : 'var(--ink-dim)';
+      return '<tr><td>' + dt + '</td><td>' + (rec.interval || '—') + '</td><td>' + tagHtml(rec.direction, false, true) +
+        '</td><td>' + Number(rec.entry).toFixed(2) + '</td><td style="color:' + resultColor + '; font-weight:600;">' + resultLabel + '</td></tr>';
+    }).join('');
+  }
+
+  function renderSignalAccuracy(list){
+    const closed = list.filter(r => r.status === 'win' || r.status === 'loss');
+    const wins = closed.filter(r => r.status === 'win').length;
+    const pct = closed.length ? Math.round((wins / closed.length) * 100) : 0;
+    const cls = pct >= 55 ? 'buy' : pct >= 40 ? 'wait' : 'sell';
+    setGauge('accuracyArc', 'accuracyArcLabel', cls, pct + '%', pct);
+    document.getElementById('accuracySub').textContent = closed.length
+      ? (wins + '/' + closed.length + ' ชนะ — ' + (pct >= 55 ? 'ผลงานดี' : pct >= 40 ? 'ปานกลาง' : 'ควรทบทวนกลยุทธ์'))
+      : 'ยังไม่มีเทรดที่ปิดจบ';
   }
 
   // ---- Manual trade journal (local-only) ----
@@ -650,6 +734,17 @@
         : 'ผสม (Mixed)';
     document.getElementById('trendVal').textContent = trend;
     document.getElementById('sessionVal').textContent = sessionLabel();
+
+    // Volatility bucket from real avgRange (avg candle high-low) as a % of
+    // price — no fixed thresholds exist server-side, so this is a simple
+    // relative read, not a claimed precise metric.
+    const volEl = document.getElementById('volatilityVal');
+    if(marketData.volatility && marketData.volatility.avgRange != null && marketData.currentPrice){
+      const rangePct = marketData.volatility.avgRange / marketData.currentPrice * 100;
+      volEl.textContent = rangePct < 0.15 ? 'Low' : rangePct < 0.35 ? 'Medium' : 'High';
+    } else {
+      volEl.textContent = '—';
+    }
   }
 
   function renderPrice(marketData){
@@ -665,16 +760,51 @@
 
   async function loadMultiTimeframe(){
     const body = document.getElementById('mtfBody');
-    const rows = await Promise.all(MTF_LIST.map(async tf => {
+    const results = await Promise.all(MTF_LIST.map(async tf => {
       try {
         const qc = await fetchQuickCheck(tf.key);
         const pct = qc.maxScore ? Math.round(Math.abs(qc.score) / qc.maxScore * 100) : 0;
-        return '<tr><td>' + tf.label + '</td><td>' + tagHtml(qc.direction, qc.strong, qc.tradable) + '</td><td>' + pct + '%</td><td>' + trendHtml(qc.direction) + '</td></tr>';
+        return { tf, qc, pct, ok: true };
       } catch (e) {
-        return '<tr><td>' + tf.label + '</td><td class="empty">ผิดพลาด</td><td>—</td><td>—</td></tr>';
+        return { tf, ok: false };
       }
     }));
-    body.innerHTML = rows.join('');
+    body.innerHTML = results.map(r => r.ok
+      ? '<tr><td>' + r.tf.label + '</td><td>' + tagHtml(r.qc.direction, r.qc.strong, r.qc.tradable) + '</td><td>' + r.pct + '%</td><td>' + trendHtml(r.qc.direction) + '</td><td>' + strengthDotsHtml(r.pct, r.qc.direction) + '</td></tr>'
+      : '<tr><td>' + r.tf.label + '</td><td class="empty">ผิดพลาด</td><td>—</td><td>—</td><td>—</td></tr>'
+    ).join('');
+    renderSetupSuggestion(results);
+  }
+
+  // Groups the multi-timeframe results (already fetched above, no extra API
+  // calls) into three horizon buckets and takes the majority direction
+  // within each — a real synthesis of the quick-check data, not a separate
+  // fabricated strategy engine.
+  function renderSetupSuggestion(results){
+    const buckets = [
+      { name: 'Scalping (M1-M5)', keys: ['1min', '5min'] },
+      { name: 'Day Trading (M15-H1)', keys: ['15min', '30min', '1h'] },
+      { name: 'Swing Trading (H4-D1)', keys: ['4h', '1day'] },
+    ];
+    const html = buckets.map(b => {
+      const rows = results.filter(r => r.ok && b.keys.includes(r.tf.key));
+      const tradableRows = rows.filter(r => r.qc.tradable && r.qc.direction);
+      let cls = 'wait', verdict = 'WAIT', hint = 'รอสัญญาณชัดเจนกว่านี้';
+      if(tradableRows.length){
+        const buyCount = tradableRows.filter(r => r.qc.direction === 'BUY').length;
+        const sellCount = tradableRows.length - buyCount;
+        if(buyCount !== sellCount){
+          const dir = buyCount > sellCount ? 'BUY' : 'SELL';
+          cls = dir === 'BUY' ? 'buy' : 'sell';
+          verdict = dir;
+          hint = tradableRows.filter(r => r.qc.direction === dir).map(r => r.tf.label).join(', ') + ' เห็นตรงกัน';
+        } else {
+          hint = 'สัญญาณในกลุ่มนี้ขัดแย้งกัน';
+        }
+      }
+      return '<div class="setup-card"><div class="name">' + b.name + '</div><div class="verdict ' + cls + '">' + verdict + '</div><div class="hint">' + hint + '</div></div>';
+    }).join('');
+    document.getElementById('setupGrid').innerHTML = html;
   }
 
   function relLabel(a, b, upWord, downWord){
