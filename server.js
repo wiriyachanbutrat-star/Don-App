@@ -548,7 +548,26 @@ function computeSignalScore(m) {
   }
   if (waitReason) reasons.push(`=> WAIT: ${waitReason}`);
 
-  return { score, direction, strong, strongThreshold, against200, reasons, maxScore, tradable, waitReason, adx: m.adx };
+  // "Developing" tier: surfaces setups that are close to (but don't yet
+  // clear) the trade gate, without loosening the gate itself — tradable
+  // still means the same thing it always did. Two ways in: ADX is nearly at
+  // the trend-strength threshold, or the confluence score already has a
+  // direction and is within one point of the "strong" bar.
+  let developing = false;
+  let developingReason = null;
+  if (!tradable) {
+    const adxNear = m.adx != null && m.adx < config.adxGate && m.adx >= config.adxGate - 3;
+    const scoreNear = direction != null && config.requireStrong && !strong && Math.abs(score) >= strongThreshold - 1;
+    if (adxNear) {
+      developing = true;
+      developingReason = `ADX=${m.adx.toFixed(1)} ใกล้เกณฑ์ ${config.adxGate} — เทรนด์กำลังก่อตัว ยังไม่ถึงเกณฑ์เข้าเทรด`;
+    } else if (scoreNear) {
+      developing = true;
+      developingReason = `คะแนน confluence ${score}/${maxScore} ใกล้เกณฑ์ ${strongThreshold} (ทิศทาง ${direction}) — สัญญาณกำลังก่อตัว ยังไม่ชัดพอ`;
+    }
+  }
+
+  return { score, direction, strong, strongThreshold, against200, reasons, maxScore, tradable, waitReason, adx: m.adx, developing, developingReason };
 }
 
 // Regular divergence: price makes a lower low / higher high while the
@@ -810,6 +829,8 @@ app.get('/api/quick-check', async (req, res) => {
       maxScore: signal.maxScore,
       adx: signal.adx,
       waitReason: signal.waitReason,
+      developing: signal.developing,
+      developingReason: signal.developingReason,
     });
   } catch (err) {
     console.error(err);

@@ -410,8 +410,13 @@
 
   let lastMarketData = null;
 
-  function tagHtml(direction, strong, tradable){
-    if(!tradable || !direction) return '<span class="tag wait">⏸ WAIT</span>';
+  // "Developing" is a separate, informational-only tier from the server —
+  // it never changes tradable/strong, just flags setups close to the gate.
+  function tagHtml(direction, strong, tradable, developing){
+    if(!tradable || !direction){
+      if(developing) return '<span class="tag wait">🟡 กำลังก่อตัว</span>';
+      return '<span class="tag wait">⏸ WAIT</span>';
+    }
     const cls = direction === 'BUY' ? 'buy' : 'sell';
     const icon = direction === 'BUY' ? '🟢' : '🔴';
     const label = (strong ? 'Strong ' : '') + direction;
@@ -722,6 +727,15 @@
     const pct = qc.maxScore ? Math.round(Math.abs(qc.score) / qc.maxScore * 100) : 0;
     setGauge('biasArc', 'biasArcLabel', cls, label, pct);
 
+    let devEl = document.getElementById('biasDeveloping');
+    if(!devEl){
+      devEl = document.createElement('div');
+      devEl.id = 'biasDeveloping';
+      devEl.className = 'gauge-sub';
+      document.querySelector('#overview .gauge-wrap').appendChild(devEl);
+    }
+    devEl.textContent = (!qc.tradable && qc.developing) ? '🟡 ' + qc.developingReason : '';
+
     document.getElementById('confPct').textContent = pct + '%';
     const fill = document.getElementById('confBar');
     fill.style.width = pct + '%';
@@ -770,7 +784,7 @@
       }
     }));
     body.innerHTML = results.map(r => r.ok
-      ? '<tr><td>' + r.tf.label + '</td><td>' + tagHtml(r.qc.direction, r.qc.strong, r.qc.tradable) + '</td><td>' + r.pct + '%</td><td>' + trendHtml(r.qc.direction) + '</td><td>' + strengthDotsHtml(r.pct, r.qc.direction) + '</td></tr>'
+      ? '<tr><td>' + r.tf.label + '</td><td>' + tagHtml(r.qc.direction, r.qc.strong, r.qc.tradable, r.qc.developing) + '</td><td>' + r.pct + '%</td><td>' + trendHtml(r.qc.direction) + '</td><td>' + strengthDotsHtml(r.pct, r.qc.direction) + '</td></tr>'
       : '<tr><td>' + r.tf.label + '</td><td class="empty">ผิดพลาด</td><td>—</td><td>—</td><td>—</td></tr>'
     ).join('');
     renderSetupSuggestion(results);
