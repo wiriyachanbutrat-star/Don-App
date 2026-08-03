@@ -427,12 +427,16 @@ const ASSET_CONFIG = {
   // lowered earlier in search of more frequent signals, but with no closed
   // trade history yet to confirm the looser gate actually holds up, rolled
   // back to the previous, more selective values pending real win-rate data.
-  XAU: { adxGate: 20, strongFactor: 0.3, strongFactorAgainst200: 0.44, requireStrong: true, rr: 1.5, atrMult: 1.5 },
+  // Tightened again 2026-08-02: adxGate 20->22 and strongFactor 0.3->0.35,
+  // this time deliberately trading signal frequency for confidence per
+  // signal — fewer trades, but each one needs a stronger trend + confluence
+  // to clear the bar.
+  XAU: { adxGate: 22, strongFactor: 0.35, strongFactorAgainst200: 0.5, requireStrong: true, rr: 1.5, atrMult: 1.5 },
   // BTC starts on the same thresholds as XAU as a baseline — untuned for
   // crypto's different volatility/session behavior (trades 24/7, no
   // session gaps). Use /api/config-suggestion once real BTC trade history
   // exists rather than guessing crypto-specific numbers up front.
-  BTC: { adxGate: 20, strongFactor: 0.3, strongFactorAgainst200: 0.44, requireStrong: true, rr: 1.5, atrMult: 1.5 },
+  BTC: { adxGate: 22, strongFactor: 0.35, strongFactorAgainst200: 0.5, requireStrong: true, rr: 1.5, atrMult: 1.5 },
 };
 
 function computeSignalScore(m) {
@@ -462,8 +466,11 @@ function computeSignalScore(m) {
     else { trendVotes -= 1; reasons.push('Supertrend แดง (trend vote sell)'); }
   }
 
-  if (m.higherTimeframe.trend.includes('Uptrend')) { trendVotes += 1; trendVoters += 1; reasons.push('Higher timeframe uptrend (trend vote buy)'); }
-  else { trendVotes -= 1; trendVoters += 1; reasons.push('Higher timeframe downtrend (trend vote sell)'); }
+  // Weighted 2x (not 1x like the other trend voters above) — the higher
+  // timeframe is the "bigger picture" this system is meant to trade with,
+  // so it should outweigh any single lower-timeframe read on its own.
+  if (m.higherTimeframe.trend.includes('Uptrend')) { trendVotes += 2; trendVoters += 2; reasons.push('Higher timeframe uptrend (trend vote buy, x2 น้ำหนัก)'); }
+  else { trendVotes -= 2; trendVoters += 2; reasons.push('Higher timeframe downtrend (trend vote sell, x2 น้ำหนัก)'); }
 
   let score = 0;
   const trendMajority = Math.ceil((trendVoters + 1) / 2);
@@ -1173,7 +1180,7 @@ app.post('/api/analyze', async (req, res) => {
     // requested ±15-30min window, not "15min before" — there's no calendar
     // feed wired up to know a release is imminent.
     const highImpactPattern = /non-?farm|nfp|\bcpi\b|fomc|federal reserve|fed interest rate|interest rate decision|\bpce\b|powell/i;
-    const blackoutMinutes = 30;
+    const blackoutMinutes = 60;
     const recentHighImpact = news.find(a => highImpactPattern.test(a.title || '') && a.published && (Date.now() - new Date(a.published).getTime()) < blackoutMinutes * 60 * 1000);
     if (recentHighImpact && signal.tradable) {
       signal.tradable = false;
