@@ -1133,6 +1133,18 @@
   loadNews();
   renderHistory();
   renderJournal();
+
+  // Auto-refresh every 60s (price, multi-timeframe, news) — spaced beyond
+  // the backend's 45s market-data cache and Twelve Data's 8-credit/min cap
+  // so this stays free background refresh, not a source of rate-limit
+  // errors. Does not touch the AI panel (runAI stays button-triggered —
+  // that call has a real per-request cost).
+  const AUTO_REFRESH_MS = 60 * 1000;
+  setInterval(() => {
+    loadPrimary().catch(e => console.error(e));
+    loadMultiTimeframe().catch(e => console.error(e));
+    loadNews();
+  }, AUTO_REFRESH_MS);
 </script>
 </body>
 </html>
