@@ -925,6 +925,35 @@ app.get('/api/quick-check', async (req, res) => {
   try {
     const { payload } = await getMarketDataPayload(assetKey, interval);
     const signal = computeSignalScore(payload);
+
+    // Multi-timeframe confirmation: a faster way in than waiting out the
+    // full gate on this timeframe alone, without loosening the gate itself.
+    // Only checked when this timeframe is "developing" (close to its own
+    // gate, per computeSignalScore) — if a faster timeframe already clears
+    // its OWN full strong+tradable bar in the same direction, that's two
+    // independent timeframes agreeing, which is a stricter condition than
+    // either one alone, not a loosened one.
+    let mtfConfirmed = false;
+    let mtfConfirmedInterval = null;
+    let mtfConfirmedReason = null;
+    if (!signal.tradable && signal.developing && signal.direction) {
+      const confirmIntervalMap = { '5min': '1min', '15min': '5min', '30min': '15min', '1h': '15min', '4h': '1h', '1day': '4h' };
+      const confirmInterval = confirmIntervalMap[interval];
+      if (confirmInterval) {
+        try {
+          const { payload: confirmPayload } = await getMarketDataPayload(assetKey, confirmInterval);
+          const confirmSignal = computeSignalScore(confirmPayload);
+          if (confirmSignal.tradable && confirmSignal.strong && confirmSignal.direction === signal.direction) {
+            mtfConfirmed = true;
+            mtfConfirmedInterval = confirmInterval;
+            mtfConfirmedReason = `${confirmInterval} ยืนยันทิศทาง ${signal.direction} ด้วยสัญญาณชัดเจน (score=${confirmSignal.score}/${confirmSignal.maxScore}) ขณะที่ ${interval} กำลังก่อตัวไปทางเดียวกัน`;
+          }
+        } catch (confirmErr) {
+          console.error('mtf confirm check failed', confirmErr);
+        }
+      }
+    }
+
     res.json({
       assetKey,
       interval,
@@ -939,6 +968,9 @@ app.get('/api/quick-check', async (req, res) => {
       developing: signal.developing,
       developingReason: signal.developingReason,
       squeeze: signal.squeeze,
+      mtfConfirmed,
+      mtfConfirmedInterval,
+      mtfConfirmedReason,
     });
   } catch (err) {
     console.error(err);

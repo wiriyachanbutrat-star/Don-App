@@ -427,8 +427,9 @@
 
   // "Developing" is a separate, informational-only tier from the server —
   // it never changes tradable/strong, just flags setups close to the gate.
-  function tagHtml(direction, strong, tradable, developing){
+  function tagHtml(direction, strong, tradable, developing, mtfConfirmed){
     if(!tradable || !direction){
+      if(mtfConfirmed && direction) return '<span class="tag ' + (direction === 'BUY' ? 'buy' : 'sell') + '"><span class="tag-dot"></span>✅ ' + direction + ' (MTF confirm)</span>';
       if(developing) return '<span class="tag wait"><span class="tag-dot"></span>กำลังก่อตัว</span>';
       return '<span class="tag wait"><span class="tag-dot"></span>WAIT</span>';
     }
@@ -749,7 +750,17 @@
       devEl.className = 'gauge-sub';
       document.querySelector('#overview .gauge-wrap').appendChild(devEl);
     }
-    devEl.textContent = (!qc.tradable && qc.developing) ? '🟡 ' + qc.developingReason : '';
+    devEl.textContent = (!qc.tradable && qc.developing && !qc.mtfConfirmed) ? '🟡 ' + qc.developingReason : '';
+
+    let confirmEl = document.getElementById('biasMtfConfirm');
+    if(!confirmEl){
+      confirmEl = document.createElement('div');
+      confirmEl.id = 'biasMtfConfirm';
+      confirmEl.className = 'gauge-sub';
+      confirmEl.style.color = 'var(--buy-bright)';
+      document.querySelector('#overview .gauge-wrap').appendChild(confirmEl);
+    }
+    confirmEl.textContent = qc.mtfConfirmed ? '✅ ยืนยันจาก ' + qc.mtfConfirmedInterval + ' — เข้าได้เร็วขึ้น' : '';
 
     document.getElementById('confPct').textContent = pct + '%';
     const fill = document.getElementById('confBar');
@@ -799,7 +810,7 @@
       }
     }));
     body.innerHTML = results.map(r => r.ok
-      ? '<tr><td>' + r.tf.label + '</td><td>' + tagHtml(r.qc.direction, r.qc.strong, r.qc.tradable, r.qc.developing) + '</td><td>' + r.pct + '%</td><td>' + trendHtml(r.qc.direction) + '</td><td>' + strengthDotsHtml(r.pct, r.qc.direction) + '</td></tr>'
+      ? '<tr><td>' + r.tf.label + '</td><td>' + tagHtml(r.qc.direction, r.qc.strong, r.qc.tradable, r.qc.developing, r.qc.mtfConfirmed) + '</td><td>' + r.pct + '%</td><td>' + trendHtml(r.qc.direction) + '</td><td>' + strengthDotsHtml(r.pct, r.qc.direction) + '</td></tr>'
       : '<tr><td>' + r.tf.label + '</td><td class="empty">ผิดพลาด</td><td>—</td><td>—</td><td>—</td></tr>'
     ).join('');
     renderSetupSuggestion(results);
