@@ -816,8 +816,15 @@ async function getMarketDataPayload(assetKey, interval) {
     const recentUp = candles.slice(-15).filter(c => c.close >= c.open).length;
     const recentDown = 15 - recentUp;
 
-    const ema20Series = ema(closes, 20);
-    const ema50Series = ema(closes, 50);
+    // Intraday timeframes (15min/30min/1h) use a faster EMA pair (9/21) so
+    // the trend read reacts quickly enough to be useful at that horizon;
+    // everything else keeps the standard 20/50 swing-trading pair. EMA200
+    // stays fixed at 200 regardless — it's the long-term filter, not
+    // something that should shrink just because the chart is zoomed in.
+    const EMA_FAST_SLOW_BY_INTERVAL = { '15min': [9, 21], '30min': [9, 21], '1h': [9, 21] };
+    const [emaFastPeriod, emaSlowPeriod] = EMA_FAST_SLOW_BY_INTERVAL[interval] || [20, 50];
+    const ema20Series = ema(closes, emaFastPeriod);
+    const ema50Series = ema(closes, emaSlowPeriod);
     const ema200Series = closes.length >= 200 ? ema(closes, 200) : null;
 
     const higherCloses = higherCandles.map(c => c.close);
