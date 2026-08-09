@@ -246,6 +246,7 @@
           <div class="conf-bar-track"><div class="conf-bar-fill" id="confBar" style="width:0%; background:var(--wait-bright);"></div></div>
         </div>
         <div class="meta-row"><span>Trend</span><span id="trendVal">—</span></div>
+        <div class="meta-row"><span>Higher TF Trend</span><span id="higherTrendVal">—</span></div>
         <div class="meta-row"><span>Session</span><span id="sessionVal">—</span></div>
         <div class="meta-row"><span>Volatility</span><span id="volatilityVal">—</span></div>
       </div>
@@ -773,6 +774,17 @@
         ? 'ขาลง (Bear)'
         : 'ผสม (Mixed)';
     document.getElementById('trendVal').textContent = trend;
+
+    const higherEl = document.getElementById('higherTrendVal');
+    if(marketData.higherTimeframe && marketData.higherTimeframe.trend){
+      const isUp = marketData.higherTimeframe.trend.indexOf('Uptrend') !== -1;
+      higherEl.textContent = (isUp ? '↗ ' : '↘ ') + marketData.higherTimeframe.trend + ' (' + marketData.higherTimeframe.interval + ')';
+      higherEl.style.color = isUp ? 'var(--buy-bright)' : 'var(--sell-bright)';
+    } else {
+      higherEl.textContent = '—';
+      higherEl.style.color = '';
+    }
+
     document.getElementById('sessionVal').textContent = sessionLabel();
 
     // Volatility bucket from real avgRange (avg candle high-low) as a % of
@@ -958,6 +970,14 @@
       enable_publishing: false,
       hide_top_toolbar: false,
       container_id: 'tvChart',
+      // Plots the same EMA the backend uses for its trend read (EMA50, or
+      // EMA21 on the 15min/30min/1h timeframes where the backend switches to
+      // the faster 9/21 pair) directly on the chart, so the "Trend" text
+      // above has a visual anchor instead of being a number you have to trust.
+      studies: [{
+        id: 'MAExp@tv-basicstudies',
+        inputs: { length: ['15min', '30min', '1h'].includes(document.getElementById('intervalSelect').value) ? 21 : 50 },
+      }],
     });
   }
 
