@@ -1,5 +1,6 @@
 require('dotenv').config();
 const express = require('express');
+const nodemailer = require('nodemailer');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -7,6 +8,18 @@ const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 const TWELVE_DATA_API_KEY = process.env.TWELVE_DATA_API_KEY;
 const MARKETAUX_API_KEY = process.env.MARKETAUX_API_KEY;
 const CLAUDE_MODEL = 'claude-opus-5';
+
+// Email BUY/SELL alerts via Gmail SMTP — EMAIL_USER/EMAIL_APP_PASSWORD is
+// the sending Gmail account (needs a 16-char Google App Password, not the
+// regular account password: https://myaccount.google.com/apppasswords).
+// EMAIL_TO is the recipient (defaults to EMAIL_USER if unset, i.e. send to
+// yourself). All optional — the alert loop below just no-ops without them.
+const EMAIL_USER = process.env.EMAIL_USER;
+const EMAIL_APP_PASSWORD = process.env.EMAIL_APP_PASSWORD;
+const EMAIL_TO = process.env.EMAIL_TO || EMAIL_USER;
+const mailer = (EMAIL_USER && EMAIL_APP_PASSWORD)
+  ? nodemailer.createTransport({ service: 'gmail', auth: { user: EMAIL_USER, pass: EMAIL_APP_PASSWORD } })
+  : null;
 
 const ASSETS = {
   XAU: { symbol: 'XAU/USD', label: 'ทองคำ (XAUUSD)' },
@@ -423,20 +436,19 @@ function ictZones(swing, currentPrice) {
 // Per-asset gating — kept as a lookup rather than bare constants so each
 // asset can plug in its own thresholds without touching computeSignalScore.
 const ASSET_CONFIG = {
-  // Reverted 2026-07-31: adxGate 18->20 and strongFactor 0.22->0.3 had been
-  // lowered earlier in search of more frequent signals, but with no closed
-  // trade history yet to confirm the looser gate actually holds up, rolled
-  // back to the previous, more selective values pending real win-rate data.
-  // Tightened again 2026-08-02: adxGate 20->22 and strongFactor 0.3->0.35,
-  // this time deliberately trading signal frequency for confidence per
-  // signal — fewer trades, but each one needs a stronger trend + confluence
-  // to clear the bar.
-  XAU: { adxGate: 22, strongFactor: 0.35, strongFactorAgainst200: 0.5, requireStrong: true, rr: 1.5, atrMult: 1.5 },
+  // Reverted 2026-08-03: adxGate 22->20 and strongFactor 0.35/0.5->0.3/0.44
+  // (back to the 2026-07-31 values) — the 2026-08-02 tightening made
+  // signals (and thus email alerts) too rare for practical use, with still
+  // no closed trade history either way to say the tighter gate was actually
+  // better. Back to the more permissive baseline; the multi-timeframe
+  // "developing"/"confirmed" tiers still exist on top of this for early
+  // warning without a third round of threshold tuning.
+  XAU: { adxGate: 20, strongFactor: 0.3, strongFactorAgainst200: 0.44, requireStrong: true, rr: 1.5, atrMult: 1.5 },
   // BTC starts on the same thresholds as XAU as a baseline — untuned for
   // crypto's different volatility/session behavior (trades 24/7, no
   // session gaps). Use /api/config-suggestion once real BTC trade history
   // exists rather than guessing crypto-specific numbers up front.
-  BTC: { adxGate: 22, strongFactor: 0.35, strongFactorAgainst200: 0.5, requireStrong: true, rr: 1.5, atrMult: 1.5 },
+  BTC: { adxGate: 20, strongFactor: 0.3, strongFactorAgainst200: 0.44, requireStrong: true, rr: 1.5, atrMult: 1.5 },
 };
 
 function computeSignalScore(m) {
@@ -1240,10 +1252,11 @@ app.post('/api/analyze', async (req, res) => {
       body: JSON.stringify({
         model: CLAUDE_MODEL,
         max_tokens: 8192,
-        // xhigh effort spends more reasoning on reconciling the ~20 indicators
-        // in the prompt before answering, instead of the "high" default —
-        // worth the extra latency/cost for a trade call, not a chat reply.
-        output_config: { effort: 'xhigh' },
+        // Dropped from xhigh to high 2026-08-03 — xhigh's extra reasoning
+        // time made the AI panel feel too slow for interactive use. high is
+        // Claude's default effort and still reconciles the ~20 indicators
+        // in the prompt, just without xhigh's extra deliberation pass.
+        output_config: { effort: 'high' },
         messages: [{ role: 'user', content: prompt }],
       }),
     });
@@ -1547,6 +1560,61 @@ buy_probability/sell_probability ต้องรวมกันได้ 100 แ
   "reasons": ["เหตุผลข้อ 1 ภาษาไทย อ้างอิงตัวเลขจริงข้างต้น", "เหตุผลข้อ 2", "..."],
   "detailed_analysis": "ย่อหน้าวิเคราะห์เชิงลึกภาษาไทย อย่างน้อย 4-6 ประโยค ตามที่อธิบายไว้ข้างต้น"
 }`;
+}
+
+// ---- Email BUY/SELL alerts ----
+// Checks XAU/1h every 15 minutes and emails only on a *change* to a
+// tradable BUY/SELL (or a change of direction) — never repeats the same
+// signal every cycle, and never fires for WAIT. This is the same
+// deterministic signal /api/quick-check uses, just polled server-side
+// since there's no push mechanism from the browser tab needing to stay open.
+const EMAIL_CHECK_ASSET = 'XAU';
+const EMAIL_CHECK_INTERVAL = '1h';
+const EMAIL_CHECK_MS = 15 * 60 * 1000;
+let lastEmailedSignal = null; // 'BUY' | 'SELL' | null
+
+async function checkAndSendSignalEmail() {
+  if (!mailer) return;
+  try {
+    const { payload } = await getMarketDataPayload(EMAIL_CHECK_ASSET, EMAIL_CHECK_INTERVAL);
+    const signal = computeSignalScore(payload);
+    if (!signal.tradable || !signal.direction) {
+      lastEmailedSignal = null; // back to WAIT — next BUY/SELL (even a repeat direction) counts as new
+      return;
+    }
+    if (signal.direction === lastEmailedSignal) return; // already alerted this exact signal
+    lastEmailedSignal = signal.direction;
+
+    const assetLabel = ASSETS[EMAIL_CHECK_ASSET].label;
+    const isBuy = signal.direction === 'BUY';
+    await mailer.sendMail({
+      from: EMAIL_USER,
+      to: EMAIL_TO,
+      subject: `[Gold AI] ${signal.direction} ${assetLabel} @ ${payload.currentPrice.toFixed(2)} (${EMAIL_CHECK_INTERVAL})`,
+      text: [
+        `สัญญาณ: ${signal.direction} (${signal.strong ? 'ชัดเจน' : 'ปานกลาง'})`,
+        `สินทรัพย์: ${assetLabel} (${EMAIL_CHECK_INTERVAL})`,
+        `ราคาปัจจุบัน: ${payload.currentPrice.toFixed(2)}`,
+        `คะแนน: ${signal.score}/${signal.maxScore}`,
+        `ADX: ${signal.adx != null ? signal.adx.toFixed(1) : 'N/A'}`,
+        '',
+        'เหตุผล:',
+        ...signal.reasons.map(r => '- ' + r),
+        '',
+        'อีเมลนี้ส่งอัตโนมัติจากระบบวิเคราะห์ทองคำ — ไม่ใช่คำแนะนำการลงทุน โปรดตรวจสอบก่อนตัดสินใจเทรดจริง',
+      ].join('\n'),
+    });
+    console.log(`Sent ${signal.direction} email alert for ${EMAIL_CHECK_ASSET}/${EMAIL_CHECK_INTERVAL}`);
+  } catch (err) {
+    console.error('checkAndSendSignalEmail failed', err);
+  }
+}
+
+if (mailer) {
+  setInterval(checkAndSendSignalEmail, EMAIL_CHECK_MS);
+  checkAndSendSignalEmail(); // also check once on startup instead of waiting a full 15min
+} else {
+  console.log('Email alerts disabled — set EMAIL_USER and EMAIL_APP_PASSWORD to enable.');
 }
 
 app.listen(PORT, () => {

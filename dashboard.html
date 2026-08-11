@@ -1165,14 +1165,16 @@
   renderHistory();
   renderJournal();
 
-  // Auto-refresh every 5 minutes (price, multi-timeframe, news). 60s was
+  // Auto-refresh every 2 minutes (price, multi-timeframe, news). 60s was
   // tried first but Twelve Data's free tier caps at 800 credits/DAY (not
   // just per-minute) — the multi-timeframe table alone costs ~8 credits per
-  // cycle, so a 60s cadence burns through the entire daily quota in under
-  // 2 hours of just leaving the tab open. 5 minutes keeps a full day of
-  // normal use within budget. Does not touch the AI panel (runAI stays
+  // cycle, so a 60s cadence burns the entire daily quota in under 2 hours
+  // of just leaving the tab open. 5min was tried next but felt too stale
+  // for "real-time" use. 2 minutes is the middle ground: still burns the
+  // daily quota if left open ~3+ hours straight, but feels responsive for
+  // an active session. Does not touch the AI panel (runAI stays
   // button-triggered — that call has a real per-request cost on top).
-  const AUTO_REFRESH_MS = 5 * 60 * 1000;
+  const AUTO_REFRESH_MS = 2 * 60 * 1000;
   setInterval(() => {
     loadPrimary().catch(e => console.error(e));
     loadMultiTimeframe().catch(e => console.error(e));
