@@ -443,12 +443,22 @@ const ASSET_CONFIG = {
   // better. Back to the more permissive baseline; the multi-timeframe
   // "developing"/"confirmed" tiers still exist on top of this for early
   // warning without a third round of threshold tuning.
-  XAU: { adxGate: 20, strongFactor: 0.3, strongFactorAgainst200: 0.44, requireStrong: true, rr: 1.5, atrMult: 1.5 },
+  // Recalibrated 2026-08-03 (later same day): strongFactor 0.3/0.44 was set
+  // back when maxScore was 9, but adding Bollinger+Keltner (see
+  // computeSignalScore) grew maxScore to 11 without recalibrating this —
+  // Math.ceil(9*0.3)=3 vs Math.ceil(11*0.3)=4, so the "strong" bar had
+  // silently gotten one point stricter. Bollinger and Keltner also read
+  // opposite conditions by design (mean-reversion vs breakout) and often
+  // cancel out to a net-zero contribution while still inflating maxScore as
+  // the denominator, further diluting the score/maxScore ratio. Lowered to
+  // 0.27/0.36 to land back on the original 3-of-9 / 4-of-9 bar at the new
+  // 11-point scale (ceil(11*0.27)=3, ceil(11*0.36)=4).
+  XAU: { adxGate: 20, strongFactor: 0.27, strongFactorAgainst200: 0.36, requireStrong: true, rr: 1.5, atrMult: 1.5 },
   // BTC starts on the same thresholds as XAU as a baseline — untuned for
   // crypto's different volatility/session behavior (trades 24/7, no
   // session gaps). Use /api/config-suggestion once real BTC trade history
   // exists rather than guessing crypto-specific numbers up front.
-  BTC: { adxGate: 20, strongFactor: 0.3, strongFactorAgainst200: 0.44, requireStrong: true, rr: 1.5, atrMult: 1.5 },
+  BTC: { adxGate: 20, strongFactor: 0.27, strongFactorAgainst200: 0.36, requireStrong: true, rr: 1.5, atrMult: 1.5 },
 };
 
 function computeSignalScore(m) {
