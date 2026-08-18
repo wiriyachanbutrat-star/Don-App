@@ -474,7 +474,13 @@
 
     <div class="panel" id="smc">
       <h2>Smart Money Concepts</h2>
+      <div class="setup-card" id="smcVerdictCard" style="margin-bottom:12px;">
+        <div class="name">เจ้าตลาด (Smart Money) กำลังจะ</div>
+        <div class="verdict wait" id="smcVerdict">กำลังโหลด…</div>
+        <div class="hint" id="smcVerdictHint"></div>
+      </div>
       <div class="smc-grid" id="smcGrid"><div class="empty">กำลังโหลด…</div></div>
+      <ul class="reason-list" id="smcReasons" style="margin-top:10px;"></ul>
       <div class="market-context" id="marketContext"><span>📈</span><span>กำลังโหลดบริบทตลาด…</span></div>
     </div>
 
@@ -1086,6 +1092,28 @@
       '<div class="smc-card"><div class="ic">' + ic + '</div><div class="name">' + name + '</div><div class="val">' + val + '</div></div>'
     ).join('');
 
+    const sm = m.smartMoney;
+    const verdictEl = document.getElementById('smcVerdict');
+    const hintEl = document.getElementById('smcVerdictHint');
+    const reasonsEl = document.getElementById('smcReasons');
+    if (sm) {
+      const cls = sm.bias === 'BUY' ? 'buy' : sm.bias === 'SELL' ? 'sell' : 'wait';
+      const label = sm.bias === 'BUY' ? '🟢 เข้าซื้อ (Accumulate)' : sm.bias === 'SELL' ? '🔴 เข้าขาย (Distribute)' : '⚪ ยังไม่ชัดเจน';
+      verdictEl.className = 'verdict ' + cls;
+      verdictEl.textContent = label;
+      hintEl.textContent = sm.votesCount
+        ? `ความมั่นใจ ${sm.confidence}% จาก ${sm.votesCount} สัญญาณ (คะแนนสุทธิ ${sm.score >= 0 ? '+' : ''}${sm.score})`
+        : 'ยังไม่พบร่องรอย Smart Money ในรอบนี้';
+      reasonsEl.innerHTML = sm.reasons.length
+        ? sm.reasons.map(r => '<li>' + r + '</li>').join('')
+        : '<li>ไม่มีสัญญาณ Liquidity Sweep / Order Block / FVG / BOS-CHoCH / OTE ในรอบนี้</li>';
+    } else {
+      verdictEl.className = 'verdict wait';
+      verdictEl.textContent = '⚪ ไม่มีข้อมูล';
+      hintEl.textContent = '';
+      reasonsEl.innerHTML = '';
+    }
+
     const bull = [liq && m.liquiditySweep.bullish, ob && m.smc.bullishOB, fvg && m.smc.bullishFvg].filter(Boolean).length;
     const bear = [liq && m.liquiditySweep.bearish, ob && m.smc.bearishOB, fvg && m.smc.bearishFvg].filter(Boolean).length;
     const contextText = bull > bear
@@ -1200,6 +1228,7 @@
       out.innerHTML =
         '<div class="tag ' + cls + '" style="font-size:16px; padding:6px 14px;">' + (isWait ? '⏸ AI แนะนำ WAIT' : (isBuy ? '🟢 AI ยืนยัน BUY — ' + confPct + '% confidence' : '🔴 AI ยืนยัน SELL — ' + confPct + '% confidence')) + '</div>' +
         (trade.atrWidened ? '<div class="risk-hint">⚠ ขยาย SL/TP ตาม ATR (SL เดิมแคบกว่าความผันผวนตลาด)</div>' : '') +
+        (a.smart_money ? '<div class="market-context" style="margin-top:10px;"><span>🧠</span><span><strong>เจ้าตลาด:</strong> ' + a.smart_money + '</span></div>' : '') +
         '<ul class="ai-reasons">' + (Array.isArray(a.reasons) ? a.reasons.map(r => '<li>' + r + '</li>').join('') : '') + '</ul>';
     } catch (err) {
       out.innerHTML = '<div class="empty" style="color:var(--sell-bright);">' + (err.message || 'เกิดข้อผิดพลาด') + '</div>';
@@ -1320,7 +1349,12 @@
   navLinks[0].classList.add('active');
 
   initChart();
-  loadPrimary().catch(e => console.error(e));
+  // AI entry-point analysis runs once automatically on page load so the
+  // dashboard opens with a smart-money-aware BUY/SELL/WAIT call already in
+  // place — it stays button-triggered after that (each call has a real
+  // Claude API cost, see AUTO_REFRESH_MS comment below), so switching
+  // asset/interval or the 2-minute auto-refresh does not re-spend on it.
+  loadPrimary().then(() => runAI()).catch(e => console.error(e));
   loadMultiTimeframe().catch(e => console.error(e));
   loadNews();
   renderHistory();

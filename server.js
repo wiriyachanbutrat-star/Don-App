@@ -433,6 +433,42 @@ function ictZones(swing, currentPrice) {
   return { high, low, eq, zone, oteBuyZone, oteSellZone, inOteBuy, inOteSell };
 }
 
+// "Who's in control" read: distinct from computeSignalScore's full confluence
+// score (which blends trend/momentum/structure into one trade-gate number).
+// This isolates only the footprints institutional/market-maker flow tends to
+// leave — liquidity sweeps (stop hunts), order blocks and fair value gaps
+// (accumulation/distribution zones), BOS/CHoCH (structure shifts), and ICT
+// OTE (the pullback pocket smart money re-enters from) — so "is the big
+// player accumulating or distributing right now" can be shown as its own
+// verdict, independent of whether the broader trade gate (ADX, RSI, etc.)
+// is open.
+function computeSmartMoneyBias(m) {
+  const votes = [];
+  if (m.liquiditySweep) {
+    if (m.liquiditySweep.bullish) votes.push({ dir: 1, label: `Liquidity Sweep ใต้แนวรับ ${m.liquiditySweep.bullish.level.toFixed(2)} แล้วเด้งกลับขึ้น — เจ้าตลาดกวาด stop ฝั่งขายก่อนดันราคาขึ้น` });
+    else if (m.liquiditySweep.bearish) votes.push({ dir: -1, label: `Liquidity Sweep เหนือแนวต้าน ${m.liquiditySweep.bearish.level.toFixed(2)} แล้วร่วงกลับลง — เจ้าตลาดกวาด stop ฝั่งซื้อก่อนกดราคาลง` });
+  }
+  if (m.smc) {
+    if (m.smc.bullishOB) votes.push({ dir: 1, label: `Order Block ฝั่งซื้อที่ ${m.smc.bullishOB.low.toFixed(2)}-${m.smc.bullishOB.high.toFixed(2)} — จุดที่เจ้าตลาดสะสมของก่อนดันราคาขึ้น` });
+    else if (m.smc.bearishOB) votes.push({ dir: -1, label: `Order Block ฝั่งขายที่ ${m.smc.bearishOB.low.toFixed(2)}-${m.smc.bearishOB.high.toFixed(2)} — จุดที่เจ้าตลาดกระจายของก่อนกดราคาลง` });
+    if (m.smc.bullishFvg) votes.push({ dir: 1, label: `Fair Value Gap ฝั่งซื้อ ${m.smc.bullishFvg.gapLow.toFixed(2)}-${m.smc.bullishFvg.gapHigh.toFixed(2)} — ช่องว่างที่ราคามักถูกดึงกลับไปเติมก่อนไปต่อขาขึ้น` });
+    else if (m.smc.bearishFvg) votes.push({ dir: -1, label: `Fair Value Gap ฝั่งขาย ${m.smc.bearishFvg.gapLow.toFixed(2)}-${m.smc.bearishFvg.gapHigh.toFixed(2)} — ช่องว่างที่ราคามักถูกดึงกลับไปเติมก่อนไปต่อขาลง` });
+  }
+  if (m.structure && m.structure.event) {
+    const bullishEvent = m.structure.event.startsWith('BOS ขาขึ้น') || m.structure.event.includes('กลับตัวเป็นขาขึ้น');
+    votes.push({ dir: bullishEvent ? 1 : -1, label: m.structure.event });
+  }
+  if (m.ict) {
+    if (m.ict.inOteBuy) votes.push({ dir: 1, label: 'ราคาอยู่ใน ICT OTE zone (61.8-79% retracement) ฝั่งซื้อ — โซนที่เจ้าตลาดมักกลับเข้าเก็บของ' });
+    else if (m.ict.inOteSell) votes.push({ dir: -1, label: 'ราคาอยู่ใน ICT OTE zone (61.8-79% retracement) ฝั่งขาย — โซนที่เจ้าตลาดมักกลับเข้าขายของ' });
+  }
+
+  const score = votes.reduce((s, v) => s + v.dir, 0);
+  const bias = votes.length === 0 ? 'NEUTRAL' : score > 0 ? 'BUY' : score < 0 ? 'SELL' : 'NEUTRAL';
+  const confidence = votes.length ? Math.round((Math.abs(score) / votes.length) * 100) : 0;
+  return { bias, score, votesCount: votes.length, confidence, reasons: votes.map(v => v.label) };
+}
+
 // Per-asset gating — kept as a lookup rather than bare constants so each
 // asset can plug in its own thresholds without touching computeSignalScore.
 const ASSET_CONFIG = {
@@ -565,6 +601,20 @@ function computeSignalScore(m) {
     else { reasons.push('ราคาอยู่โซน Equilibrium (0)'); }
   }
 
+  // Order Block / Fair Value Gap: smart-money accumulation/distribution
+  // footprints, independent of the BOS/CHoCH structure vote above (which
+  // looks at the close breaking structure, not where institutional orders
+  // actually clustered).
+  if (m.smc) {
+    if (m.smc.bullishOB) { score += 1; reasons.push('Bullish Order Block (เจ้าตลาดสะสมของ) (+1 buy)'); }
+    else if (m.smc.bearishOB) { score -= 1; reasons.push('Bearish Order Block (เจ้าตลาดกระจายของ) (+1 sell)'); }
+    else { reasons.push('ไม่มี Order Block ใหม่ (0)'); }
+
+    if (m.smc.bullishFvg) { score += 1; reasons.push('Bullish Fair Value Gap (+1 buy)'); }
+    else if (m.smc.bearishFvg) { score -= 1; reasons.push('Bearish Fair Value Gap (+1 sell)'); }
+    else { reasons.push('ไม่มี Fair Value Gap ใหม่ (0)'); }
+  }
+
   // Bollinger Bands: a mean-reversion vote — price outside its own recent
   // 2-std-dev range is "stretched" and more likely to snap back, independent
   // of trend direction (unlike the trend-confluence block above).
@@ -589,7 +639,7 @@ function computeSignalScore(m) {
   const squeeze = !!(m.bollinger && m.keltner && m.bollinger.upper < m.keltner.upper && m.bollinger.lower > m.keltner.lower);
   if (squeeze) reasons.push('=> Bollinger Bands หดตัวเข้าไปในกรอบ Keltner Channel (squeeze) — ความผันผวนต่ำ อาจมี breakout เร็วๆ นี้');
 
-  const maxScore = 6 + (m.divergence ? 1 : 0) + (m.liquiditySweep ? 1 : 0) + (m.ict ? 1 : 0) + (m.bollinger ? 1 : 0) + (m.keltner ? 1 : 0);
+  const maxScore = 6 + (m.divergence ? 1 : 0) + (m.liquiditySweep ? 1 : 0) + (m.ict ? 1 : 0) + (m.bollinger ? 1 : 0) + (m.keltner ? 1 : 0) + (m.smc ? 2 : 0);
   const direction = score > 0 ? 'BUY' : score < 0 ? 'SELL' : null;
   const against200 = ema200Direction != null && direction != null && direction !== ema200Direction;
   if (against200) { reasons.push(`=> ทิศทาง ${direction} สวนทาง EMA200 (long-term trend) — ต้องใช้ threshold สูงขึ้นจึงจะถือว่าสัญญาณแรง`); }
@@ -867,6 +917,11 @@ async function getMarketDataPayload(assetKey, interval) {
     const rsiSeriesFull = rsiSeries(closes, 21);
     const atrSeriesFull = atrSeries(candles);
     const swingResult = swingPoints(candles);
+    const smcResult = orderBlocksAndFvg(candles);
+    const structureResult = structureBreak(candles);
+    const liquiditySweepResult = liquiditySweep(candles);
+    const ictResult = ictZones(swingResult, currentPrice);
+    const smartMoney = computeSmartMoneyBias({ smc: smcResult, structure: structureResult, liquiditySweep: liquiditySweepResult, ict: ictResult });
 
     const payload = {
       symbol: asset.symbol,
@@ -903,11 +958,12 @@ async function getMarketDataPayload(assetKey, interval) {
       bollinger: bollingerBands(closes),
       keltner: keltnerChannel(closes, atrSeriesFull),
       divergence: detectDivergence(candles, closes),
-      smc: orderBlocksAndFvg(candles),
+      smc: smcResult,
       supertrend: supertrend(candles),
-      structure: structureBreak(candles),
-      liquiditySweep: liquiditySweep(candles),
-      ict: ictZones(swingResult, currentPrice),
+      structure: structureResult,
+      liquiditySweep: liquiditySweepResult,
+      ict: ictResult,
+      smartMoney,
       higherTimeframe: {
         interval: higherInterval,
         trend: higherTrend,
@@ -1007,6 +1063,7 @@ app.get('/api/quick-check', async (req, res) => {
       mtfConfirmed,
       mtfConfirmedInterval,
       mtfConfirmedReason,
+      smartMoney: payload.smartMoney,
     });
   } catch (err) {
     console.error(err);
@@ -1516,7 +1573,7 @@ Stochastic Oscillator: %K=${m.stochastic.k.toFixed(2)}, %D=${m.stochastic.d.toFi
 ${m.swing ? `Swing High ล่าสุด (จุดกลับตัวขาขึ้น→ลง): ${m.swing.high ? `${m.swing.high.price} (${m.swing.high.barsAgo} แท่งก่อนหน้า)` : 'ไม่พบในช่วงข้อมูล'}\nSwing Low ล่าสุด (จุดกลับตัวขาลง→ขึ้น): ${m.swing.low ? `${m.swing.low.price} (${m.swing.low.barsAgo} แท่งก่อนหน้า)` : 'ไม่พบในช่วงข้อมูล'}\n` : ''}
 ความผันผวน 20 แท่งล่าสุด: ช่วงราคาเฉลี่ย/แท่ง=${m.volatility.avgRange.toFixed(2)}, สัดส่วนตัวแท่งเทียนเฉลี่ย=${(m.volatility.avgBodyRatio*100).toFixed(1)}%
 แนวโน้มกรอบเวลาใหญ่กว่า (${m.higherTimeframe.interval}): ${m.higherTimeframe.trend} (EMA20=${m.higherTimeframe.ema20.toFixed(2)}, EMA50=${m.higherTimeframe.ema50.toFixed(2)})
-${m.divergence && (m.divergence.bullish || m.divergence.bearish) ? `Divergence: ${m.divergence.bullish ? `Bullish (ราคาทำ low ใหม่ต่ำกว่าเดิมที่ ${m.divergence.bullish.recentPrice} แต่ RSI สูงขึ้น)` : `Bearish (ราคาทำ high ใหม่สูงกว่าเดิมที่ ${m.divergence.bearish.recentPrice} แต่ RSI ต่ำลง)`}\n` : ''}${m.smc ? `Order Block: ${m.smc.bullishOB ? `Bullish OB ${m.smc.bullishOB.low.toFixed(2)}-${m.smc.bullishOB.high.toFixed(2)}` : 'ไม่พบ'} / ${m.smc.bearishOB ? `Bearish OB ${m.smc.bearishOB.low.toFixed(2)}-${m.smc.bearishOB.high.toFixed(2)}` : 'ไม่พบ'}\nFair Value Gap: ${m.smc.bullishFvg ? `Bullish FVG ${m.smc.bullishFvg.gapLow.toFixed(2)}-${m.smc.bullishFvg.gapHigh.toFixed(2)}` : 'ไม่พบ'} / ${m.smc.bearishFvg ? `Bearish FVG ${m.smc.bearishFvg.gapLow.toFixed(2)}-${m.smc.bearishFvg.gapHigh.toFixed(2)}` : 'ไม่พบ'}\n` : ''}${m.supertrend ? `Supertrend (10,3): ${m.supertrend.trend === 'up' ? 'ขาขึ้น (เขียว)' : 'ขาลง (แดง)'} เส้นอยู่ที่ ${m.supertrend.value.toFixed(2)}\n` : ''}${m.structure ? `โครงสร้างตลาด (multi-swing): ${m.structure.structure}${m.structure.event ? ` — ${m.structure.event}` : ' — ไม่มี BOS/CHoCH ใหม่'}\n` : ''}${m.liquiditySweep && (m.liquiditySweep.bullish || m.liquiditySweep.bearish) ? `Liquidity Sweep: ${m.liquiditySweep.bullish ? `กวาดใต้ swing low ${m.liquiditySweep.bullish.level.toFixed(2)} (wick ต่ำสุด ${m.liquiditySweep.bullish.wickLow.toFixed(2)}) แล้วปิดกลับเข้ากรอบ — สัญญาณ stop-hunt ฝั่งซื้อ` : `กวาดเหนือ swing high ${m.liquiditySweep.bearish.level.toFixed(2)} (wick สูงสุด ${m.liquiditySweep.bearish.wickHigh.toFixed(2)}) แล้วปิดกลับเข้ากรอบ — สัญญาณ stop-hunt ฝั่งขาย`}\n` : ''}${m.ict ? `ICT Premium/Discount: dealing range ${m.ict.low.toFixed(2)}-${m.ict.high.toFixed(2)} (equilibrium=${m.ict.eq.toFixed(2)}) → ราคาปัจจุบันอยู่โซน ${m.ict.zone === 'premium' ? 'Premium (โซนขายของ ICT)' : m.ict.zone === 'discount' ? 'Discount (โซนซื้อของ ICT)' : 'Equilibrium (กึ่งกลาง ยังไม่ชัดเจน)'}\nICT OTE (Optimal Trade Entry, fib 61.8-79%): โซนซื้อ ${m.ict.oteBuyZone.low.toFixed(2)}-${m.ict.oteBuyZone.high.toFixed(2)} / โซนขาย ${m.ict.oteSellZone.low.toFixed(2)}-${m.ict.oteSellZone.high.toFixed(2)} → ${m.ict.inOteBuy ? 'ราคาปัจจุบันอยู่ใน OTE ฝั่งซื้อพอดี' : m.ict.inOteSell ? 'ราคาปัจจุบันอยู่ใน OTE ฝั่งขายพอดี' : 'ราคาปัจจุบันยังไม่เข้าโซน OTE'}\n` : ''}
+${m.divergence && (m.divergence.bullish || m.divergence.bearish) ? `Divergence: ${m.divergence.bullish ? `Bullish (ราคาทำ low ใหม่ต่ำกว่าเดิมที่ ${m.divergence.bullish.recentPrice} แต่ RSI สูงขึ้น)` : `Bearish (ราคาทำ high ใหม่สูงกว่าเดิมที่ ${m.divergence.bearish.recentPrice} แต่ RSI ต่ำลง)`}\n` : ''}${m.smc ? `Order Block: ${m.smc.bullishOB ? `Bullish OB ${m.smc.bullishOB.low.toFixed(2)}-${m.smc.bullishOB.high.toFixed(2)}` : 'ไม่พบ'} / ${m.smc.bearishOB ? `Bearish OB ${m.smc.bearishOB.low.toFixed(2)}-${m.smc.bearishOB.high.toFixed(2)}` : 'ไม่พบ'}\nFair Value Gap: ${m.smc.bullishFvg ? `Bullish FVG ${m.smc.bullishFvg.gapLow.toFixed(2)}-${m.smc.bullishFvg.gapHigh.toFixed(2)}` : 'ไม่พบ'} / ${m.smc.bearishFvg ? `Bearish FVG ${m.smc.bearishFvg.gapLow.toFixed(2)}-${m.smc.bearishFvg.gapHigh.toFixed(2)}` : 'ไม่พบ'}\n` : ''}${m.supertrend ? `Supertrend (10,3): ${m.supertrend.trend === 'up' ? 'ขาขึ้น (เขียว)' : 'ขาลง (แดง)'} เส้นอยู่ที่ ${m.supertrend.value.toFixed(2)}\n` : ''}${m.structure ? `โครงสร้างตลาด (multi-swing): ${m.structure.structure}${m.structure.event ? ` — ${m.structure.event}` : ' — ไม่มี BOS/CHoCH ใหม่'}\n` : ''}${m.liquiditySweep && (m.liquiditySweep.bullish || m.liquiditySweep.bearish) ? `Liquidity Sweep: ${m.liquiditySweep.bullish ? `กวาดใต้ swing low ${m.liquiditySweep.bullish.level.toFixed(2)} (wick ต่ำสุด ${m.liquiditySweep.bullish.wickLow.toFixed(2)}) แล้วปิดกลับเข้ากรอบ — สัญญาณ stop-hunt ฝั่งซื้อ` : `กวาดเหนือ swing high ${m.liquiditySweep.bearish.level.toFixed(2)} (wick สูงสุด ${m.liquiditySweep.bearish.wickHigh.toFixed(2)}) แล้วปิดกลับเข้ากรอบ — สัญญาณ stop-hunt ฝั่งขาย`}\n` : ''}${m.ict ? `ICT Premium/Discount: dealing range ${m.ict.low.toFixed(2)}-${m.ict.high.toFixed(2)} (equilibrium=${m.ict.eq.toFixed(2)}) → ราคาปัจจุบันอยู่โซน ${m.ict.zone === 'premium' ? 'Premium (โซนขายของ ICT)' : m.ict.zone === 'discount' ? 'Discount (โซนซื้อของ ICT)' : 'Equilibrium (กึ่งกลาง ยังไม่ชัดเจน)'}\nICT OTE (Optimal Trade Entry, fib 61.8-79%): โซนซื้อ ${m.ict.oteBuyZone.low.toFixed(2)}-${m.ict.oteBuyZone.high.toFixed(2)} / โซนขาย ${m.ict.oteSellZone.low.toFixed(2)}-${m.ict.oteSellZone.high.toFixed(2)} → ${m.ict.inOteBuy ? 'ราคาปัจจุบันอยู่ใน OTE ฝั่งซื้อพอดี' : m.ict.inOteSell ? 'ราคาปัจจุบันอยู่ใน OTE ฝั่งขายพอดี' : 'ราคาปัจจุบันยังไม่เข้าโซน OTE'}\n` : ''}${m.smartMoney ? `สรุปฝั่งเจ้าตลาด (Smart Money Bias — รวม Liquidity Sweep + Order Block + FVG + BOS/CHoCH + ICT OTE เป็นคะแนนเดียว): ${m.smartMoney.bias === 'BUY' ? 'เอนเอียงว่าเจ้าตลาดกำลังสะสมของ (เตรียมดันราคาขึ้น)' : m.smartMoney.bias === 'SELL' ? 'เอนเอียงว่าเจ้าตลาดกำลังกระจายของ (เตรียมกดราคาลง)' : 'ยังไม่มีร่องรอยเจ้าตลาดที่ชัดเจนพอ'} (ความมั่นใจ ${m.smartMoney.confidence}% จาก ${m.smartMoney.votesCount} สัญญาณ)${m.smartMoney.reasons.length ? '\n  - ' + m.smartMoney.reasons.join('\n  - ') : ''}\n` : ''}
 
 หน้าที่ของคุณ:
 - ก่อนสรุปคำแนะนำ ให้ทวนรายการอินดิเคเตอร์ทั้งหมดข้างต้นทีละตัวในใจว่าแต่ละตัวเอนไปทาง BUY, SELL หรือเป็นกลาง แล้วตรวจสอบว่าคำแนะนำสุดท้ายสอดคล้องกับเสียงส่วนใหญ่จริงหรือไม่ ถ้ามีอินดิเคเตอร์สำคัญ (เช่น เทรนด์กรอบเวลาใหญ่, ADX, ICT zone) ขัดแย้งกับคำแนะนำที่จะให้ ต้องลด confidence_percent ลงและระบุความขัดแย้งนั้นใน reasons อย่างตรงไปตรงมา ห้ามเลือกหยิบเฉพาะอินดิเคเตอร์ที่สนับสนุนทิศทางที่อยากแนะนำ (cherry-picking)
@@ -1531,6 +1588,7 @@ ${m.divergence && (m.divergence.bullish || m.divergence.bearish) ? `Divergence: 
 - ใช้ Volume Profile POC เป็นแนวรับ/แนวต้านที่ราคามีการซื้อขาย/พักตัวมากที่สุด
 - ถ้ามี Divergence (RSI) ให้ถือเป็นสัญญาณเตือนการกลับตัวที่สำคัญ และอธิบายไว้ใน reasons อย่างชัดเจนถ้าขัดแย้งกับ trend หลัก
 - ถ้ามี Order Block หรือ Fair Value Gap ให้ใช้ระดับราคานั้นประกอบการวาง entry/tp/sl (โซนที่ราคามักย้อนกลับไปทดสอบ)
+- ใช้ "สรุปฝั่งเจ้าตลาด (Smart Money Bias)" ข้างต้นเป็นตัวช่วยตัดสินใจหลักว่าเจ้าตลาด/สถาบันกำลังจะ "เข้าซื้อ" หรือ "เข้าขาย" — ถ้า bias นี้สอดคล้องกับทิศทางที่สัญญาณเทคนิคอื่นชี้ (confluence) ให้เพิ่ม confidence_percent ได้ และเลือก entry ให้ใกล้กับระดับ Order Block/OTE/liquidity level ที่ระบุไว้ในสัญญาณนั้น ถ้า bias นี้ขัดแย้งกับทิศทางที่จะแนะนำ (เช่นระบบเอนไปทาง SELL แต่เจ้าตลาดกำลังสะสมของฝั่งซื้อ) ต้องลด confidence_percent ลงและอธิบายความขัดแย้งนี้ใน reasons อย่างตรงไปตรงมา ถ้ายังไม่มีร่องรอยเจ้าตลาดชัดเจน (NEUTRAL/confidence ต่ำ) ให้ถือเป็นกลางๆ ไม่ใช่หลักฐานหนุนทิศทางใด
 - ใช้ Supertrend ยืนยันทิศทางเทรนด์หลักเพิ่มเติมจาก EMA cascade
 - ใช้โครงสร้างตลาด BOS/CHoCH ประกอบการยืนยันว่าเทรนด์เดิมยังดำเนินต่อ (BOS) หรือมีสัญญาณกลับตัว (CHoCH)
 - ถ้ามี Liquidity Sweep ให้ถือเป็นสัญญาณ stop-hunt/reversal ที่สำคัญ (ราคาแทงทะลุ swing high/low ไปกวาดสภาพคล่องแล้วปิดกลับเข้ากรอบ) และใช้ระดับที่ถูกกวาดนั้นประกอบการวาง entry/sl
@@ -1564,7 +1622,7 @@ buy_probability/sell_probability ต้องรวมกันได้ 100 แ
   "swing_structure": "โครงสร้างตลาดจาก Swing High/Low เช่น Higher High / Higher Low (ขาขึ้น) พร้อมระบุราคา swing high/low ล่าสุด",
   "higher_timeframe": "สรุปแนวโน้มกรอบเวลาใหญ่กว่าและว่าสอดคล้องหรือขัดแย้งกับกรอบเวลาปัจจุบัน",
   "divergence": "สรุป divergence ที่พบ (bullish/bearish) หรือ \\"ไม่พบ divergence\\"",
-  "smart_money": "สรุป Order Block และ Fair Value Gap ที่พบและนัยต่อ entry/tp/sl หรือ \\"ไม่พบ\\"",
+  "smart_money": "สรุปว่าเจ้าตลาด/สถาบัน (Smart Money) กำลังเอนเอียงจะ \\"เข้าซื้อ\\" หรือ \\"เข้าขาย\\" จาก Smart Money Bias ที่ให้มา รวมกับ Order Block/Fair Value Gap ที่พบและนัยต่อ entry/tp/sl หรือ \\"ไม่พบร่องรอยเจ้าตลาดที่ชัดเจน\\"",
   "supertrend": "สถานะ Supertrend เช่น ขาขึ้น (เขียว) และราคาอยู่เหนือเส้นหรือไม่",
   "structure_break": "สรุปโครงสร้างตลาดและ BOS/CHoCH ที่พบ หรือ \\"ไม่มี BOS/CHoCH ใหม่\\"",
   "liquidity_sweep": "สรุป Liquidity Sweep ที่พบ (ระดับที่ถูกกวาดและทิศทาง reversal) หรือ \\"ไม่พบ\\"",
