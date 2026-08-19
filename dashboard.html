@@ -238,11 +238,6 @@
   .setup-card .verdict.buy{ color: var(--buy-bright); } .setup-card .verdict.sell{ color: var(--sell-bright); } .setup-card .verdict.wait{ color: var(--wait-bright); }
   .setup-card .hint{ font-size:12px; color: var(--ink-dim); margin-top:4px; }
 
-  .news-item{ padding:10px 0; border-bottom:1px solid var(--hairline); font-size:13px; display:flex; justify-content:space-between; gap:10px; align-items:baseline; }
-  .news-item:last-child{ border-bottom:none; }
-  .news-item .headline{ flex:1; }
-  .news-item .src{ color: var(--ink-dim); font-size:12px; white-space:nowrap; }
-
   .gauge-wrap{ display:flex; flex-direction:column; align-items:center; gap:6px; }
   .gauge-svg{ width:130px; height:130px; }
   .gauge-sub{ font-size:12px; color: var(--ink-dim); }
@@ -267,7 +262,6 @@
     <a class="nav-link" data-target="mtf" href="#mtf"><span class="ic">⏱</span>Multi-Timeframe</a>
     <a class="nav-link" data-target="indicators" href="#indicators"><span class="ic">📊</span>Indicators</a>
     <a class="nav-link" data-target="sr" href="#sr"><span class="ic">📏</span>Support / Resistance</a>
-    <a class="nav-link" data-target="news" href="#news"><span class="ic">📰</span>News</a>
   </nav>
 
   <div class="main">
@@ -458,11 +452,6 @@
           <div class="gauge-sub" id="accuracySub">—</div>
         </div>
       </div>
-    </div>
-
-    <div class="panel" id="news">
-      <h2>Latest News</h2>
-      <div id="newsList" class="empty">กำลังโหลด…</div>
     </div>
 
     <footer>
@@ -1119,22 +1108,6 @@
     document.getElementById('marketContext').innerHTML = '<span>' + (bull > bear ? '📈' : bear > bull ? '📉' : '➖') + '</span><span>' + contextText + '</span>';
   }
 
-  async function loadNews(){
-    const el = document.getElementById('newsList');
-    try {
-      const res = await fetch('/api/news?asset=' + ASSET);
-      const data = await res.json();
-      const articles = data.articles || [];
-      if(!articles.length){ el.innerHTML = '<div class="empty">ไม่มีข่าวล่าสุด</div>'; return; }
-      el.innerHTML = articles.map(a => {
-        const dt = a.published ? new Date(a.published).toLocaleString('th-TH', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' }) : '';
-        return '<div class="news-item"><div class="headline">' + (a.titleTh || a.title || '') + '</div><div class="src">' + (a.source || '') + ' · ' + dt + '</div></div>';
-      }).join('');
-    } catch (e) {
-      el.innerHTML = '<div class="empty">โหลดข่าวไม่สำเร็จ</div>';
-    }
-  }
-
   function initChart(){
     const container = document.getElementById('tvChart');
     if(typeof TradingView === 'undefined'){
@@ -1249,7 +1222,6 @@
     initChart();
     loadPrimary().catch(err => console.error(err));
     loadMultiTimeframe().catch(err => console.error(err));
-    loadNews();
     renderHistory(); // historyKey() reads ASSET, so this switches to the other asset's local history
     document.getElementById('aiResult').innerHTML = 'ยังไม่ได้วิเคราะห์ด้วย AI — ตัวเลขด้านบนเป็นค่าคำนวณฟรีจาก ATR เท่านั้น';
   });
@@ -1332,10 +1304,9 @@
   // asset/interval or the 2-minute auto-refresh does not re-spend on it.
   loadPrimary().then(() => runAI()).catch(e => console.error(e));
   loadMultiTimeframe().catch(e => console.error(e));
-  loadNews();
   renderHistory();
 
-  // Auto-refresh every 2 minutes (price, multi-timeframe, news). 60s was
+  // Auto-refresh every 2 minutes (price, multi-timeframe). 60s was
   // tried first but Twelve Data's free tier caps at 800 credits/DAY (not
   // just per-minute) — the multi-timeframe table alone costs ~8 credits per
   // cycle, so a 60s cadence burns the entire daily quota in under 2 hours
@@ -1348,7 +1319,6 @@
   setInterval(() => {
     loadPrimary().catch(e => console.error(e));
     loadMultiTimeframe().catch(e => console.error(e));
-    loadNews();
   }, AUTO_REFRESH_MS);
 </script>
 </body>
