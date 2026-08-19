@@ -775,13 +775,17 @@
         for(const c of candles){
           const ct = parseCandleTime(c.time);
           if(ct == null || ct < rec.time) continue;
-          if(rec.direction === 'BUY'){
-            if(c.low <= rec.sl){ hit = 'loss'; break; }
-            if(c.high >= rec.tp){ hit = 'win'; break; }
-          } else {
-            if(c.high >= rec.sl){ hit = 'loss'; break; }
-            if(c.low <= rec.tp){ hit = 'win'; break; }
-          }
+          const slHit = rec.direction === 'BUY' ? c.low <= rec.sl : c.high >= rec.sl;
+          const tpHit = rec.direction === 'BUY' ? c.high >= rec.tp : c.low <= rec.tp;
+          if(slHit && tpHit){
+            // Both levels fall inside one candle (no tick data to know the
+            // real order) — assume price reached whichever level is closer
+            // to the candle's open first, rather than always assuming SL,
+            // which silently inflated the loss count on wide-range candles.
+            hit = Math.abs(c.open - rec.sl) <= Math.abs(c.open - rec.tp) ? 'loss' : 'win';
+          } else if(slHit){ hit = 'loss'; }
+          else if(tpHit){ hit = 'win'; }
+          if(hit) break;
         }
       }
       if(!hit){

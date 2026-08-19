@@ -496,12 +496,25 @@ const ASSET_CONFIG = {
   // bar from ceil(11*0.27)=3 to ceil(11*0.22)=3 (unchanged) and the
   // against-200 bar from ceil(11*0.36)=4 to ceil(11*0.27)=3, plus the lower
   // ADX gate widens the trend-strength window itself.
-  XAU: { adxGate: 18, strongFactor: 0.22, strongFactorAgainst200: 0.27, requireStrong: true, rr: 1.5, atrMult: 1.5 },
+  // Tightened back 2026-08-19: every loosening pass above was a deliberate
+  // trade of signal quality for signal frequency, with no closed-trade data
+  // to say it was still profitable — and the user reported losing often.
+  // Reverting past the original 2026-07-31 baseline (not just back to it)
+  // because maxScore has also grown from 9 to 13 since then (Bollinger+
+  // Keltner, then Order Block+FVG), which on its own drags the effective
+  // strong-bar fraction down if strongFactor stays fixed. adxGate 18->22
+  // (back above Wilder's original "trending" threshold), strongFactor
+  // 0.22->0.3 (ceil(13*0.3)=4 required votes, vs ceil(13*0.22)=3 before),
+  // strongFactorAgainst200 0.27->0.4 (ceil(13*0.4)=6, a real majority of
+  // votes required to trade against the long-term EMA200 trend). Use
+  // /api/config-suggestion once there's enough closed-trade history to
+  // tune from actual win/loss data instead of guessing again.
+  XAU: { adxGate: 22, strongFactor: 0.3, strongFactorAgainst200: 0.4, requireStrong: true, rr: 1.5, atrMult: 1.5 },
   // BTC starts on the same thresholds as XAU as a baseline — untuned for
   // crypto's different volatility/session behavior (trades 24/7, no
   // session gaps). Use /api/config-suggestion once real BTC trade history
   // exists rather than guessing crypto-specific numbers up front.
-  BTC: { adxGate: 18, strongFactor: 0.22, strongFactorAgainst200: 0.27, requireStrong: true, rr: 1.5, atrMult: 1.5 },
+  BTC: { adxGate: 22, strongFactor: 0.3, strongFactorAgainst200: 0.4, requireStrong: true, rr: 1.5, atrMult: 1.5 },
 };
 
 function computeSignalScore(m) {
