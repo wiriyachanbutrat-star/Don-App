@@ -262,11 +262,11 @@
       </div>
     </div>
     <a class="nav-link" data-target="overview" href="#overview"><span class="ic">🎯</span>Direction &amp; Trade</a>
+    <a class="nav-link" data-target="smc" href="#smc"><span class="ic">🧠</span>Smart Money</a>
     <a class="nav-link" data-target="chart" href="#chart"><span class="ic">📈</span>Chart</a>
     <a class="nav-link" data-target="mtf" href="#mtf"><span class="ic">⏱</span>Multi-Timeframe</a>
     <a class="nav-link" data-target="indicators" href="#indicators"><span class="ic">📊</span>Indicators</a>
     <a class="nav-link" data-target="sr" href="#sr"><span class="ic">📏</span>Support / Resistance</a>
-    <a class="nav-link" data-target="smc" href="#smc"><span class="ic">🧠</span>Smart Money</a>
     <a class="nav-link" data-target="news" href="#news"><span class="ic">📰</span>News</a>
     <a class="nav-link" data-target="journalPanel" href="#journalPanel"><span class="ic">📓</span>ประวัติ &amp; บันทึก</a>
   </nav>
@@ -378,6 +378,18 @@
       </div>
     </div>
 
+    <div class="panel" id="smc">
+      <h2>Smart Money Concepts</h2>
+      <div class="setup-card" id="smcVerdictCard" style="margin-bottom:12px;">
+        <div class="name">เจ้าตลาด (Smart Money) กำลังจะ</div>
+        <div class="verdict wait" id="smcVerdict">กำลังโหลด…</div>
+        <div class="hint" id="smcVerdictHint"></div>
+      </div>
+      <div class="smc-grid" id="smcGrid"><div class="empty">กำลังโหลด…</div></div>
+      <ul class="reason-list" id="smcReasons" style="margin-top:10px;"></ul>
+      <div class="market-context" id="marketContext"><span>📈</span><span>กำลังโหลดบริบทตลาด…</span></div>
+    </div>
+
     <div class="panel" id="chart">
       <h2>Chart</h2>
       <div id="tvChart"></div>
@@ -470,18 +482,6 @@
         <button id="clearJournalBtn" style="background:var(--sell-dim); color:var(--sell-bright);">ล้างบันทึกทั้งหมด</button>
       </div>
       <ul class="reason-list" id="journalList" style="margin-top:10px;"></ul>
-    </div>
-
-    <div class="panel" id="smc">
-      <h2>Smart Money Concepts</h2>
-      <div class="setup-card" id="smcVerdictCard" style="margin-bottom:12px;">
-        <div class="name">เจ้าตลาด (Smart Money) กำลังจะ</div>
-        <div class="verdict wait" id="smcVerdict">กำลังโหลด…</div>
-        <div class="hint" id="smcVerdictHint"></div>
-      </div>
-      <div class="smc-grid" id="smcGrid"><div class="empty">กำลังโหลด…</div></div>
-      <ul class="reason-list" id="smcReasons" style="margin-top:10px;"></ul>
-      <div class="market-context" id="marketContext"><span>📈</span><span>กำลังโหลดบริบทตลาด…</span></div>
     </div>
 
     <div class="panel" id="news">
