@@ -373,14 +373,26 @@
 
     <div class="panel" id="smc">
       <h2>Smart Money Concepts</h2>
+      <div class="ai-grid" style="margin-bottom:12px;">
+        <div class="ai-tile">
+          <div class="lbl">Market State</div>
+          <div class="v" id="smcMarketState">กำลังโหลด…</div>
+        </div>
+        <div class="ai-tile">
+          <div class="lbl">Smart Money Score</div>
+          <div class="v" id="smcScoreVal">—</div>
+        </div>
+      </div>
       <div class="setup-card" id="smcVerdictCard" style="margin-bottom:12px;">
         <div class="name">เจ้าตลาด (Smart Money) กำลังจะ</div>
         <div class="verdict wait" id="smcVerdict">กำลังโหลด…</div>
         <div class="hint" id="smcVerdictHint"></div>
       </div>
       <div class="smc-grid" id="smcGrid"><div class="empty">กำลังโหลด…</div></div>
+      <ul class="reason-list" id="smcScoreBreakdown" style="margin-top:10px;"></ul>
       <ul class="reason-list" id="smcReasons" style="margin-top:10px;"></ul>
       <div class="market-context" id="marketContext"><span>📈</span><span>กำลังโหลดบริบทตลาด…</span></div>
+      <div class="hint" id="smcDisclaimer" style="margin-top:8px; font-size:11px;"></div>
     </div>
 
     <div class="panel" id="chart">
@@ -670,6 +682,7 @@
       structure: marketData.structure,
       ict: marketData.ict,
       smartMoney: marketData.smartMoney,
+      smartMoneyScore: marketData.smartMoneyScore,
     }));
   }
   function clearSmcLock(){ localStorage.removeItem(smcLockKey()); }
@@ -1074,6 +1087,26 @@
     document.getElementById('smcGrid').innerHTML = cards.map(([ic, name, val]) =>
       '<div class="smc-card"><div class="ic">' + ic + '</div><div class="name">' + name + '</div><div class="val">' + val + '</div></div>'
     ).join('');
+
+    const score = m.smartMoneyScore;
+    const stateColor = { ACCUMULATION: 'var(--buy-bright)', MARKUP: 'var(--buy-bright)', DISTRIBUTION: 'var(--sell-bright)', MARKDOWN: 'var(--sell-bright)', CONSOLIDATION: 'var(--wait-bright)' };
+    const tierColor = { STRONG_BULLISH: 'var(--buy-bright)', BULLISH: 'var(--buy-bright)', WAIT: 'var(--wait-bright)', BEARISH: 'var(--sell-bright)', STRONG_BEARISH: 'var(--sell-bright)' };
+    const stateEl = document.getElementById('smcMarketState');
+    const scoreEl = document.getElementById('smcScoreVal');
+    const breakdownEl = document.getElementById('smcScoreBreakdown');
+    const disclaimerEl = document.getElementById('smcDisclaimer');
+    if (score) {
+      stateEl.textContent = score.marketStateLabel + (score.zone ? ` (${score.zone.low.toFixed(1)}-${score.zone.high.toFixed(1)})` : '');
+      stateEl.style.color = stateColor[score.marketState] || 'var(--ink-dim)';
+      scoreEl.textContent = score.total + '/100 · ' + score.tierLabel;
+      scoreEl.style.color = tierColor[score.tier] || 'var(--ink-dim)';
+      breakdownEl.innerHTML = score.breakdown.map(b =>
+        `<li>${b.label} (${b.weightPct}%): ${b.sub}/100 → +${b.contribution}</li>`
+      ).join('');
+      disclaimerEl.textContent = score.disclaimer || '';
+    } else {
+      stateEl.textContent = '—'; scoreEl.textContent = '—'; breakdownEl.innerHTML = ''; disclaimerEl.textContent = '';
+    }
 
     const sm = m.smartMoney;
     const verdictEl = document.getElementById('smcVerdict');

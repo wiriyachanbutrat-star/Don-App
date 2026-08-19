@@ -469,6 +469,113 @@ function computeSmartMoneyBias(m) {
   return { bias, score, votesCount: votes.length, confidence, reasons: votes.map(v => v.label) };
 }
 
+// Weighted 0-100 "Smart Money Score" + Accumulation/Distribution state read.
+// IMPORTANT: this is inferred entirely from price/candle behavior (range
+// contraction, EMA/structure direction, candle-count skew as a volume
+// proxy). Twelve Data's free tier reports no real tick volume for spot
+// XAU/USD, so nothing here claims to see actual institutional order flow —
+// "accumulation"/"distribution" are pattern labels for "price is coiling
+// while candles skew one direction", not a literal read of big-player intent.
+const SMART_MONEY_WEIGHTS = { trend: 0.20, structure: 0.20, participation: 0.20, liquidity: 0.15, orderBlock: 0.10, momentum: 0.10, volatility: 0.05 };
+
+function computeSmartMoneyScore(m) {
+  const clamp = (v) => Math.max(0, Math.min(100, v));
+
+  // Trend (20%): EMA cascade direction averaged with higher-timeframe trend.
+  let emaSub = 50;
+  if (m.ema200 != null) {
+    if (m.ema20 > m.ema50 && m.ema50 > m.ema200) emaSub = 100;
+    else if (m.ema20 < m.ema50 && m.ema50 < m.ema200) emaSub = 0;
+  } else {
+    emaSub = m.ema20 > m.ema50 ? 100 : 0;
+  }
+  const htfBullish = m.higherTimeframe && m.higherTimeframe.trend.includes('Uptrend');
+  const trendSub = Math.round((emaSub + (htfBullish ? 100 : 0)) / 2);
+
+  // Structure (20%): most recent BOS/CHoCH direction, neutral if none yet.
+  let structureSub = 50;
+  if (m.structure && m.structure.event) {
+    const bullish = m.structure.event.startsWith('BOS ขาขึ้น') || m.structure.event.includes('กลับตัวเป็นขาขึ้น');
+    structureSub = bullish ? 100 : 0;
+  }
+
+  // Participation (20%, volume proxy): no real tick volume for spot XAU, so
+  // this stands in with candle-range expansion (recent 10 bars vs prior 10 —
+  // "is price moving with more conviction than before") weighted by which
+  // side the recent up/down candle count favors.
+  const recent10 = m.recentCandles.slice(-10);
+  const prior10 = m.recentCandles.slice(-20, -10);
+  const avgRangeRecent = recent10.reduce((s, c) => s + (c.high - c.low), 0) / (recent10.length || 1);
+  const avgRangePrior = prior10.length ? prior10.reduce((s, c) => s + (c.high - c.low), 0) / prior10.length : avgRangeRecent;
+  const expansion = avgRangePrior > 0 ? avgRangeRecent / avgRangePrior : 1;
+  const convictionMult = clamp(expansion * 50) / 50; // 0..~2, clamped via clamp() scaling below
+  const netCandleBias = m.candleCounts.up - m.candleCounts.down; // -15..15
+  const participationSub = clamp(50 + netCandleBias * 6 * Math.max(0.5, Math.min(2, convictionMult)));
+
+  // Liquidity (15%): a swept-and-reclaimed level is a stronger tell than raw
+  // trend/structure — stop-hunt reversals are exactly what this system is
+  // meant to catch ahead of the move.
+  let liquiditySub = 50;
+  if (m.liquiditySweep) {
+    if (m.liquiditySweep.bullish) liquiditySub = 100;
+    else if (m.liquiditySweep.bearish) liquiditySub = 0;
+  }
+
+  // Order Block (10%): most recent unmitigated OB direction.
+  let orderBlockSub = 50;
+  if (m.smc) {
+    if (m.smc.bullishOB && !m.smc.bearishOB) orderBlockSub = 100;
+    else if (m.smc.bearishOB && !m.smc.bullishOB) orderBlockSub = 0;
+  }
+
+  // Momentum (10%): RSI is already a natural 0-100 scale.
+  const momentumSub = isFinite(m.rsi) ? clamp(m.rsi) : 50;
+
+  // Volatility (5%): range expansion in the same direction the candle-count
+  // bias favors reads as confirming momentum; expansion against it reads as
+  // exhaustion/chop, so it pulls the score back toward neutral either way.
+  const volatilitySub = clamp(50 + (expansion - 1) * 50 * (netCandleBias >= 0 ? 1 : -1));
+
+  const subs = { trend: trendSub, structure: structureSub, participation: participationSub, liquidity: liquiditySub, orderBlock: orderBlockSub, momentum: momentumSub, volatility: volatilitySub };
+  const labels = { trend: 'Trend (EMA cascade + HTF)', structure: 'Market Structure (BOS/CHoCH)', participation: 'Participation (range/candle proxy — no real volume)', liquidity: 'Liquidity Sweep', orderBlock: 'Order Block', momentum: 'Momentum (RSI)', volatility: 'Volatility Expansion' };
+  const breakdown = Object.keys(SMART_MONEY_WEIGHTS).map(key => ({
+    key, label: labels[key], weightPct: Math.round(SMART_MONEY_WEIGHTS[key] * 100), sub: Math.round(subs[key]),
+    contribution: Math.round(subs[key] * SMART_MONEY_WEIGHTS[key]),
+  }));
+  const total = Math.round(breakdown.reduce((s, b) => s + b.contribution, 0));
+
+  let tier, tierLabel;
+  if (total >= 80) { tier = 'STRONG_BULLISH'; tierLabel = 'STRONG BULLISH'; }
+  else if (total >= 60) { tier = 'BULLISH'; tierLabel = 'BULLISH'; }
+  else if (total >= 40) { tier = 'WAIT'; tierLabel = 'WAIT'; }
+  else if (total >= 20) { tier = 'BEARISH'; tierLabel = 'BEARISH'; }
+  else { tier = 'STRONG_BEARISH'; tierLabel = 'STRONG BEARISH'; }
+
+  // Market state: is price coiling (range contraction, small net move vs
+  // ATR) or already moving? Coiling + candle-count skew reads as
+  // accumulation/distribution; already moving reads as markup/markdown.
+  let state = 'CONSOLIDATION', stateLabel = 'ไซด์เวย์ (Consolidation)', zone = null;
+  if (recent10.length && isFinite(m.atr) && m.atr > 0) {
+    const rangeHighLow = Math.max(...recent10.map(c => c.high)) - Math.min(...recent10.map(c => c.low));
+    const netMove = Math.abs(recent10[recent10.length - 1].close - recent10[0].close);
+    const isRanging = rangeHighLow < m.atr * 1.5 && netMove < m.atr * 0.6;
+    if (isRanging) {
+      zone = { low: Math.min(...recent10.map(c => c.low)), high: Math.max(...recent10.map(c => c.high)) };
+      if (netCandleBias > 1) { state = 'ACCUMULATION'; stateLabel = 'สะสม (Accumulation)'; }
+      else if (netCandleBias < -1) { state = 'DISTRIBUTION'; stateLabel = 'กระจาย (Distribution)'; }
+    } else {
+      state = netCandleBias >= 0 ? 'MARKUP' : 'MARKDOWN';
+      stateLabel = netCandleBias >= 0 ? 'ดันราคาขึ้น (Markup / Breakout)' : 'กดราคาลง (Markdown / Breakdown)';
+    }
+  }
+
+  return {
+    total, tier, tierLabel, breakdown,
+    marketState: state, marketStateLabel: stateLabel, zone,
+    disclaimer: 'ประมวลจากพฤติกรรมราคา/แท่งเทียนเท่านั้น (ไม่มีข้อมูล tick volume จริงสำหรับ XAU/USD spot) ไม่ใช่การรู้คำสั่งซื้อขายจริงของเจ้าตลาด',
+  };
+}
+
 // Per-asset gating — kept as a lookup rather than bare constants so each
 // asset can plug in its own thresholds without touching computeSignalScore.
 const ASSET_CONFIG = {
@@ -935,6 +1042,19 @@ async function getMarketDataPayload(assetKey, interval) {
     const liquiditySweepResult = liquiditySweep(candles);
     const ictResult = ictZones(swingResult, currentPrice);
     const smartMoney = computeSmartMoneyBias({ smc: smcResult, structure: structureResult, liquiditySweep: liquiditySweepResult, ict: ictResult });
+    const smartMoneyScore = computeSmartMoneyScore({
+      ema20: ema20Series[ema20Series.length - 1],
+      ema50: ema50Series[ema50Series.length - 1],
+      ema200: ema200Series ? ema200Series[ema200Series.length - 1] : null,
+      higherTimeframe: { trend: higherTrend },
+      structure: structureResult,
+      liquiditySweep: liquiditySweepResult,
+      smc: smcResult,
+      rsi: rsiSeriesFull[rsiSeriesFull.length - 1],
+      candleCounts: { up: recentUp, down: recentDown },
+      recentCandles: recent,
+      atr: atr(candles),
+    });
 
     const payload = {
       symbol: asset.symbol,
@@ -977,6 +1097,7 @@ async function getMarketDataPayload(assetKey, interval) {
       liquiditySweep: liquiditySweepResult,
       ict: ictResult,
       smartMoney,
+      smartMoneyScore,
       higherTimeframe: {
         interval: higherInterval,
         trend: higherTrend,
@@ -1077,6 +1198,7 @@ app.get('/api/quick-check', async (req, res) => {
       mtfConfirmedInterval,
       mtfConfirmedReason,
       smartMoney: payload.smartMoney,
+      smartMoneyScore: payload.smartMoneyScore,
     });
   } catch (err) {
     console.error(err);
@@ -1586,7 +1708,7 @@ Stochastic Oscillator: %K=${m.stochastic.k.toFixed(2)}, %D=${m.stochastic.d.toFi
 ${m.swing ? `Swing High ล่าสุด (จุดกลับตัวขาขึ้น→ลง): ${m.swing.high ? `${m.swing.high.price} (${m.swing.high.barsAgo} แท่งก่อนหน้า)` : 'ไม่พบในช่วงข้อมูล'}\nSwing Low ล่าสุด (จุดกลับตัวขาลง→ขึ้น): ${m.swing.low ? `${m.swing.low.price} (${m.swing.low.barsAgo} แท่งก่อนหน้า)` : 'ไม่พบในช่วงข้อมูล'}\n` : ''}
 ความผันผวน 20 แท่งล่าสุด: ช่วงราคาเฉลี่ย/แท่ง=${m.volatility.avgRange.toFixed(2)}, สัดส่วนตัวแท่งเทียนเฉลี่ย=${(m.volatility.avgBodyRatio*100).toFixed(1)}%
 แนวโน้มกรอบเวลาใหญ่กว่า (${m.higherTimeframe.interval}): ${m.higherTimeframe.trend} (EMA20=${m.higherTimeframe.ema20.toFixed(2)}, EMA50=${m.higherTimeframe.ema50.toFixed(2)})
-${m.divergence && (m.divergence.bullish || m.divergence.bearish) ? `Divergence: ${m.divergence.bullish ? `Bullish (ราคาทำ low ใหม่ต่ำกว่าเดิมที่ ${m.divergence.bullish.recentPrice} แต่ RSI สูงขึ้น)` : `Bearish (ราคาทำ high ใหม่สูงกว่าเดิมที่ ${m.divergence.bearish.recentPrice} แต่ RSI ต่ำลง)`}\n` : ''}${m.smc ? `Order Block: ${m.smc.bullishOB ? `Bullish OB ${m.smc.bullishOB.low.toFixed(2)}-${m.smc.bullishOB.high.toFixed(2)}` : 'ไม่พบ'} / ${m.smc.bearishOB ? `Bearish OB ${m.smc.bearishOB.low.toFixed(2)}-${m.smc.bearishOB.high.toFixed(2)}` : 'ไม่พบ'}\nFair Value Gap: ${m.smc.bullishFvg ? `Bullish FVG ${m.smc.bullishFvg.gapLow.toFixed(2)}-${m.smc.bullishFvg.gapHigh.toFixed(2)}` : 'ไม่พบ'} / ${m.smc.bearishFvg ? `Bearish FVG ${m.smc.bearishFvg.gapLow.toFixed(2)}-${m.smc.bearishFvg.gapHigh.toFixed(2)}` : 'ไม่พบ'}\n` : ''}${m.supertrend ? `Supertrend (10,3): ${m.supertrend.trend === 'up' ? 'ขาขึ้น (เขียว)' : 'ขาลง (แดง)'} เส้นอยู่ที่ ${m.supertrend.value.toFixed(2)}\n` : ''}${m.structure ? `โครงสร้างตลาด (multi-swing): ${m.structure.structure}${m.structure.event ? ` — ${m.structure.event}` : ' — ไม่มี BOS/CHoCH ใหม่'}\n` : ''}${m.liquiditySweep && (m.liquiditySweep.bullish || m.liquiditySweep.bearish) ? `Liquidity Sweep: ${m.liquiditySweep.bullish ? `กวาดใต้ swing low ${m.liquiditySweep.bullish.level.toFixed(2)} (wick ต่ำสุด ${m.liquiditySweep.bullish.wickLow.toFixed(2)}) แล้วปิดกลับเข้ากรอบ — สัญญาณ stop-hunt ฝั่งซื้อ` : `กวาดเหนือ swing high ${m.liquiditySweep.bearish.level.toFixed(2)} (wick สูงสุด ${m.liquiditySweep.bearish.wickHigh.toFixed(2)}) แล้วปิดกลับเข้ากรอบ — สัญญาณ stop-hunt ฝั่งขาย`}\n` : ''}${m.ict ? `ICT Premium/Discount: dealing range ${m.ict.low.toFixed(2)}-${m.ict.high.toFixed(2)} (equilibrium=${m.ict.eq.toFixed(2)}) → ราคาปัจจุบันอยู่โซน ${m.ict.zone === 'premium' ? 'Premium (โซนขายของ ICT)' : m.ict.zone === 'discount' ? 'Discount (โซนซื้อของ ICT)' : 'Equilibrium (กึ่งกลาง ยังไม่ชัดเจน)'}\nICT OTE (Optimal Trade Entry, fib 61.8-79%): โซนซื้อ ${m.ict.oteBuyZone.low.toFixed(2)}-${m.ict.oteBuyZone.high.toFixed(2)} / โซนขาย ${m.ict.oteSellZone.low.toFixed(2)}-${m.ict.oteSellZone.high.toFixed(2)} → ${m.ict.inOteBuy ? 'ราคาปัจจุบันอยู่ใน OTE ฝั่งซื้อพอดี' : m.ict.inOteSell ? 'ราคาปัจจุบันอยู่ใน OTE ฝั่งขายพอดี' : 'ราคาปัจจุบันยังไม่เข้าโซน OTE'}\n` : ''}${m.smartMoney ? `สรุปฝั่งเจ้าตลาด (Smart Money Bias — รวม Liquidity Sweep + Order Block + FVG + BOS/CHoCH + ICT OTE เป็นคะแนนเดียว): ${m.smartMoney.bias === 'BUY' ? 'เอนเอียงว่าเจ้าตลาดกำลังสะสมของ (เตรียมดันราคาขึ้น)' : m.smartMoney.bias === 'SELL' ? 'เอนเอียงว่าเจ้าตลาดกำลังกระจายของ (เตรียมกดราคาลง)' : 'ยังไม่มีร่องรอยเจ้าตลาดที่ชัดเจนพอ'} (ความมั่นใจ ${m.smartMoney.confidence}% จาก ${m.smartMoney.votesCount} สัญญาณ)${m.smartMoney.reasons.length ? '\n  - ' + m.smartMoney.reasons.join('\n  - ') : ''}\n` : ''}
+${m.divergence && (m.divergence.bullish || m.divergence.bearish) ? `Divergence: ${m.divergence.bullish ? `Bullish (ราคาทำ low ใหม่ต่ำกว่าเดิมที่ ${m.divergence.bullish.recentPrice} แต่ RSI สูงขึ้น)` : `Bearish (ราคาทำ high ใหม่สูงกว่าเดิมที่ ${m.divergence.bearish.recentPrice} แต่ RSI ต่ำลง)`}\n` : ''}${m.smc ? `Order Block: ${m.smc.bullishOB ? `Bullish OB ${m.smc.bullishOB.low.toFixed(2)}-${m.smc.bullishOB.high.toFixed(2)}` : 'ไม่พบ'} / ${m.smc.bearishOB ? `Bearish OB ${m.smc.bearishOB.low.toFixed(2)}-${m.smc.bearishOB.high.toFixed(2)}` : 'ไม่พบ'}\nFair Value Gap: ${m.smc.bullishFvg ? `Bullish FVG ${m.smc.bullishFvg.gapLow.toFixed(2)}-${m.smc.bullishFvg.gapHigh.toFixed(2)}` : 'ไม่พบ'} / ${m.smc.bearishFvg ? `Bearish FVG ${m.smc.bearishFvg.gapLow.toFixed(2)}-${m.smc.bearishFvg.gapHigh.toFixed(2)}` : 'ไม่พบ'}\n` : ''}${m.supertrend ? `Supertrend (10,3): ${m.supertrend.trend === 'up' ? 'ขาขึ้น (เขียว)' : 'ขาลง (แดง)'} เส้นอยู่ที่ ${m.supertrend.value.toFixed(2)}\n` : ''}${m.structure ? `โครงสร้างตลาด (multi-swing): ${m.structure.structure}${m.structure.event ? ` — ${m.structure.event}` : ' — ไม่มี BOS/CHoCH ใหม่'}\n` : ''}${m.liquiditySweep && (m.liquiditySweep.bullish || m.liquiditySweep.bearish) ? `Liquidity Sweep: ${m.liquiditySweep.bullish ? `กวาดใต้ swing low ${m.liquiditySweep.bullish.level.toFixed(2)} (wick ต่ำสุด ${m.liquiditySweep.bullish.wickLow.toFixed(2)}) แล้วปิดกลับเข้ากรอบ — สัญญาณ stop-hunt ฝั่งซื้อ` : `กวาดเหนือ swing high ${m.liquiditySweep.bearish.level.toFixed(2)} (wick สูงสุด ${m.liquiditySweep.bearish.wickHigh.toFixed(2)}) แล้วปิดกลับเข้ากรอบ — สัญญาณ stop-hunt ฝั่งขาย`}\n` : ''}${m.ict ? `ICT Premium/Discount: dealing range ${m.ict.low.toFixed(2)}-${m.ict.high.toFixed(2)} (equilibrium=${m.ict.eq.toFixed(2)}) → ราคาปัจจุบันอยู่โซน ${m.ict.zone === 'premium' ? 'Premium (โซนขายของ ICT)' : m.ict.zone === 'discount' ? 'Discount (โซนซื้อของ ICT)' : 'Equilibrium (กึ่งกลาง ยังไม่ชัดเจน)'}\nICT OTE (Optimal Trade Entry, fib 61.8-79%): โซนซื้อ ${m.ict.oteBuyZone.low.toFixed(2)}-${m.ict.oteBuyZone.high.toFixed(2)} / โซนขาย ${m.ict.oteSellZone.low.toFixed(2)}-${m.ict.oteSellZone.high.toFixed(2)} → ${m.ict.inOteBuy ? 'ราคาปัจจุบันอยู่ใน OTE ฝั่งซื้อพอดี' : m.ict.inOteSell ? 'ราคาปัจจุบันอยู่ใน OTE ฝั่งขายพอดี' : 'ราคาปัจจุบันยังไม่เข้าโซน OTE'}\n` : ''}${m.smartMoney ? `สรุปฝั่งเจ้าตลาด (Smart Money Bias — รวม Liquidity Sweep + Order Block + FVG + BOS/CHoCH + ICT OTE เป็นคะแนนเดียว): ${m.smartMoney.bias === 'BUY' ? 'เอนเอียงว่าเจ้าตลาดกำลังสะสมของ (เตรียมดันราคาขึ้น)' : m.smartMoney.bias === 'SELL' ? 'เอนเอียงว่าเจ้าตลาดกำลังกระจายของ (เตรียมกดราคาลง)' : 'ยังไม่มีร่องรอยเจ้าตลาดที่ชัดเจนพอ'} (ความมั่นใจ ${m.smartMoney.confidence}% จาก ${m.smartMoney.votesCount} สัญญาณ)${m.smartMoney.reasons.length ? '\n  - ' + m.smartMoney.reasons.join('\n  - ') : ''}\n` : ''}${m.smartMoneyScore ? `Smart Money Score (ถ่วงน้ำหนัก 0-100 จาก Trend 20% / Structure 20% / Participation-proxy 20% / Liquidity 15% / Order Block 10% / Momentum 10% / Volatility 5% — participation ใช้ range/candle-count แทนเพราะ XAU/USD spot ไม่มีข้อมูล tick volume จริง): ${m.smartMoneyScore.total}/100 → ${m.smartMoneyScore.tierLabel}\nMarket State: ${m.smartMoneyScore.marketStateLabel}${m.smartMoneyScore.zone ? ` (โซน ${m.smartMoneyScore.zone.low.toFixed(2)}-${m.smartMoneyScore.zone.high.toFixed(2)})` : ''}\n` : ''}
 
 หน้าที่ของคุณ:
 - ก่อนสรุปคำแนะนำ ให้ทวนรายการอินดิเคเตอร์ทั้งหมดข้างต้นทีละตัวในใจว่าแต่ละตัวเอนไปทาง BUY, SELL หรือเป็นกลาง แล้วตรวจสอบว่าคำแนะนำสุดท้ายสอดคล้องกับเสียงส่วนใหญ่จริงหรือไม่ ถ้ามีอินดิเคเตอร์สำคัญ (เช่น เทรนด์กรอบเวลาใหญ่, ADX, ICT zone) ขัดแย้งกับคำแนะนำที่จะให้ ต้องลด confidence_percent ลงและระบุความขัดแย้งนั้นใน reasons อย่างตรงไปตรงมา ห้ามเลือกหยิบเฉพาะอินดิเคเตอร์ที่สนับสนุนทิศทางที่อยากแนะนำ (cherry-picking)
@@ -1601,6 +1723,7 @@ ${m.divergence && (m.divergence.bullish || m.divergence.bearish) ? `Divergence: 
 - ใช้ Volume Profile POC เป็นแนวรับ/แนวต้านที่ราคามีการซื้อขาย/พักตัวมากที่สุด
 - ถ้ามี Divergence (RSI) ให้ถือเป็นสัญญาณเตือนการกลับตัวที่สำคัญ และอธิบายไว้ใน reasons อย่างชัดเจนถ้าขัดแย้งกับ trend หลัก
 - ถ้ามี Order Block หรือ Fair Value Gap ให้ใช้ระดับราคานั้นประกอบการวาง entry/tp/sl (โซนที่ราคามักย้อนกลับไปทดสอบ)
+- ใช้ "Smart Money Score" และ "Market State" (Accumulation/Distribution/Markup/Markdown/Consolidation) ข้างต้นประกอบการอธิบาย state ของตลาดใน smart_money — ทั้งสองค่าเป็นการประมวลจากพฤติกรรมราคา/แท่งเทียนเท่านั้น ไม่ใช่ข้อมูลคำสั่งซื้อขายจริง ห้ามเขียนราวกับว่ารู้คำสั่งจริงของเจ้าตลาด ให้ใช้ถ้อยคำเชิงความน่าจะเป็น เช่น "มีลักษณะเข้าข่ายสะสมของ" ไม่ใช่ "เจ้าตลาดกำลังซื้อ"
 - ใช้ "สรุปฝั่งเจ้าตลาด (Smart Money Bias)" ข้างต้นเป็นตัวช่วยตัดสินใจหลักว่าเจ้าตลาด/สถาบันกำลังจะ "เข้าซื้อ" หรือ "เข้าขาย" — ถ้า bias นี้สอดคล้องกับทิศทางที่สัญญาณเทคนิคอื่นชี้ (confluence) ให้เพิ่ม confidence_percent ได้ และเลือก entry ให้ใกล้กับระดับ Order Block/OTE/liquidity level ที่ระบุไว้ในสัญญาณนั้น ถ้า bias นี้ขัดแย้งกับทิศทางที่จะแนะนำ (เช่นระบบเอนไปทาง SELL แต่เจ้าตลาดกำลังสะสมของฝั่งซื้อ) ต้องลด confidence_percent ลงและอธิบายความขัดแย้งนี้ใน reasons อย่างตรงไปตรงมา ถ้ายังไม่มีร่องรอยเจ้าตลาดชัดเจน (NEUTRAL/confidence ต่ำ) ให้ถือเป็นกลางๆ ไม่ใช่หลักฐานหนุนทิศทางใด
 - ใช้ Supertrend ยืนยันทิศทางเทรนด์หลักเพิ่มเติมจาก EMA cascade
 - ใช้โครงสร้างตลาด BOS/CHoCH ประกอบการยืนยันว่าเทรนด์เดิมยังดำเนินต่อ (BOS) หรือมีสัญญาณกลับตัว (CHoCH)
@@ -1635,7 +1758,7 @@ buy_probability/sell_probability ต้องรวมกันได้ 100 แ
   "swing_structure": "โครงสร้างตลาดจาก Swing High/Low เช่น Higher High / Higher Low (ขาขึ้น) พร้อมระบุราคา swing high/low ล่าสุด",
   "higher_timeframe": "สรุปแนวโน้มกรอบเวลาใหญ่กว่าและว่าสอดคล้องหรือขัดแย้งกับกรอบเวลาปัจจุบัน",
   "divergence": "สรุป divergence ที่พบ (bullish/bearish) หรือ \\"ไม่พบ divergence\\"",
-  "smart_money": "สรุปว่าเจ้าตลาด/สถาบัน (Smart Money) กำลังเอนเอียงจะ \\"เข้าซื้อ\\" หรือ \\"เข้าขาย\\" จาก Smart Money Bias ที่ให้มา รวมกับ Order Block/Fair Value Gap ที่พบและนัยต่อ entry/tp/sl หรือ \\"ไม่พบร่องรอยเจ้าตลาดที่ชัดเจน\\"",
+  "smart_money": "สรุปว่าเจ้าตลาด/สถาบัน (Smart Money) กำลังเอนเอียงจะ \\"เข้าซื้อ\\" หรือ \\"เข้าขาย\\" จาก Smart Money Bias + Smart Money Score + Market State (Accumulation/Distribution/Markup/Markdown) ที่ให้มา รวมกับ Order Block/Fair Value Gap ที่พบและนัยต่อ entry/tp/sl หรือ \\"ไม่พบร่องรอยเจ้าตลาดที่ชัดเจน\\" — ใช้ถ้อยคำเชิงความน่าจะเป็น ไม่ยืนยันว่ารู้คำสั่งซื้อขายจริง",
   "supertrend": "สถานะ Supertrend เช่น ขาขึ้น (เขียว) และราคาอยู่เหนือเส้นหรือไม่",
   "structure_break": "สรุปโครงสร้างตลาดและ BOS/CHoCH ที่พบ หรือ \\"ไม่มี BOS/CHoCH ใหม่\\"",
   "liquidity_sweep": "สรุป Liquidity Sweep ที่พบ (ระดับที่ถูกกวาดและทิศทาง reversal) หรือ \\"ไม่พบ\\"",
