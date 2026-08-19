@@ -663,6 +663,28 @@
     setLadderSourceBadge(true);
   }
 
+  // Smart Money verdict lock: freezes the SMC card to whatever it read when
+  // the current trade was opened, instead of recomputing (and potentially
+  // flip-flopping) on every 2-minute auto-refresh — the read should hold
+  // steady until this trade actually resolves win/loss, not chase every
+  // tick of new order-block/FVG data.
+  function smcLockKey(){ return 'goldSmcLock_' + ASSET; }
+  function loadSmcLock(){
+    try { return JSON.parse(localStorage.getItem(smcLockKey())); }
+    catch(e){ return null; }
+  }
+  function saveSmcLock(marketData){
+    if(!marketData) return;
+    localStorage.setItem(smcLockKey(), JSON.stringify({
+      smc: marketData.smc,
+      liquiditySweep: marketData.liquiditySweep,
+      structure: marketData.structure,
+      ict: marketData.ict,
+      smartMoney: marketData.smartMoney,
+    }));
+  }
+  function clearSmcLock(){ localStorage.removeItem(smcLockKey()); }
+
   // ---- Win/Loss track record (local-only, per-browser localStorage) ----
   function historyKey(){ return 'goldAnalysisHistory_' + ASSET; }
   function loadHistory(){
@@ -707,6 +729,7 @@
       snapshot,
     });
     saveHistory(list);
+    saveSmcLock(marketData);
     renderHistory();
   }
 
@@ -780,7 +803,12 @@
         changed = true;
       }
     });
-    if(changed) saveHistory(list);
+    if(changed){
+      saveHistory(list);
+      // Once nothing is left pending, unlock the SMC card so the next open
+      // trade locks in a fresh read instead of reusing this closed one.
+      if(!list.some(r => r.status === 'pending')) clearSmcLock();
+    }
     renderHistory();
   }
 
@@ -1037,7 +1065,13 @@
     ).join('');
   }
 
-  function renderSmc(m){
+  function renderSmc(liveData){
+    // While a trade is open, show the SMC read frozen from when it was
+    // opened instead of the live one — otherwise this card would flip
+    // BUY/SELL/NEUTRAL every 2-minute auto-refresh as new candles roll in,
+    // even though nothing about the open trade has actually changed yet.
+    const locked = loadSmcLock();
+    const m = locked || liveData;
     const liq = m.liquiditySweep && (m.liquiditySweep.bullish || m.liquiditySweep.bearish);
     const ob = m.smc && (m.smc.bullishOB || m.smc.bearishOB);
     const fvg = m.smc && (m.smc.bullishFvg || m.smc.bearishFvg);
@@ -1061,9 +1095,10 @@
       const label = sm.bias === 'BUY' ? '🟢 เข้าซื้อ (Accumulate)' : sm.bias === 'SELL' ? '🔴 เข้าขาย (Distribute)' : '⚪ ยังไม่ชัดเจน';
       verdictEl.className = 'verdict ' + cls;
       verdictEl.textContent = label;
-      hintEl.textContent = sm.votesCount
+      const lockNote = locked ? ' · 🔒 ล็อกไว้จนกว่าเทรดปัจจุบันจะชนะ/แพ้' : '';
+      hintEl.textContent = (sm.votesCount
         ? `ความมั่นใจ ${sm.confidence}% จาก ${sm.votesCount} สัญญาณ (คะแนนสุทธิ ${sm.score >= 0 ? '+' : ''}${sm.score})`
-        : 'ยังไม่พบร่องรอย Smart Money ในรอบนี้';
+        : 'ยังไม่พบร่องรอย Smart Money ในรอบนี้') + lockNote;
       reasonsEl.innerHTML = sm.reasons.length
         ? sm.reasons.map(r => '<li>' + r + '</li>').join('')
         : '<li>ไม่มีสัญญาณ Liquidity Sweep / Order Block / FVG / BOS-CHoCH / OTE ในรอบนี้</li>';
@@ -1265,7 +1300,9 @@
   document.getElementById('clearHistoryBtn').addEventListener('click', () => {
     if(!confirm('ล้างประวัติผลวิเคราะห์ทั้งหมด (ในเครื่องนี้) ใช่ไหม?')) return;
     saveHistory([]);
+    clearSmcLock();
     renderHistory();
+    if(lastMarketData) renderSmc(lastMarketData);
   });
 
   // Highlight the sidebar nav link matching the section currently in view.
