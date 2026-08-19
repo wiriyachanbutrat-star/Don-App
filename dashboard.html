@@ -268,7 +268,6 @@
     <a class="nav-link" data-target="indicators" href="#indicators"><span class="ic">📊</span>Indicators</a>
     <a class="nav-link" data-target="sr" href="#sr"><span class="ic">📏</span>Support / Resistance</a>
     <a class="nav-link" data-target="news" href="#news"><span class="ic">📰</span>News</a>
-    <a class="nav-link" data-target="journalPanel" href="#journalPanel"><span class="ic">📓</span>ประวัติ &amp; บันทึก</a>
   </nav>
 
   <div class="main">
@@ -459,29 +458,6 @@
           <div class="gauge-sub" id="accuracySub">—</div>
         </div>
       </div>
-    </div>
-
-    <div class="panel" id="journalPanel">
-      <h2>บันทึกการเทรด</h2>
-      <div class="risk-row">
-        <div>
-          <label class="risk-lbl" for="journalDate">วันที่</label>
-          <input id="journalDate" type="date">
-        </div>
-        <div>
-          <label class="risk-lbl" for="journalCapital">ทุน ($)</label>
-          <input id="journalCapital" type="number" step="0.01">
-        </div>
-        <div>
-          <label class="risk-lbl" for="journalProfit">กำไร/ขาดทุน ($)</label>
-          <input id="journalProfit" type="number" step="0.01">
-        </div>
-      </div>
-      <div style="display:flex; gap:8px; margin-top:10px; flex-wrap:wrap;">
-        <button class="btn-primary" id="saveJournalBtn">บันทึก</button>
-        <button id="clearJournalBtn" style="background:var(--sell-dim); color:var(--sell-bright);">ล้างบันทึกทั้งหมด</button>
-      </div>
-      <ul class="reason-list" id="journalList" style="margin-top:10px;"></ul>
     </div>
 
     <div class="panel" id="news">
@@ -873,26 +849,6 @@
     document.getElementById('accuracySub').textContent = closed.length
       ? (wins + '/' + closed.length + ' ชนะ — ' + (pct >= 55 ? 'ผลงานดี' : pct >= 40 ? 'ปานกลาง' : 'ควรทบทวนกลยุทธ์'))
       : 'ยังไม่มีเทรดที่ปิดจบ';
-  }
-
-  // ---- Manual trade journal (local-only) ----
-  const JOURNAL_KEY = 'goldTradeJournal';
-  function loadJournal(){
-    try { return JSON.parse(localStorage.getItem(JOURNAL_KEY)) || []; }
-    catch(e){ return []; }
-  }
-  function saveJournal(list){
-    localStorage.setItem(JOURNAL_KEY, JSON.stringify(list.slice(-200)));
-  }
-  function renderJournal(){
-    const list = loadJournal();
-    const recent = list.slice(-10).reverse();
-    document.getElementById('journalList').innerHTML = recent.length ? recent.map(r => {
-      const profit = Number(r.profit);
-      const color = profit > 0 ? 'var(--buy-bright)' : profit < 0 ? 'var(--sell-bright)' : 'var(--ink-dim)';
-      return '<li>' + r.date + ' · ทุน $' + Number(r.capital).toFixed(2) + ' → <b style="color:' + color + '">' +
-        (profit >= 0 ? '+' : '') + profit.toFixed(2) + '</b></li>';
-    }).join('') : '<li style="color:var(--ink-dim);">ยังไม่มีบันทึก</li>';
   }
 
   function sessionLabel(){
@@ -1312,27 +1268,6 @@
     renderHistory();
   });
 
-  document.getElementById('saveJournalBtn').addEventListener('click', () => {
-    const date = document.getElementById('journalDate').value || new Date().toISOString().slice(0, 10);
-    const capital = Number(document.getElementById('journalCapital').value);
-    const profit = Number(document.getElementById('journalProfit').value);
-    if(!isFinite(capital) || !isFinite(profit)){
-      alert('กรุณากรอกทุนการเทรดและกำไร/ขาดทุนให้ถูกต้อง');
-      return;
-    }
-    const list = loadJournal();
-    list.push({ date, capital, profit, time: Date.now() });
-    saveJournal(list);
-    renderJournal();
-    document.getElementById('journalProfit').value = '';
-  });
-
-  document.getElementById('clearJournalBtn').addEventListener('click', () => {
-    if(!confirm('ล้างบันทึกการเทรดทั้งหมด (ในเครื่องนี้) ใช่ไหม?')) return;
-    saveJournal([]);
-    renderJournal();
-  });
-
   // Highlight the sidebar nav link matching the section currently in view.
   const navLinks = Array.from(document.querySelectorAll('.nav-link'));
   const sections = navLinks.map(a => document.getElementById(a.dataset.target)).filter(Boolean);
@@ -1362,7 +1297,6 @@
   loadMultiTimeframe().catch(e => console.error(e));
   loadNews();
   renderHistory();
-  renderJournal();
 
   // Auto-refresh every 2 minutes (price, multi-timeframe, news). 60s was
   // tried first but Twelve Data's free tier caps at 800 credits/DAY (not
