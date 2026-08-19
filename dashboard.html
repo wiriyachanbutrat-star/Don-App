@@ -494,6 +494,7 @@
 
   let lastMarketData = null;
   let lastQuickCheck = null;
+  let lastTrade = null; // whichever ladder (free or AI) is currently displayed — drives the chart's entry/SL/TP lines
   let aiConfirmed = false; // whether the ladder is currently showing AI-confirmed numbers
 
   // "Developing" is a separate, informational-only tier from the server —
@@ -1141,6 +1142,10 @@
     document.getElementById('marketContext').innerHTML = '<span>' + (bull > bear ? '📈' : bear > bull ? '📉' : '➖') + '</span><span>' + contextText + '</span>';
   }
 
+  let tvWidget = null;
+  let tvChartReady = false;
+  let tvShapeIds = [];
+
   function initChart(){
     const container = document.getElementById('tvChart');
     if(typeof TradingView === 'undefined'){
@@ -1148,7 +1153,9 @@
       return;
     }
     container.innerHTML = ''; // clear the previous widget when switching assets
-    new TradingView.widget({
+    tvChartReady = false;
+    tvShapeIds = [];
+    tvWidget = new TradingView.widget({
       autosize: true,
       symbol: ASSET_META[ASSET].tvSymbol,
       interval: '60',
@@ -1169,6 +1176,75 @@
         inputs: { length: ['15min', '30min', '1h'].includes(document.getElementById('intervalSelect').value) ? 21 : 50 },
       }],
     });
+    tvWidget.onChartReady(() => {
+      tvChartReady = true;
+      drawChartAnnotations();
+    });
+  }
+
+  function tvTimeSeconds(t){
+    const ms = parseCandleTime(t);
+    return ms != null ? Math.floor(ms / 1000) : null;
+  }
+
+  // Draws HH/HL/LH/LL swing labels (from the same market-structure read the
+  // Indicators panel shows) and Entry/SL/TP horizontal lines (from whichever
+  // ladder — free or AI-confirmed — is currently displayed) directly on the
+  // TradingView chart, so the numbers in the hero ladder have a visual
+  // anchor instead of living only in the text tiles above.
+  function drawChartAnnotations(){
+    if(!tvWidget || !tvChartReady || !lastMarketData) return;
+    let chart;
+    try { chart = tvWidget.chart(); } catch(e){ return; }
+
+    tvShapeIds.forEach(id => { try { chart.removeEntity(id); } catch(e){} });
+    tvShapeIds = [];
+
+    const m = lastMarketData;
+    if(m.swing){
+      const trendUp = m.structure && m.structure.trendUp;
+      const trendDown = m.structure && m.structure.trendDown;
+      const swingLabel = (point, hiLabel, loLabel, neutralLabel, isHigh) => {
+        if(!point) return;
+        const t = tvTimeSeconds(point.time);
+        if(t == null) return;
+        try {
+          const id = chart.createShape({ time: t, price: point.price }, {
+            shape: 'text',
+            text: trendUp ? hiLabel : trendDown ? loLabel : neutralLabel,
+            overrides: {
+              color: trendUp ? '#22c55e' : trendDown ? '#ef4444' : '#94a3b8',
+              fontsize: 13, bold: true,
+              vertAlign: isHigh ? 'bottom' : 'top',
+            },
+            zOrder: 'top', disableSelection: true, disableSave: true, lock: true,
+          });
+          if(id) tvShapeIds.push(id);
+        } catch(e){ /* older widget builds may not support createShape */ }
+      };
+      swingLabel(m.swing.high, 'HH', 'LH', 'H', true);
+      swingLabel(m.swing.low, 'HL', 'LL', 'L', false);
+    }
+
+    if(lastTrade && isFinite(lastTrade.entry)){
+      const nowSec = Math.floor(Date.now() / 1000);
+      const lines = [
+        { price: lastTrade.entry, text: 'Entry ' + Number(lastTrade.entry).toFixed(2), color: '#eab308' },
+        isFinite(lastTrade.sl) ? { price: lastTrade.sl, text: 'SL ' + Number(lastTrade.sl).toFixed(2), color: '#ef4444' } : null,
+        isFinite(lastTrade.tp) ? { price: lastTrade.tp, text: 'TP ' + Number(lastTrade.tp).toFixed(2), color: '#22c55e' } : null,
+      ].filter(Boolean);
+      lines.forEach(l => {
+        try {
+          const id = chart.createShape({ time: nowSec, price: l.price }, {
+            shape: 'horizontal_line',
+            text: l.text,
+            overrides: { linecolor: l.color, linewidth: 1, linestyle: 2, showLabel: true, textcolor: l.color, fontsize: 12 },
+            disableSelection: true, disableSave: true, lock: true,
+          });
+          if(id) tvShapeIds.push(id);
+        } catch(e){ /* older widget builds may not support createShape */ }
+      });
+    }
   }
 
   async function loadPrimary(){
@@ -1182,9 +1258,10 @@
     renderSR(marketData);
     renderSmc(marketData);
     if(!aiConfirmed){
-      renderFreeLadder(qc, marketData);
+      lastTrade = renderFreeLadder(qc, marketData);
       setLadderSourceBadge(false);
     }
+    drawChartAnnotations();
   }
 
   async function runAI(){
@@ -1222,9 +1299,11 @@
 
       if(!isWait){
         renderAiLadder(trade, isBuy ? 'BUY' : 'SELL');
+        lastTrade = trade;
       } else {
         setLadderSourceBadge(false);
       }
+      drawChartAnnotations();
 
       out.innerHTML =
         '<div class="tag ' + cls + '" style="font-size:16px; padding:6px 14px;">' + (isWait ? '⏸ AI แนะนำ WAIT' : (isBuy ? '🟢 AI ยืนยัน BUY — ' + confPct + '% confidence' : '🔴 AI ยืนยัน SELL — ' + confPct + '% confidence')) + '</div>' +
