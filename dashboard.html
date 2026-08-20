@@ -257,6 +257,7 @@
       </div>
     </div>
     <a class="nav-link" data-target="overview" href="#overview"><span class="ic">🎯</span>Direction &amp; Trade</a>
+    <a class="nav-link" data-target="entryConfirm" href="#entryConfirm"><span class="ic">✅</span>Entry Confirmation</a>
     <a class="nav-link" data-target="smc" href="#smc"><span class="ic">🧠</span>Smart Money</a>
     <a class="nav-link" data-target="paEntry" href="#paEntry"><span class="ic">🕯️</span>Price Action Entry</a>
     <a class="nav-link" data-target="chart" href="#chart"><span class="ic">📈</span>Chart</a>
@@ -369,6 +370,15 @@
         </div>
         <button class="btn-primary" id="analyzeBtn" style="width:100%;">✨ ยืนยันด้วย AI (มีค่าใช้จ่าย)</button>
         <div id="aiResult" class="empty">ยังไม่ได้วิเคราะห์ด้วย AI — ตัวเลขด้านบนเป็นค่าคำนวณฟรีจาก ATR เท่านั้น</div>
+      </div>
+    </div>
+
+    <div class="panel" id="entryConfirm">
+      <h2>Entry Confirmation — Smart Money + Price Action</h2>
+      <div class="setup-card" id="entryConfirmCard">
+        <div class="name">จุดเข้าจะยืนยันก็ต่อเมื่อทั้งสองเครื่องมือชี้ทิศทางเดียวกัน</div>
+        <div class="verdict wait" id="entryConfirmVerdict">กำลังโหลด…</div>
+        <div class="hint" id="entryConfirmHint"></div>
       </div>
     </div>
 
@@ -1185,6 +1195,48 @@
     reasonsEl.innerHTML = pa.reasons.map(r => '<li>' + r + '</li>').join('');
   }
 
+  // Only calls an entry "confirmed" when Smart Money and Price Action Entry
+  // agree on direction — requested specifically because showing each tool's
+  // own read separately, with no reconciliation, meant a user could see
+  // Smart Money say BUY right next to PA saying SELL/no-entry and not know
+  // which one to trust. This banner is the single answer; the two panels
+  // below stay as the detail behind it.
+  function renderEntryConfirmation(liveData){
+    const locked = loadSmcLock();
+    const d = locked || liveData;
+    const sm = d.smartMoney;
+    const pa = d.priceActionEntry;
+    const verdictEl = document.getElementById('entryConfirmVerdict');
+    const hintEl = document.getElementById('entryConfirmHint');
+    const lockNote = locked ? ' · 🔒 ล็อกไว้จนกว่าเทรดปัจจุบันจะชนะ/แพ้' : '';
+
+    if (!sm || !pa) {
+      verdictEl.className = 'verdict wait';
+      verdictEl.textContent = '⚪ ข้อมูลไม่พอ';
+      hintEl.textContent = '';
+      return;
+    }
+
+    const smDir = sm.bias === 'BUY' || sm.bias === 'SELL' ? sm.bias : null;
+    const paDir = pa.tier !== 'NO_ENTRY' ? pa.direction : null; // below WATCH doesn't count as a real PA read
+
+    if (smDir && paDir && smDir === paDir) {
+      verdictEl.className = 'verdict ' + (smDir === 'BUY' ? 'buy' : 'sell');
+      verdictEl.textContent = (smDir === 'BUY' ? '🟢 ยืนยัน BUY' : '🔴 ยืนยัน SELL') + ' — เจ้าตลาด + Price Action ตรงกัน';
+      hintEl.textContent = `Smart Money: ${sm.bias} (${sm.confidence}%) · Price Action: ${pa.tierLabel} (${pa.score}/${pa.maxScore})` + lockNote;
+    } else if (smDir && paDir && smDir !== paDir) {
+      verdictEl.className = 'verdict wait';
+      verdictEl.textContent = '⚠️ สัญญาณขัดแย้งกัน — รอ';
+      hintEl.textContent = `Smart Money ชี้ ${smDir} แต่ Price Action ชี้ ${paDir} — รอจนกว่าทั้งสองจะไปทิศทางเดียวกัน ก่อนเข้าเทรด` + lockNote;
+    } else {
+      verdictEl.className = 'verdict wait';
+      verdictEl.textContent = '⚪ ยังไม่มีจุดเข้าที่ยืนยันได้';
+      const smText = sm.bias === 'NEUTRAL' ? 'ยังไม่ชัดเจน' : sm.bias;
+      const paText = paDir ? pa.tierLabel : (pa.direction ? `${pa.tierLabel} (คะแนนยังไม่ถึงเกณฑ์)` : 'ยังไม่มีเทรนด์ตาม EMA50');
+      hintEl.textContent = `Smart Money: ${smText} · Price Action: ${paText} — ต้องมีทิศทางจากทั้งสองฝั่งก่อนถึงจะยืนยันได้` + lockNote;
+    }
+  }
+
   let tvWidget = null;
   let tvChartReady = false;
   let tvShapeIds = [];
@@ -1301,6 +1353,7 @@
     renderSR(marketData);
     renderSmc(marketData);
     renderPriceAction(marketData);
+    renderEntryConfirmation(marketData);
     if(!aiConfirmed){
       lastTrade = renderFreeLadder(qc, marketData);
       setLadderSourceBadge(false);
@@ -1430,7 +1483,7 @@
     saveHistory([]);
     clearSmcLock();
     renderHistory();
-    if(lastMarketData){ renderSmc(lastMarketData); renderPriceAction(lastMarketData); }
+    if(lastMarketData){ renderSmc(lastMarketData); renderPriceAction(lastMarketData); renderEntryConfirmation(lastMarketData); }
   });
 
   // Highlight the sidebar nav link matching the section currently in view.
