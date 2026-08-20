@@ -258,6 +258,7 @@
     </div>
     <a class="nav-link" data-target="overview" href="#overview"><span class="ic">🎯</span>Direction &amp; Trade</a>
     <a class="nav-link" data-target="smc" href="#smc"><span class="ic">🧠</span>Smart Money</a>
+    <a class="nav-link" data-target="paEntry" href="#paEntry"><span class="ic">🕯️</span>Price Action Entry</a>
     <a class="nav-link" data-target="chart" href="#chart"><span class="ic">📈</span>Chart</a>
     <a class="nav-link" data-target="mtf" href="#mtf"><span class="ic">⏱</span>Multi-Timeframe</a>
     <a class="nav-link" data-target="indicators" href="#indicators"><span class="ic">📊</span>Indicators</a>
@@ -393,6 +394,17 @@
       <ul class="reason-list" id="smcReasons" style="margin-top:10px;"></ul>
       <div class="market-context" id="marketContext"><span>📈</span><span>กำลังโหลดบริบทตลาด…</span></div>
       <div class="hint" id="smcDisclaimer" style="margin-top:8px; font-size:11px;"></div>
+    </div>
+
+    <div class="panel" id="paEntry">
+      <h2>Price Action Entry (Trend → Location → Trigger)</h2>
+      <div class="setup-card" id="paVerdictCard" style="margin-bottom:12px;">
+        <div class="name">คุณภาพจุดเข้าตามหลัก EMA Pullback + Price Action</div>
+        <div class="verdict wait" id="paVerdict">กำลังโหลด…</div>
+        <div class="hint" id="paVerdictHint"></div>
+      </div>
+      <ul class="reason-list" id="paReasons"></ul>
+      <div class="hint" style="margin-top:8px; font-size:11px;">คนละคะแนนกับ Direction &amp; Trade ด้านบน — อันนี้เช็คเฉพาะว่าจุดนี้เข้าเงื่อนไข Trend (EMA9/21/50/200) → Location (ย่อเข้า EMA21/50 หรือแนวรับ/ต้าน) → Trigger (Engulfing/Pin Bar/Break+Retest) แบบคลาสสิกมากแค่ไหน</div>
     </div>
 
     <div class="panel" id="chart">
@@ -684,6 +696,7 @@
       ict: marketData.ict,
       smartMoney: marketData.smartMoney,
       smartMoneyScore: marketData.smartMoneyScore,
+      priceActionEntry: marketData.priceActionEntry,
     }));
   }
   function clearSmcLock(){ localStorage.removeItem(smcLockKey()); }
@@ -1142,6 +1155,36 @@
     document.getElementById('marketContext').innerHTML = '<span>' + (bull > bear ? '📈' : bear > bull ? '📉' : '➖') + '</span><span>' + contextText + '</span>';
   }
 
+  // Trend -> Location -> Trigger PA entry-quality score — separate card from
+  // the SMC panel above (different question: "how textbook is this EMA-
+  // pullback price-action setup?" vs "what is smart money doing?"). Shares
+  // the same SMC lock so it also freezes while a trade is open instead of
+  // flip-flopping every 2-minute auto-refresh.
+  function renderPriceAction(liveData){
+    const locked = loadSmcLock();
+    const pa = (locked && locked.priceActionEntry) || liveData.priceActionEntry;
+    const verdictEl = document.getElementById('paVerdict');
+    const hintEl = document.getElementById('paVerdictHint');
+    const reasonsEl = document.getElementById('paReasons');
+    if (!pa) {
+      verdictEl.className = 'verdict wait';
+      verdictEl.textContent = '⚪ ข้อมูลไม่พอ (ต้องการแท่งเทียนมากกว่านี้)';
+      hintEl.textContent = '';
+      reasonsEl.innerHTML = '';
+      return;
+    }
+    const cls = pa.tier === 'STRONG_ENTRY' ? (pa.direction === 'BUY' ? 'buy' : 'sell') : 'wait';
+    const label = pa.tier === 'STRONG_ENTRY'
+      ? (pa.direction === 'BUY' ? '🟢 จุดเข้า BUY แข็งแรง' : '🔴 จุดเข้า SELL แข็งแรง')
+      : pa.tier === 'WATCH' ? '🟡 รอดู' : '⚪ ยังไม่เข้า';
+    verdictEl.className = 'verdict ' + cls;
+    verdictEl.textContent = label;
+    const lockNote = (locked && locked.priceActionEntry) ? ' · 🔒 ล็อกไว้จนกว่าเทรดปัจจุบันจะชนะ/แพ้' : '';
+    hintEl.textContent = `คะแนน ${pa.score}/${pa.maxScore} (${pa.tierLabel})` +
+      (pa.direction ? ` · ทิศทาง ${pa.direction}` : ' · ยังไม่มีเทรนด์ชัดเจนตาม EMA50') + lockNote;
+    reasonsEl.innerHTML = pa.reasons.map(r => '<li>' + r + '</li>').join('');
+  }
+
   let tvWidget = null;
   let tvChartReady = false;
   let tvShapeIds = [];
@@ -1257,6 +1300,7 @@
     renderIndicators(marketData);
     renderSR(marketData);
     renderSmc(marketData);
+    renderPriceAction(marketData);
     if(!aiConfirmed){
       lastTrade = renderFreeLadder(qc, marketData);
       setLadderSourceBadge(false);
@@ -1386,7 +1430,7 @@
     saveHistory([]);
     clearSmcLock();
     renderHistory();
-    if(lastMarketData) renderSmc(lastMarketData);
+    if(lastMarketData){ renderSmc(lastMarketData); renderPriceAction(lastMarketData); }
   });
 
   // Highlight the sidebar nav link matching the section currently in view.
