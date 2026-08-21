@@ -366,7 +366,7 @@
           </div>
         </div>
         <div class="hero-note">
-          <b>⚡ FREE:</b> ทิศทาง + Entry/SL/TP ด้านบนคำนวณอัตโนมัติจากสัญญาณเชิงปริมาณ (quick-check) และ ATR ทันทีที่ราคาโหลดเสร็จ ไม่มีค่าใช้จ่าย และอัปเดตทุก 2 นาที<br>
+          <b>⚡ FREE:</b> ทิศทางด้านบนคำนวณอัตโนมัติจากสัญญาณเชิงปริมาณ (quick-check) ทันทีที่ราคาโหลดเสร็จ ไม่มีค่าใช้จ่าย และอัปเดตทุก 2 นาที — Entry จะใช้โซน Order Block/ICT OTE/EMA Pullback จากการ์ด Price Action ด้านล่างถ้ามีและตรงทิศทางเดียวกัน ไม่งั้นใช้ราคาตลาดปัจจุบันแทน ส่วน SL/TP คำนวณจาก ATR<br>
           <b>✨ AI-confirmed:</b> กดปุ่มด้านล่างเพื่อให้ AI (มีค่าใช้จ่ายต่อครั้ง) ยืนยัน/ปรับปรุงตัวเลข Entry/SL/TP พร้อมเหตุผลประกอบข่าวและบริบทตลาด — ตัวเลขในกล่องด้านบนจะอัปเดตทันทีเมื่อ AI วิเคราะห์เสร็จ
         </div>
         <button class="btn-primary" id="analyzeBtn" style="width:100%;">✨ ยืนยันด้วย AI (มีค่าใช้จ่าย)</button>
@@ -644,10 +644,21 @@
       return null;
     }
     const isBuy = qc.direction === 'BUY';
-    const fakeA = { entry: m.currentPrice };
+    // Enter at the nearest Smart Money/Price Action zone instead of just
+    // "wherever price happens to be right now" — but only when that zone's
+    // own direction (from the separate PA scoring system) agrees with
+    // qc.direction here, so this never anchors Entry to a zone computed for
+    // the opposite side of a disagreement between the two systems.
+    const pa = m.priceActionEntry;
+    const zone = (pa && pa.entryZone && pa.direction === qc.direction) ? pa.entryZone : null;
+    const entryPrice = zone ? zone.mid : m.currentPrice;
+    const fakeA = { entry: entryPrice };
     const trade = reconcileTrade(fakeA, isBuy, m.atr);
     entryEl.textContent = Number(trade.entry).toFixed(2);
-    entryHintEl.textContent = 'ราคาตลาดปัจจุบัน (' + qc.direction + (qc.strong ? ', สัญญาณชัดเจน' : '') + ')';
+    entryHintEl.textContent = zone
+      ? `โซน ${zone.source} (${zone.low.toFixed(2)}-${zone.high.toFixed(2)}) — ${qc.direction}${qc.strong ? ', สัญญาณชัดเจน' : ''}`
+      : 'ราคาตลาดปัจจุบัน (' + qc.direction + (qc.strong ? ', สัญญาณชัดเจน' : '') + ')' +
+        (pa && pa.direction && pa.direction !== qc.direction ? ' — ยังไม่มีโซน Price Action ที่ตรงทิศทางนี้' : '');
     slEl.textContent = isFinite(trade.sl) ? Number(trade.sl).toFixed(2) : '—';
     slDistEl.textContent = isFinite(trade.sl) ? '-' + Math.abs(trade.entry - trade.sl).toFixed(2) : '—';
     tpEl.textContent = isFinite(trade.tp) ? Number(trade.tp).toFixed(2) : '—';

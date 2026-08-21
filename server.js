@@ -694,10 +694,32 @@ function computePriceActionEntryScore(candles, m) {
   else if (score >= 5) { tier = 'WATCH'; tierLabel = 'รอดู'; }
   else { tier = 'NO_ENTRY'; tierLabel = 'ยังไม่เข้า'; }
 
+  // Where "Location" actually says to enter — the free ladder used to just
+  // put Entry at whatever the current market price happened to be, which
+  // ignored every zone this scoring function (and the SMC panel) talks
+  // about. Priority mirrors the framework's own Location leg: an unmitigated
+  // Order Block first (tightest, most specific), then the ICT OTE pocket,
+  // then the EMA21/50 pullback band, then the 30-candle support/resistance
+  // — falling back to null (caller keeps using current price) if the
+  // direction has no matching zone at all yet.
+  let entryZone = null;
+  if (trendDir === 'BUY') {
+    if (m.smc && m.smc.bullishOB) entryZone = { low: m.smc.bullishOB.low, high: m.smc.bullishOB.high, source: 'Order Block' };
+    else if (m.ict && m.ict.oteBuyZone) entryZone = { low: m.ict.oteBuyZone.low, high: m.ict.oteBuyZone.high, source: 'ICT OTE (61.8-79%)' };
+    else if (ema21 != null && ema50 != null) entryZone = { low: Math.min(ema21, ema50), high: Math.max(ema21, ema50), source: 'EMA21/50 Pullback' };
+    else if (m.support != null) entryZone = { low: m.support - atrVal * 0.3, high: m.support + atrVal * 0.3, source: 'Support' };
+  } else if (trendDir === 'SELL') {
+    if (m.smc && m.smc.bearishOB) entryZone = { low: m.smc.bearishOB.low, high: m.smc.bearishOB.high, source: 'Order Block' };
+    else if (m.ict && m.ict.oteSellZone) entryZone = { low: m.ict.oteSellZone.low, high: m.ict.oteSellZone.high, source: 'ICT OTE (61.8-79%)' };
+    else if (ema21 != null && ema50 != null) entryZone = { low: Math.min(ema21, ema50), high: Math.max(ema21, ema50), source: 'EMA21/50 Pullback' };
+    else if (m.resistance != null) entryZone = { low: m.resistance - atrVal * 0.3, high: m.resistance + atrVal * 0.3, source: 'Resistance' };
+  }
+  if (entryZone) entryZone.mid = (entryZone.low + entryZone.high) / 2;
+
   return {
     direction: trendDir, score, maxScore, tier, tierLabel, reasons,
     ema: { ema9, ema21, ema50, ema200 },
-    paTrigger, breakRetest, atKeyLevel,
+    paTrigger, breakRetest, atKeyLevel, entryZone,
   };
 }
 
@@ -1184,6 +1206,7 @@ async function getMarketDataPayload(assetKey, interval) {
     const priceActionEntry = computePriceActionEntryScore(candles, {
       currentPrice, support, resistance, structure: structureResult,
       candleCounts: { up: recentUp, down: recentDown }, atr: atrVal,
+      smc: smcResult, ict: ictResult,
     });
 
     const payload = {
