@@ -645,20 +645,38 @@
     }
     const isBuy = qc.direction === 'BUY';
     // Enter at the nearest Smart Money/Price Action zone instead of just
-    // "wherever price happens to be right now" — but only when that zone's
-    // own direction (from the separate PA scoring system) agrees with
-    // qc.direction here, so this never anchors Entry to a zone computed for
-    // the opposite side of a disagreement between the two systems.
+    // "wherever price happens to be right now" — but only when:
+    // 1) that zone's own direction (from the separate PA scoring system)
+    //    agrees with qc.direction here, so this never anchors Entry to a
+    //    zone computed for the opposite side of a disagreement, and
+    // 2) PA has actually reached at least WATCH (tier !== NO_ENTRY) — a
+    //    trendDir can exist (and so can an old, already-passed Order Block
+    //    within it) even when PA's own card says "ยังไม่เข้า"; using the
+    //    zone anyway showed a confident-looking Entry number the PA card
+    //    right below it was explicitly saying not to take, and
+    // 3) the zone isn't wildly far from current price — an unmitigated
+    //    Order Block can be stale (found within the last 30 candles but
+    //    price has since moved on without truly retesting it), which
+    //    otherwise put Entry 50+ points from market with nothing telling
+    //    the user this was a stale/pending level rather than an active one.
     const pa = m.priceActionEntry;
-    const zone = (pa && pa.entryZone && pa.direction === qc.direction) ? pa.entryZone : null;
+    const atrVal = isFinite(m.atr) && m.atr > 0 ? m.atr : 0;
+    const zoneRaw = (pa && pa.entryZone && pa.direction === qc.direction && pa.tier !== 'NO_ENTRY') ? pa.entryZone : null;
+    const zoneTooFar = zoneRaw && atrVal > 0 && Math.abs(zoneRaw.mid - m.currentPrice) > atrVal * 4;
+    const zone = zoneTooFar ? null : zoneRaw;
     const entryPrice = zone ? zone.mid : m.currentPrice;
     const fakeA = { entry: entryPrice };
     const trade = reconcileTrade(fakeA, isBuy, m.atr);
     entryEl.textContent = Number(trade.entry).toFixed(2);
+    let noZoneReason = '';
+    if (!zone) {
+      if (zoneTooFar) noZoneReason = ' — โซน ' + zoneRaw.source + ' ที่พบอยู่ไกลเกินไป (ห่างเกิน 4x ATR) น่าจะเป็นระดับเก่า';
+      else if (pa && pa.direction === qc.direction && pa.tier === 'NO_ENTRY') noZoneReason = ' — Price Action ยังไม่ยืนยันจุดเข้า (ยังไม่เข้า)';
+      else if (pa && pa.direction && pa.direction !== qc.direction) noZoneReason = ' — ยังไม่มีโซน Price Action ที่ตรงทิศทางนี้';
+    }
     entryHintEl.textContent = zone
       ? `โซน ${zone.source} (${zone.low.toFixed(2)}-${zone.high.toFixed(2)}) — ${qc.direction}${qc.strong ? ', สัญญาณชัดเจน' : ''}`
-      : 'ราคาตลาดปัจจุบัน (' + qc.direction + (qc.strong ? ', สัญญาณชัดเจน' : '') + ')' +
-        (pa && pa.direction && pa.direction !== qc.direction ? ' — ยังไม่มีโซน Price Action ที่ตรงทิศทางนี้' : '');
+      : 'ราคาตลาดปัจจุบัน (' + qc.direction + (qc.strong ? ', สัญญาณชัดเจน' : '') + ')' + noZoneReason;
     slEl.textContent = isFinite(trade.sl) ? Number(trade.sl).toFixed(2) : '—';
     slDistEl.textContent = isFinite(trade.sl) ? '-' + Math.abs(trade.entry - trade.sl).toFixed(2) : '—';
     tpEl.textContent = isFinite(trade.tp) ? Number(trade.tp).toFixed(2) : '—';
