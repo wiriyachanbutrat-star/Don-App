@@ -1097,7 +1097,12 @@
     // BUY/SELL/NEUTRAL every 2-minute auto-refresh as new candles roll in,
     // even though nothing about the open trade has actually changed yet.
     const locked = loadSmcLock();
-    const m = locked || liveData;
+    // Merge rather than swap the whole object: saveSmcLock() has grown new
+    // fields (smartMoneyScore, priceActionEntry) since it first shipped, so
+    // a lock saved by an older build of this page won't have them — merging
+    // falls back to live data for whatever the lock is missing instead of
+    // silently rendering blank while locked.
+    const m = locked ? Object.assign({}, liveData, locked) : liveData;
     const liq = m.liquiditySweep && (m.liquiditySweep.bullish || m.liquiditySweep.bearish);
     const ob = m.smc && (m.smc.bullishOB || m.smc.bearishOB);
     const fvg = m.smc && (m.smc.bullishFvg || m.smc.bearishFvg);
@@ -1203,7 +1208,7 @@
   // below stay as the detail behind it.
   function renderEntryConfirmation(liveData){
     const locked = loadSmcLock();
-    const d = locked || liveData;
+    const d = locked ? Object.assign({}, liveData, locked) : liveData;
     const sm = d.smartMoney;
     const pa = d.priceActionEntry;
     const verdictEl = document.getElementById('entryConfirmVerdict');

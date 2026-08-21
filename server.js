@@ -1167,6 +1167,7 @@ async function getMarketDataPayload(assetKey, interval) {
     const liquiditySweepResult = liquiditySweep(candles);
     const ictResult = ictZones(swingResult, currentPrice);
     const smartMoney = computeSmartMoneyBias({ smc: smcResult, structure: structureResult, liquiditySweep: liquiditySweepResult, ict: ictResult });
+    const atrVal = atr(candles);
     const smartMoneyScore = computeSmartMoneyScore({
       ema20: ema20Series[ema20Series.length - 1],
       ema50: ema50Series[ema50Series.length - 1],
@@ -1178,11 +1179,11 @@ async function getMarketDataPayload(assetKey, interval) {
       rsi: rsiSeriesFull[rsiSeriesFull.length - 1],
       candleCounts: { up: recentUp, down: recentDown },
       recentCandles: recent,
-      atr: atr(candles),
+      atr: atrVal,
     });
     const priceActionEntry = computePriceActionEntryScore(candles, {
       currentPrice, support, resistance, structure: structureResult,
-      candleCounts: { up: recentUp, down: recentDown }, atr: atr(candles),
+      candleCounts: { up: recentUp, down: recentDown }, atr: atrVal,
     });
 
     const payload = {
@@ -1200,7 +1201,7 @@ async function getMarketDataPayload(assetKey, interval) {
       ema20: ema20Series[ema20Series.length - 1],
       ema50: ema50Series[ema50Series.length - 1],
       ema200: ema200Series ? ema200Series[ema200Series.length - 1] : null,
-      atr: atr(candles),
+      atr: atrVal,
       adx: adx(candles),
       // Rolling series (last 30 bars) for the dashboard's sparkline tiles —
       // reuses the same indicator math above rather than recomputing on the
