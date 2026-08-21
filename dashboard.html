@@ -751,6 +751,18 @@
     localStorage.setItem(historyKey(), JSON.stringify(list.slice(-50)));
   }
 
+  // A bare "🔒 locked" note doesn't say *what* it's locked to — this builds
+  // a one-line summary of the actual pending trade governing the lock, so
+  // "locked" points at something visible instead of reading as an opaque
+  // frozen state.
+  function pendingTradeSummary(){
+    const list = loadHistory();
+    const rec = list.slice().reverse().find(r => r.status === 'pending');
+    if(!rec) return null;
+    const timeStr = new Date(rec.time).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+    return `เทรด ${rec.direction} ที่เปิดไว้เมื่อ ${timeStr} (Entry ${Number(rec.entry).toFixed(2)}, SL ${Number(rec.sl).toFixed(2)}, TP ${Number(rec.tp).toFixed(2)})`;
+  }
+
   function addHistoryEntry(a, trade, marketData){
     if(String(a.recommendation).toUpperCase() === 'WAIT') return;
     const isBuy = String(a.recommendation).toUpperCase().indexOf('BUY') !== -1;
@@ -1203,7 +1215,7 @@
     // instead of leading with whichever engine happens to sound stronger.
     const scoreDir = score ? (['STRONG_BULLISH', 'BULLISH'].includes(score.tier) ? 'BUY' : ['STRONG_BEARISH', 'BEARISH'].includes(score.tier) ? 'SELL' : null) : undefined;
     if (sm) {
-      const lockNote = locked ? ' · 🔒 ล็อกไว้จนกว่าเทรดปัจจุบันจะชนะ/แพ้' : '';
+      const lockNote = locked ? ` · 🔒 ล็อกตาม${pendingTradeSummary() || 'เทรดปัจจุบัน'} (จนกว่าจะถึง SL/TP)` : '';
       let cls, label;
       if (sm.bias === 'BUY' || sm.bias === 'SELL') {
         if (scoreDir === undefined || scoreDir === sm.bias) {
@@ -1270,7 +1282,7 @@
       : pa.tier === 'WATCH' ? '🟡 รอดู' : '⚪ ยังไม่เข้า';
     verdictEl.className = 'verdict ' + cls;
     verdictEl.textContent = label;
-    const lockNote = (locked && locked.priceActionEntry) ? ' · 🔒 ล็อกไว้จนกว่าเทรดปัจจุบันจะชนะ/แพ้' : '';
+    const lockNote = (locked && locked.priceActionEntry) ? ` · 🔒 ล็อกตาม${pendingTradeSummary() || 'เทรดปัจจุบัน'} (จนกว่าจะถึง SL/TP)` : '';
     hintEl.textContent = `คะแนน ${pa.score}/${pa.maxScore} (${pa.tierLabel})` +
       (pa.direction ? ` · ทิศทาง ${pa.direction}` : ' · ยังไม่มีเทรนด์ชัดเจนตาม EMA50') + lockNote;
     reasonsEl.innerHTML = pa.reasons.map(r => '<li>' + r + '</li>').join('');
@@ -1289,7 +1301,7 @@
     const pa = d.priceActionEntry;
     const verdictEl = document.getElementById('entryConfirmVerdict');
     const hintEl = document.getElementById('entryConfirmHint');
-    const lockNote = locked ? ' · 🔒 ล็อกไว้จนกว่าเทรดปัจจุบันจะชนะ/แพ้' : '';
+    const lockNote = locked ? ` · 🔒 ล็อกตาม${pendingTradeSummary() || 'เทรดปัจจุบัน'} (จนกว่าจะถึง SL/TP)` : '';
 
     if (!sm || !pa) {
       verdictEl.className = 'verdict wait';
