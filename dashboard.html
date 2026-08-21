@@ -1223,21 +1223,37 @@
     }
 
     const smDir = sm.bias === 'BUY' || sm.bias === 'SELL' ? sm.bias : null;
-    const paDir = pa.tier !== 'NO_ENTRY' ? pa.direction : null; // below WATCH doesn't count as a real PA read
+    // Only STRONG_ENTRY counts as PA actually confirming a direction — WATCH
+    // means the PA card itself says "รอดู" (not ready yet), so treating it
+    // as a confirmed direction here made the banner say "ยืนยัน" (confirmed)
+    // right above a PA card that still said "รอดู", which read as the two
+    // cards contradicting each other.
+    const paReady = pa.tier === 'STRONG_ENTRY';
+    const paDir = paReady ? pa.direction : null;
+    // For the conflict check, "watch" still counts as a directional lean —
+    // conflicting with Smart Money is worth flagging even before PA is
+    // fully confirmed.
+    const paLean = pa.tier !== 'NO_ENTRY' ? pa.direction : null;
 
     if (smDir && paDir && smDir === paDir) {
       verdictEl.className = 'verdict ' + (smDir === 'BUY' ? 'buy' : 'sell');
       verdictEl.textContent = (smDir === 'BUY' ? '🟢 ยืนยัน BUY' : '🔴 ยืนยัน SELL') + ' — เจ้าตลาด + Price Action ตรงกัน';
       hintEl.textContent = `Smart Money: ${sm.bias} (${sm.confidence}%) · Price Action: ${pa.tierLabel} (${pa.score}/${pa.maxScore})` + lockNote;
-    } else if (smDir && paDir && smDir !== paDir) {
+    } else if (smDir && paLean && smDir !== paLean) {
       verdictEl.className = 'verdict wait';
       verdictEl.textContent = '⚠️ สัญญาณขัดแย้งกัน — รอ';
-      hintEl.textContent = `Smart Money ชี้ ${smDir} แต่ Price Action ชี้ ${paDir} — รอจนกว่าทั้งสองจะไปทิศทางเดียวกัน ก่อนเข้าเทรด` + lockNote;
+      hintEl.textContent = `Smart Money ชี้ ${smDir} แต่ Price Action ชี้ ${paLean} — รอจนกว่าทั้งสองจะไปทิศทางเดียวกัน ก่อนเข้าเทรด` + lockNote;
+    } else if (smDir && paLean && smDir === paLean) {
+      // Same direction but PA hasn't reached STRONG_ENTRY yet — a real lean,
+      // not a false "confirmed", and not a conflict either.
+      verdictEl.className = 'verdict wait';
+      verdictEl.textContent = '🟡 ทิศทางตรงกัน — รอ Price Action ยืนยันเพิ่ม';
+      hintEl.textContent = `Smart Money: ${sm.bias} (${sm.confidence}%) · Price Action: ${pa.tierLabel} (${pa.score}/${pa.maxScore}, ต้องการ 8/11 ขึ้นไปจึงจะยืนยัน)` + lockNote;
     } else {
       verdictEl.className = 'verdict wait';
       verdictEl.textContent = '⚪ ยังไม่มีจุดเข้าที่ยืนยันได้';
       const smText = sm.bias === 'NEUTRAL' ? 'ยังไม่ชัดเจน' : sm.bias;
-      const paText = paDir ? pa.tierLabel : (pa.direction ? `${pa.tierLabel} (คะแนนยังไม่ถึงเกณฑ์)` : 'ยังไม่มีเทรนด์ตาม EMA50');
+      const paText = paLean ? pa.tierLabel : (pa.direction ? `${pa.tierLabel} (คะแนนยังไม่ถึงเกณฑ์)` : 'ยังไม่มีเทรนด์ตาม EMA50');
       hintEl.textContent = `Smart Money: ${smText} · Price Action: ${paText} — ต้องมีทิศทางจากทั้งสองฝั่งก่อนถึงจะยืนยันได้` + lockNote;
     }
   }
