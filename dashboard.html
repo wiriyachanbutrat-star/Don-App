@@ -307,8 +307,9 @@
         <div id="biasMtfConfirm" class="hero-flag mtf" style="display:none;"></div>
         <div id="biasDeveloping" class="hero-flag dev" style="display:none;"></div>
         <div class="hero-conf-row">
-          <div class="lbl-row"><span>Confidence</span><span id="confPct">—</span></div>
+          <div class="lbl-row"><span>Signal Strength (score/max)</span><span id="confPct">—</span></div>
           <div class="conf-bar-track"><div class="conf-bar-fill" id="confBar" style="width:0%; background:var(--wait-bright);"></div></div>
+          <div class="hint" id="confHint" style="margin-top:4px;"></div>
         </div>
         <div class="meta-row" style="width:100%;"><span>Trend</span><span id="trendVal">—</span></div>
         <div class="meta-row" style="width:100%;"><span>Higher TF</span><span id="higherTrendVal">—</span></div>
@@ -948,6 +949,18 @@
     const fill = document.getElementById('confBar');
     fill.style.width = pct + '%';
     fill.style.background = cls === 'buy' ? 'var(--buy-bright)' : cls === 'sell' ? 'var(--sell-bright)' : 'var(--wait-bright)';
+    // This is |score|/maxScore, not a probability — a number like 38% still
+    // clears the (much lower) "strong" bar the system actually gates on, so
+    // showing 38% next to a ⭐ BUY badge with no context read as the badge
+    // contradicting the percentage. Spell out which bar it cleared instead.
+    const confHintEl = document.getElementById('confHint');
+    if (!qc.tradable || !qc.direction) {
+      confHintEl.textContent = '';
+    } else if (qc.strong) {
+      confHintEl.textContent = `คะแนน ${Math.abs(qc.score)}/${qc.maxScore} — ผ่านเกณฑ์ "สัญญาณแข็งแรง" (⭐) แล้ว แม้ตัวเลข % จะดูไม่สูงเพราะเทียบกับคะแนนเต็มที่ยากจะได้ครบทุกข้อ`;
+    } else {
+      confHintEl.textContent = `คะแนน ${Math.abs(qc.score)}/${qc.maxScore} — ยังไม่ถึงเกณฑ์ "สัญญาณแข็งแรง" ระบบจึงยังไม่เข้าเทรด`;
+    }
 
     const trend = marketData.ema20 > marketData.ema50 && marketData.ema50 > (marketData.ema200 || 0)
       ? 'ขาขึ้น (Bull)'
