@@ -1091,6 +1091,18 @@
     ).join('');
   }
 
+  // Smart Money has two independent read engines — sm.bias (vote-count) and
+  // score.tier (weighted 7-factor) — that can disagree. Shared by renderSmc
+  // and renderEntryConfirmation so "is Smart Money really BUY/SELL" means
+  // the same thing in both places instead of each card reconciling (or not)
+  // on its own and potentially showing contradictory verdicts.
+  function reconcileSmartMoneyDirection(sm, score){
+    if (!sm || (sm.bias !== 'BUY' && sm.bias !== 'SELL')) return null;
+    if (!score) return sm.bias;
+    const scoreDir = ['STRONG_BULLISH', 'BULLISH'].includes(score.tier) ? 'BUY' : ['STRONG_BEARISH', 'BEARISH'].includes(score.tier) ? 'SELL' : null;
+    return scoreDir === sm.bias ? sm.bias : null;
+  }
+
   function renderSmc(liveData){
     // While a trade is open, show the SMC read frozen from when it was
     // opened instead of the live one — otherwise this card would flip
@@ -1141,15 +1153,37 @@
     const verdictEl = document.getElementById('smcVerdict');
     const hintEl = document.getElementById('smcVerdictHint');
     const reasonsEl = document.getElementById('smcReasons');
+    // sm.bias (vote-count engine) and score.tier (weighted 7-factor engine)
+    // are two independent reads that can disagree — showing "เข้าซื้อ
+    // (Accumulate)" here while the Smart Money Score card above says WAIT
+    // read as the same panel contradicting itself. Reconcile: only show a
+    // confident BUY/SELL verdict when both agree; otherwise say so plainly
+    // instead of leading with whichever engine happens to sound stronger.
+    const scoreDir = score ? (['STRONG_BULLISH', 'BULLISH'].includes(score.tier) ? 'BUY' : ['STRONG_BEARISH', 'BEARISH'].includes(score.tier) ? 'SELL' : null) : undefined;
     if (sm) {
-      const cls = sm.bias === 'BUY' ? 'buy' : sm.bias === 'SELL' ? 'sell' : 'wait';
-      const label = sm.bias === 'BUY' ? '🟢 เข้าซื้อ (Accumulate)' : sm.bias === 'SELL' ? '🔴 เข้าขาย (Distribute)' : '⚪ ยังไม่ชัดเจน';
+      const lockNote = locked ? ' · 🔒 ล็อกไว้จนกว่าเทรดปัจจุบันจะชนะ/แพ้' : '';
+      let cls, label;
+      if (sm.bias === 'BUY' || sm.bias === 'SELL') {
+        if (scoreDir === undefined || scoreDir === sm.bias) {
+          cls = sm.bias === 'BUY' ? 'buy' : 'sell';
+          label = sm.bias === 'BUY' ? '🟢 เข้าซื้อ (Accumulate)' : '🔴 เข้าขาย (Distribute)';
+        } else if (scoreDir === null) {
+          cls = 'wait';
+          label = '🟡 เอนไปทาง' + (sm.bias === 'BUY' ? 'ซื้อ' : 'ขาย') + ' — แต่ Smart Money Score ยัง WAIT';
+        } else {
+          cls = 'wait';
+          label = '⚠️ สองระบบขัดแย้งกัน (Bias vs Score)';
+        }
+      } else {
+        cls = 'wait';
+        label = '⚪ ยังไม่ชัดเจน';
+      }
       verdictEl.className = 'verdict ' + cls;
       verdictEl.textContent = label;
-      const lockNote = locked ? ' · 🔒 ล็อกไว้จนกว่าเทรดปัจจุบันจะชนะ/แพ้' : '';
+      const scoreNote = score ? ` · Smart Money Score: ${score.total}/100 (${score.tierLabel})` : '';
       hintEl.textContent = (sm.votesCount
         ? `ความมั่นใจ ${sm.confidence}% จาก ${sm.votesCount} สัญญาณ (คะแนนสุทธิ ${sm.score >= 0 ? '+' : ''}${sm.score})`
-        : 'ยังไม่พบร่องรอย Smart Money ในรอบนี้') + lockNote;
+        : 'ยังไม่พบร่องรอย Smart Money ในรอบนี้') + scoreNote + lockNote;
       reasonsEl.innerHTML = sm.reasons.length
         ? sm.reasons.map(r => '<li>' + r + '</li>').join('')
         : '<li>ไม่มีสัญญาณ Liquidity Sweep / Order Block / FVG / BOS-CHoCH / OTE ในรอบนี้</li>';
@@ -1222,7 +1256,12 @@
       return;
     }
 
-    const smDir = sm.bias === 'BUY' || sm.bias === 'SELL' ? sm.bias : null;
+    // Requires sm.bias and Smart Money Score to already agree with each
+    // other (see reconcileSmartMoneyDirection) — otherwise this banner
+    // could say "ยืนยัน BUY" from sm.bias alone while the Smart Money card
+    // itself shows a Score still at WAIT, which is the same contradiction
+    // this banner exists to prevent, just one level up.
+    const smDir = reconcileSmartMoneyDirection(sm, d.smartMoneyScore);
     // Only STRONG_ENTRY counts as PA actually confirming a direction — WATCH
     // means the PA card itself says "รอดู" (not ready yet), so treating it
     // as a confirmed direction here made the banner say "ยืนยัน" (confirmed)
@@ -1252,7 +1291,9 @@
     } else {
       verdictEl.className = 'verdict wait';
       verdictEl.textContent = '⚪ ยังไม่มีจุดเข้าที่ยืนยันได้';
-      const smText = sm.bias === 'NEUTRAL' ? 'ยังไม่ชัดเจน' : sm.bias;
+      const smText = sm.bias === 'NEUTRAL' ? 'ยังไม่ชัดเจน'
+        : (sm.bias === 'BUY' || sm.bias === 'SELL') ? `${sm.bias} แต่ Score ยังไม่ยืนยัน (WAIT)`
+        : sm.bias;
       const paText = paLean ? pa.tierLabel : (pa.direction ? `${pa.tierLabel} (คะแนนยังไม่ถึงเกณฑ์)` : 'ยังไม่มีเทรนด์ตาม EMA50');
       hintEl.textContent = `Smart Money: ${smText} · Price Action: ${paText} — ต้องมีทิศทางจากทั้งสองฝั่งก่อนถึงจะยืนยันได้` + lockNote;
     }
