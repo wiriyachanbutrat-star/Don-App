@@ -366,7 +366,7 @@
           </div>
         </div>
         <div class="hero-note">
-          <b>⚡ FREE:</b> ทิศทางด้านบนคำนวณอัตโนมัติจากสัญญาณเชิงปริมาณ (quick-check) ทันทีที่ราคาโหลดเสร็จ ไม่มีค่าใช้จ่าย และอัปเดตทุก 2 นาที — Entry จะใช้โซน Order Block/ICT OTE/EMA Pullback จากการ์ด Price Action ด้านล่างถ้ามีและตรงทิศทางเดียวกัน ไม่งั้นใช้ราคาตลาดปัจจุบันแทน ส่วน SL/TP คำนวณจาก ATR<br>
+          <b>⚡ FREE:</b> ทิศทางด้านบนคำนวณอัตโนมัติจากสัญญาณเชิงปริมาณ (quick-check) ทันทีที่ราคาโหลดเสร็จ ไม่มีค่าใช้จ่าย และอัปเดตทุก 2 นาที — Entry จะใช้โซน Order Block/ICT OTE/EMA Pullback/แนวรับ-ต้าน ก็ต่อเมื่อ Smart Money หรือ Price Action (อย่างน้อยหนึ่งเครื่องมือ) ยืนยันทิศทางเดียวกันและโซนนั้นไม่ไกลจากราคาเกินไป ไม่งั้นใช้ราคาตลาดปัจจุบันแทน ส่วน SL/TP คำนวณจาก ATR<br>
           <b>✨ AI-confirmed:</b> กดปุ่มด้านล่างเพื่อให้ AI (มีค่าใช้จ่ายต่อครั้ง) ยืนยัน/ปรับปรุงตัวเลข Entry/SL/TP พร้อมเหตุผลประกอบข่าวและบริบทตลาด — ตัวเลขในกล่องด้านบนจะอัปเดตทันทีเมื่อ AI วิเคราะห์เสร็จ
         </div>
         <button class="btn-primary" id="analyzeBtn" style="width:100%;">✨ ยืนยันด้วย AI (มีค่าใช้จ่าย)</button>
@@ -644,39 +644,20 @@
       return null;
     }
     const isBuy = qc.direction === 'BUY';
-    // Enter at the nearest Smart Money/Price Action zone instead of just
-    // "wherever price happens to be right now" — but only when:
-    // 1) that zone's own direction (from the separate PA scoring system)
-    //    agrees with qc.direction here, so this never anchors Entry to a
-    //    zone computed for the opposite side of a disagreement, and
-    // 2) PA has actually reached at least WATCH (tier !== NO_ENTRY) — a
-    //    trendDir can exist (and so can an old, already-passed Order Block
-    //    within it) even when PA's own card says "ยังไม่เข้า"; using the
-    //    zone anyway showed a confident-looking Entry number the PA card
-    //    right below it was explicitly saying not to take, and
-    // 3) the zone isn't wildly far from current price — an unmitigated
-    //    Order Block can be stale (found within the last 30 candles but
-    //    price has since moved on without truly retesting it), which
-    //    otherwise put Entry 50+ points from market with nothing telling
-    //    the user this was a stale/pending level rather than an active one.
-    const pa = m.priceActionEntry;
-    const atrVal = isFinite(m.atr) && m.atr > 0 ? m.atr : 0;
-    const zoneRaw = (pa && pa.entryZone && pa.direction === qc.direction && pa.tier !== 'NO_ENTRY') ? pa.entryZone : null;
-    const zoneTooFar = zoneRaw && atrVal > 0 && Math.abs(zoneRaw.mid - m.currentPrice) > atrVal * 4;
-    const zone = zoneTooFar ? null : zoneRaw;
+    // qc.entryZone is computed server-side by computeRecommendedEntryZone(),
+    // which cross-checks Smart Money (both its engines agreeing with each
+    // other) and Price Action Entry before trusting a zone, and filters out
+    // stale/too-far levels — the single canonical "where do the analysis
+    // tools say to enter" answer, instead of the client re-deriving its own
+    // gating logic here.
+    const zone = qc.entryZone;
     const entryPrice = zone ? zone.mid : m.currentPrice;
     const fakeA = { entry: entryPrice };
     const trade = reconcileTrade(fakeA, isBuy, m.atr);
     entryEl.textContent = Number(trade.entry).toFixed(2);
-    let noZoneReason = '';
-    if (!zone) {
-      if (zoneTooFar) noZoneReason = ' — โซน ' + zoneRaw.source + ' ที่พบอยู่ไกลเกินไป (ห่างเกิน 4x ATR) น่าจะเป็นระดับเก่า';
-      else if (pa && pa.direction === qc.direction && pa.tier === 'NO_ENTRY') noZoneReason = ' — Price Action ยังไม่ยืนยันจุดเข้า (ยังไม่เข้า)';
-      else if (pa && pa.direction && pa.direction !== qc.direction) noZoneReason = ' — ยังไม่มีโซน Price Action ที่ตรงทิศทางนี้';
-    }
     entryHintEl.textContent = zone
-      ? `โซน ${zone.source} (${zone.low.toFixed(2)}-${zone.high.toFixed(2)}) — ${qc.direction}${qc.strong ? ', สัญญาณชัดเจน' : ''}`
-      : 'ราคาตลาดปัจจุบัน (' + qc.direction + (qc.strong ? ', สัญญาณชัดเจน' : '') + ')' + noZoneReason;
+      ? `โซน ${zone.source} (${zone.low.toFixed(2)}-${zone.high.toFixed(2)}) ยืนยันโดย ${zone.confirmedBy.join(' + ')} — ${qc.direction}${qc.strong ? ', สัญญาณชัดเจน' : ''}`
+      : 'ราคาตลาดปัจจุบัน (' + qc.direction + (qc.strong ? ', สัญญาณชัดเจน' : '') + ')' + (qc.entryZoneReason ? ' — ' + qc.entryZoneReason : '');
     slEl.textContent = isFinite(trade.sl) ? Number(trade.sl).toFixed(2) : '—';
     slDistEl.textContent = isFinite(trade.sl) ? '-' + Math.abs(trade.entry - trade.sl).toFixed(2) : '—';
     tpEl.textContent = isFinite(trade.tp) ? Number(trade.tp).toFixed(2) : '—';

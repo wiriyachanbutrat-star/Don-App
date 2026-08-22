@@ -723,6 +723,53 @@ function computePriceActionEntryScore(candles, m) {
   };
 }
 
+// Mirrors dashboard.html's reconcileSmartMoneyDirection() — sm.bias
+// (vote-count) and smartMoneyScore.tier (weighted 7-factor) are independent
+// reads that can disagree, so "Smart Money confirms X" should mean both
+// engines agree, not just one of them.
+function smartMoneyReconciledDirection(sm, score) {
+  if (!sm || (sm.bias !== 'BUY' && sm.bias !== 'SELL')) return null;
+  if (!score) return sm.bias;
+  const scoreDir = ['STRONG_BULLISH', 'BULLISH'].includes(score.tier) ? 'BUY' : ['STRONG_BEARISH', 'BEARISH'].includes(score.tier) ? 'SELL' : null;
+  return scoreDir === sm.bias ? sm.bias : null;
+}
+
+// Single canonical "where should Entry actually be" answer for the free
+// ladder — cross-checks the analysis tools before trusting a zone, instead
+// of leaving each client to invent its own gating logic (which is how the
+// dashboard ended up anchoring Entry to a stale Order Block the Price
+// Action card itself hadn't confirmed). Requires the target direction to be
+// backed by at least one validated tool: Smart Money's two engines agreeing
+// with each other, or Price Action Entry reaching at least WATCH — then
+// reuses whichever zone (Order Block > ICT OTE > EMA21/50 > Support/
+// Resistance) computePriceActionEntryScore already picked for that
+// direction, still subject to the same "not stale" 4x-ATR distance check.
+function computeRecommendedEntryZone(direction, payload) {
+  if (!direction) return { zone: null, reason: 'ไม่มีทิศทางที่ชัดเจนจากสัญญาณหลัก' };
+
+  const smDir = smartMoneyReconciledDirection(payload.smartMoney, payload.smartMoneyScore);
+  const pa = payload.priceActionEntry;
+  const paDirMatches = pa && pa.direction === direction;
+  const smValidated = smDir === direction;
+  const paValidated = paDirMatches && pa.tier !== 'NO_ENTRY';
+  if (!smValidated && !paValidated) {
+    return { zone: null, reason: 'ยังไม่มีเครื่องมือวิเคราะห์ใด (Smart Money/Price Action) ยืนยันทิศทางนี้ชัดเจนพอ' };
+  }
+  if (!paDirMatches || !pa.entryZone) {
+    return { zone: null, reason: 'ไม่พบโซนราคาที่เหมาะสมจากเครื่องมือใดเลยในขณะนี้' };
+  }
+
+  const atrVal = isFinite(payload.atr) && payload.atr > 0 ? payload.atr : 0;
+  if (atrVal > 0 && Math.abs(pa.entryZone.mid - payload.currentPrice) > atrVal * 4) {
+    return { zone: null, reason: `โซน ${pa.entryZone.source} ที่พบอยู่ไกลเกินไป (ห่างเกิน 4x ATR) น่าจะเป็นระดับเก่า` };
+  }
+
+  const confirmedBy = [];
+  if (smValidated) confirmedBy.push('Smart Money');
+  if (paValidated) confirmedBy.push('Price Action');
+  return { zone: Object.assign({}, pa.entryZone, { confirmedBy }), reason: null };
+}
+
 // Per-asset gating — kept as a lookup rather than bare constants so each
 // asset can plug in its own thresholds without touching computeSignalScore.
 const ASSET_CONFIG = {
@@ -1334,6 +1381,8 @@ app.get('/api/quick-check', async (req, res) => {
       }
     }
 
+    const entryZoneResult = computeRecommendedEntryZone(signal.direction, payload);
+
     res.json({
       assetKey,
       interval,
@@ -1354,6 +1403,8 @@ app.get('/api/quick-check', async (req, res) => {
       smartMoney: payload.smartMoney,
       smartMoneyScore: payload.smartMoneyScore,
       priceActionEntry: payload.priceActionEntry,
+      entryZone: entryZoneResult.zone,
+      entryZoneReason: entryZoneResult.reason,
     });
   } catch (err) {
     console.error(err);
