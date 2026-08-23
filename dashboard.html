@@ -366,7 +366,7 @@
           </div>
         </div>
         <div class="hero-note">
-          <b>⚡ FREE:</b> ทิศทางด้านบนคำนวณอัตโนมัติจากสัญญาณเชิงปริมาณ (quick-check) ทันทีที่ราคาโหลดเสร็จ ไม่มีค่าใช้จ่าย และอัปเดตทุก 2 นาที — Entry จะใช้โซน Order Block/ICT OTE/EMA Pullback/แนวรับ-ต้าน ก็ต่อเมื่อ Smart Money หรือ Price Action (อย่างน้อยหนึ่งเครื่องมือ) ยืนยันทิศทางเดียวกันและโซนนั้นไม่ไกลจากราคาเกินไป ไม่งั้นใช้ราคาตลาดปัจจุบันแทน ส่วน SL/TP คำนวณจาก ATR<br>
+          <b>⚡ FREE:</b> ทิศทางด้านบนคำนวณอัตโนมัติจากสัญญาณเชิงปริมาณ (quick-check) ทันทีที่ราคาโหลดเสร็จ ไม่มีค่าใช้จ่าย และอัปเดตทุก 2 นาที — Entry จะใช้โซน Order Block/ICT OTE/EMA Pullback/แนวรับ-ต้าน ก็ต่อเมื่อ Smart Money หรือ Price Action (อย่างน้อยหนึ่งเครื่องมือ) ยืนยันทิศทางเดียวกันและโซนนั้นไม่ไกลจากราคาเกินไป ไม่งั้นใช้ราคาตลาดปัจจุบันแทน ส่วน SL จะขยายให้พ้น Swing Low/High (หรือแนวรับ-ต้าน) ก่อนหน้าเสมอ ไม่ว่าจะตั้ง SL ($) ไว้แคบแค่ไหน และ TP = ระยะ SL × 1.5<br>
           <b>✨ AI-confirmed:</b> กดปุ่มด้านล่างเพื่อให้ AI (มีค่าใช้จ่ายต่อครั้ง) ยืนยัน/ปรับปรุงตัวเลข Entry/SL/TP พร้อมเหตุผลประกอบข่าวและบริบทตลาด — ตัวเลขในกล่องด้านบนจะอัปเดตทันทีเมื่อ AI วิเคราะห์เสร็จ
         </div>
         <button class="btn-primary" id="analyzeBtn" style="width:100%;">✨ ยืนยันด้วย AI (มีค่าใช้จ่าย)</button>
@@ -589,7 +589,27 @@
   // SL is sized from the user's real $ risk (adjustable via lot size); TP =
   // SL x 1.5 (matching the server's deterministic RR rule) so the ratio
   // stays constant regardless of volatility.
-  function reconcileTrade(a, isBuy, atr){
+  // Finds "the support/resistance before this point" for SL, per the PA
+  // framework's own rule (SL below the swing low for BUY / above the swing
+  // high for SELL) — the nearest swing pivot in the trade's direction, or
+  // the 30-candle support/resistance if no swing is available, with a small
+  // ATR buffer beyond it so SL doesn't sit exactly on the level itself.
+  function findStructuralStop(isBuy, entry, m){
+    const atrVal = isFinite(m.atr) && m.atr > 0 ? m.atr : 0;
+    const buffer = atrVal * 0.2;
+    if(isBuy){
+      const swingLow = m.swing && m.swing.low ? m.swing.low.price : null;
+      if(swingLow != null && swingLow < entry) return { price: swingLow - buffer, source: 'Swing Low' };
+      if(m.support != null && m.support < entry) return { price: m.support - buffer, source: 'Support (30 แท่ง)' };
+    } else {
+      const swingHigh = m.swing && m.swing.high ? m.swing.high.price : null;
+      if(swingHigh != null && swingHigh > entry) return { price: swingHigh + buffer, source: 'Swing High' };
+      if(m.resistance != null && m.resistance > entry) return { price: m.resistance + buffer, source: 'Resistance (30 แท่ง)' };
+    }
+    return null;
+  }
+
+  function reconcileTrade(a, isBuy, atr, structuralStop){
     let entry = Number(a.entry);
     if(!isFinite(entry)){
       return { entry: a.entry, tp: a.tp, sl: a.sl, riskReward: a.risk_reward || '—' };
@@ -606,6 +626,19 @@
       slDistance = atrFloor;
       atrWidened = true;
     }
+    // Widen further to clear the nearest swing low/high (or support/
+    // resistance) in the trade's direction, if that's farther out than the
+    // ATR floor above — SL should never sit between entry and a real
+    // structural level price is likely to react at, no matter how tight the
+    // user's configured $ risk is.
+    let structuralWidened = false;
+    if(structuralStop != null && isFinite(structuralStop.price)){
+      const structuralDistance = Math.abs(entry - structuralStop.price);
+      if(structuralDistance > slDistance){
+        slDistance = structuralDistance;
+        structuralWidened = true;
+      }
+    }
     const tpDistance = slDistance * 1.5;
     const tp = isBuy ? entry + tpDistance : entry - tpDistance;
     const sl = isBuy ? entry - slDistance : entry + slDistance;
@@ -616,7 +649,7 @@
     const riskReward = risk > 0 ? ('1 : ' + ratio.toFixed(2)) : '—';
     const tpUsd = Math.round(tpDistance * unitValue);
     document.getElementById('tpUsdInput').value = tpUsd;
-    return { entry, tp, sl, riskReward, lot, tpUsd, slUsd, atrWidened };
+    return { entry, tp, sl, riskReward, lot, tpUsd, slUsd, atrWidened, structuralWidened, structuralSource: structuralStop ? structuralStop.source : null };
   }
 
   // ---- Free/deterministic entry-exit ladder, shown immediately on load ----
@@ -653,13 +686,16 @@
     const zone = qc.entryZone;
     const entryPrice = zone ? zone.mid : m.currentPrice;
     const fakeA = { entry: entryPrice };
-    const trade = reconcileTrade(fakeA, isBuy, m.atr);
+    const structuralStop = findStructuralStop(isBuy, entryPrice, m);
+    const trade = reconcileTrade(fakeA, isBuy, m.atr, structuralStop);
     entryEl.textContent = Number(trade.entry).toFixed(2);
     entryHintEl.textContent = zone
       ? `โซน ${zone.source} (${zone.low.toFixed(2)}-${zone.high.toFixed(2)}) ยืนยันโดย ${zone.confirmedBy.join(' + ')} — ${qc.direction}${qc.strong ? ', สัญญาณชัดเจน' : ''}`
       : 'ราคาตลาดปัจจุบัน (' + qc.direction + (qc.strong ? ', สัญญาณชัดเจน' : '') + ')' + (qc.entryZoneReason ? ' — ' + qc.entryZoneReason : '');
     slEl.textContent = isFinite(trade.sl) ? Number(trade.sl).toFixed(2) : '—';
-    slDistEl.textContent = isFinite(trade.sl) ? '-' + Math.abs(trade.entry - trade.sl).toFixed(2) : '—';
+    slDistEl.textContent = isFinite(trade.sl)
+      ? '-' + Math.abs(trade.entry - trade.sl).toFixed(2) + (trade.structuralWidened ? ' (พ้น ' + trade.structuralSource + ')' : '')
+      : '—';
     tpEl.textContent = isFinite(trade.tp) ? Number(trade.tp).toFixed(2) : '—';
     tpDistEl.textContent = isFinite(trade.tp) ? '+' + Math.abs(trade.tp - trade.entry).toFixed(2) : '—';
     rrEl.textContent = trade.riskReward || '—';
@@ -1486,7 +1522,8 @@
       const isWait = String(a.recommendation).toUpperCase() === 'WAIT';
       const isBuy = !isWait && String(a.recommendation).toUpperCase().indexOf('BUY') !== -1;
       const cls = isWait ? 'wait' : (isBuy ? 'buy' : 'sell');
-      const trade = isWait ? { entry: null, tp: null, sl: null, riskReward: '—' } : reconcileTrade(a, isBuy, lastMarketData.atr);
+      const aiStructuralStop = isWait ? null : findStructuralStop(isBuy, Number(a.entry), lastMarketData);
+      const trade = isWait ? { entry: null, tp: null, sl: null, riskReward: '—' } : reconcileTrade(a, isBuy, lastMarketData.atr, aiStructuralStop);
       addHistoryEntry(a, trade, lastMarketData);
 
       const confPct = a.confidence_percent != null ? Math.round(a.confidence_percent) : 0;
@@ -1502,6 +1539,7 @@
       out.innerHTML =
         '<div class="tag ' + cls + '" style="font-size:16px; padding:6px 14px;">' + (isWait ? '⏸ AI แนะนำ WAIT' : (isBuy ? '🟢 AI ยืนยัน BUY — ' + confPct + '% confidence' : '🔴 AI ยืนยัน SELL — ' + confPct + '% confidence')) + '</div>' +
         (trade.atrWidened ? '<div class="risk-hint">⚠ ขยาย SL/TP ตาม ATR (SL เดิมแคบกว่าความผันผวนตลาด)</div>' : '') +
+        (trade.structuralWidened ? '<div class="risk-hint">⚠ ขยาย SL/TP ให้พ้น ' + trade.structuralSource + ' (SL เดิมแคบกว่าแนวรับ/แนวต้าน)</div>' : '') +
         (a.smart_money ? '<div class="market-context" style="margin-top:10px;"><span>🧠</span><span><strong>เจ้าตลาด:</strong> ' + a.smart_money + '</span></div>' : '') +
         '<ul class="ai-reasons">' + (Array.isArray(a.reasons) ? a.reasons.map(r => '<li>' + r + '</li>').join('') : '') + '</ul>';
     } catch (err) {

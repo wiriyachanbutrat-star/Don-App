@@ -690,9 +690,18 @@ function computePriceActionEntryScore(candles, m) {
 
   const maxScore = 11;
   let tier, tierLabel;
-  if (score >= 8) { tier = 'STRONG_ENTRY'; tierLabel = 'จุดเข้าแข็งแรง'; }
-  else if (score >= 5) { tier = 'WATCH'; tierLabel = 'รอดู'; }
+  // STRONG_ENTRY requires an actual confirmed candle (paTrigger), not just
+  // a score >= 8 reached through trend/location/breakout points alone —
+  // Trend and Location say *where* to look, but per the framework's own
+  // rule ("ใช้ PA เป็น Trigger เข้า... เข้า BUY เมื่อแท่งยืนยัน") the candle
+  // is what actually confirms the entry. Without it, cap at WATCH even if
+  // every other component maxed out — 9 of the 11 points are reachable
+  // without a trigger candle at all, which let "จุดเข้าแข็งแรง" fire on the
+  // trend/location legs alone.
+  if (score >= 8 && paTrigger) { tier = 'STRONG_ENTRY'; tierLabel = 'จุดเข้าแข็งแรง'; }
+  else if (score >= 5 || (score >= 3 && paTrigger)) { tier = 'WATCH'; tierLabel = 'รอดู'; }
   else { tier = 'NO_ENTRY'; tierLabel = 'ยังไม่เข้า'; }
+  if (score >= 8 && !paTrigger) reasons.push('=> คะแนนถึงเกณฑ์จุดเข้าแข็งแรงแล้ว แต่ยังไม่มีแท่งเทียนยืนยัน (Engulfing/Pin Bar) — รอแท่งยืนยันก่อนถือเป็นจุดเข้าจริง');
 
   // Where "Location" actually says to enter — the free ladder used to just
   // put Entry at whatever the current market price happened to be, which
