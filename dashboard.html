@@ -739,23 +739,11 @@
   // flip-flopping) on every 2-minute auto-refresh — the read should hold
   // steady until this trade actually resolves win/loss, not chase every
   // tick of new order-block/FVG data.
+  // Locking was disabled per user request — cards always show the live
+  // read instead of freezing to the snapshot from when a trade opened.
   function smcLockKey(){ return 'goldSmcLock_' + ASSET; }
-  function loadSmcLock(){
-    try { return JSON.parse(localStorage.getItem(smcLockKey())); }
-    catch(e){ return null; }
-  }
-  function saveSmcLock(marketData){
-    if(!marketData) return;
-    localStorage.setItem(smcLockKey(), JSON.stringify({
-      smc: marketData.smc,
-      liquiditySweep: marketData.liquiditySweep,
-      structure: marketData.structure,
-      ict: marketData.ict,
-      smartMoney: marketData.smartMoney,
-      smartMoneyScore: marketData.smartMoneyScore,
-      priceActionEntry: marketData.priceActionEntry,
-    }));
-  }
+  function loadSmcLock(){ return null; }
+  function saveSmcLock(marketData){}
   function clearSmcLock(){ localStorage.removeItem(smcLockKey()); }
 
   // ---- Win/Loss track record (local-only, per-browser localStorage) ----
@@ -1399,13 +1387,29 @@
       // EMA21 on the 15min/30min/1h timeframes where the backend switches to
       // the faster 9/21 pair) directly on the chart, so the "Trend" text
       // above has a visual anchor instead of being a number you have to trust.
-      studies: [{
-        id: 'MAExp@tv-basicstudies',
-        inputs: { length: ['15min', '30min', '1h'].includes(document.getElementById('intervalSelect').value) ? 21 : 50 },
-      }],
+      // The per-study `overrides` key on this array is Charting Library-only
+      // API and is silently ignored by the embed widget, so these three MAs
+      // render in the same default color — colors are applied after the
+      // chart is ready instead, via applyOverrides() below.
+      studies: [
+        { id: 'MAExp@tv-basicstudies', inputs: { length: ['15min', '30min', '1h'].includes(document.getElementById('intervalSelect').value) ? 21 : 50 } },
+        { id: 'MASimple@tv-basicstudies', inputs: { length: 9 } },
+        { id: 'MASimple@tv-basicstudies', inputs: { length: 50 } },
+      ],
     });
     tvWidget.onChartReady(() => {
       tvChartReady = true;
+      try {
+        const chart = tvWidget.chart();
+        // getAllStudies() returns the studies in the order they were added
+        // above, so position lines up with the EMA/MA9/MA50 order.
+        const colorByIndex = ['#2962FF', '#FF9800', '#AB47BC']; // EMA, MA9, MA50
+        chart.getAllStudies().forEach((s, i) => {
+          if (colorByIndex[i]) chart.getStudyById(s.id).applyOverrides({ 'plot.color': colorByIndex[i] });
+        });
+      } catch (e) {
+        console.error('Failed to apply MA line colors', e);
+      }
       drawChartAnnotations();
     });
   }
