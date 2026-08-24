@@ -315,6 +315,8 @@
         <div class="meta-row" style="width:100%;"><span>Higher TF</span><span id="higherTrendVal">—</span></div>
         <div class="meta-row" style="width:100%;"><span>Session</span><span id="sessionVal">—</span></div>
         <div class="meta-row" style="width:100%;"><span>Volatility</span><span id="volatilityVal">—</span></div>
+        <div class="meta-row" style="width:100%;"><span>ราคากลาง 200 แท่ง</span><span id="midpointBiasVal">—</span></div>
+        <div class="hint" id="midpointBiasHint" style="width:100%;"></div>
       </div>
 
       <div class="hero-trade">
@@ -1037,6 +1039,35 @@
     } else {
       volEl.textContent = '—';
     }
+
+    // Median of each candle's (high+low)/2 over the last 200 bars reads as
+    // a stable "fair value" line — comparing current price against it shows
+    // which side price has been leaning toward, independent of any fast MA.
+    const mpEl = document.getElementById('midpointBiasVal');
+    const mpHintEl = document.getElementById('midpointBiasHint');
+    const mp = marketData.midpointBias;
+    if(mp){
+      const isUp = mp.bias === 'BULLISH';
+      const isDown = mp.bias === 'BEARISH';
+      const arrow = isUp ? '↗' : isDown ? '↘' : '↔';
+      const biasTh = isUp ? 'เอนขึ้น (Bullish)' : isDown ? 'เอนลง (Bearish)' : 'กลาง (Neutral)';
+      mpEl.textContent = arrow + ' ' + biasTh;
+      mpEl.style.color = isUp ? 'var(--buy-bright)' : isDown ? 'var(--sell-bright)' : 'var(--wait-bright)';
+      const sign = mp.diff >= 0 ? '+' : '';
+      // ADX high means price is trending, not mean-reverting — a big gap from
+      // the 200-bar median there is the trend itself, not an overextension
+      // about to snap back, so the hint should say so instead of reading as
+      // a reversal cue.
+      const strongTrend = marketData.adx != null && marketData.adx >= 25;
+      const trendNote = strongTrend
+        ? ` · ⚠️ ADX ${marketData.adx.toFixed(0)} (เทรนด์แรง) — ห่างจากราคากลางเพราะกำลังเป็นเทรนด์ ไม่ใช่สัญญาณ mean-reversion`
+        : '';
+      mpHintEl.textContent = `ราคากลาง (median) ${mp.period} แท่ง = ${mp.median.toFixed(2)} · ราคาปัจจุบันห่าง ${sign}${mp.diff.toFixed(2)} (${sign}${mp.diffPct.toFixed(2)}%) · แท่งอยู่เหนือราคากลาง ${mp.aboveCount}/${mp.period} (${mp.abovePct.toFixed(0)}%)${trendNote}`;
+    } else {
+      mpEl.textContent = '—';
+      mpEl.style.color = '';
+      mpHintEl.textContent = '';
+    }
   }
 
   function renderPrice(marketData){
@@ -1456,6 +1487,19 @@
       };
       swingLabel(m.swing.high, 'HH', 'LH', 'H', true);
       swingLabel(m.swing.low, 'HL', 'LL', 'L', false);
+    }
+
+    if(m.midpointBias && isFinite(m.midpointBias.median)){
+      const nowSec = Math.floor(Date.now() / 1000);
+      try {
+        const id = chart.createShape({ time: nowSec, price: m.midpointBias.median }, {
+          shape: 'horizontal_line',
+          text: 'ราคากลาง ' + m.midpointBias.period + ' แท่ง ' + Number(m.midpointBias.median).toFixed(2),
+          overrides: { linecolor: '#94a3b8', linewidth: 1, linestyle: 1, showLabel: true, textcolor: '#94a3b8', fontsize: 12 },
+          disableSelection: true, disableSave: true, lock: true,
+        });
+        if(id) tvShapeIds.push(id);
+      } catch(e){ /* older widget builds may not support createShape */ }
     }
 
     if(lastTrade && isFinite(lastTrade.entry)){

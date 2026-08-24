@@ -1112,6 +1112,40 @@ function keltnerChannel(closes, atrSeriesFull, period = 20, mult = 2) {
   return { middle: emaSeries[i], upper: emaSeries[i] + mult * atrSeriesFull[i], lower: emaSeries[i] - mult * atrSeriesFull[i] };
 }
 
+// Median of each candle's (high+low)/2 midpoint over the last N bars reads
+// as a stable "fair value" line — where the market has actually traded most
+// of the time — so comparing current price against it shows which side
+// price is leaning toward without the whipsaw a fast MA would have.
+function midpointBiasStats(candles, period = 200) {
+  const recent = candles.slice(-period);
+  if (recent.length < 20) return null;
+  const midpoints = recent.map(c => (c.high + c.low) / 2).sort((a, b) => a - b);
+  const mid = midpoints.length / 2;
+  const median = midpoints.length % 2 !== 0
+    ? midpoints[Math.floor(mid)]
+    : (midpoints[mid - 1] + midpoints[mid]) / 2;
+  const currentPrice = recent[recent.length - 1].close;
+  const aboveCount = recent.filter(c => (c.high + c.low) / 2 > median).length;
+  const belowCount = recent.length - aboveCount;
+  const abovePct = (aboveCount / recent.length) * 100;
+  const diff = currentPrice - median;
+  const diffPct = (diff / median) * 100;
+  let bias;
+  if (Math.abs(diffPct) < 0.05) bias = 'NEUTRAL';
+  else bias = diff > 0 ? 'BULLISH' : 'BEARISH';
+  return {
+    period: recent.length,
+    median,
+    currentPrice,
+    diff,
+    diffPct,
+    aboveCount,
+    belowCount,
+    abovePct,
+    bias,
+  };
+}
+
 function volatilityStats(candles, period = 20) {
   const recent = candles.slice(-period);
   const ranges = recent.map(c => c.high - c.low);
@@ -1297,6 +1331,7 @@ async function getMarketDataPayload(assetKey, interval) {
       stochastic: stochasticOscillator(candles),
       swing: swingResult,
       volatility: volatilityStats(candles),
+      midpointBias: midpointBiasStats(candles, 200),
       bollinger: bollingerBands(closes),
       keltner: keltnerChannel(closes, atrSeriesFull),
       divergence: detectDivergence(candles, closes),
