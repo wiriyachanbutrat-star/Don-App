@@ -7,6 +7,7 @@ const nodemailer = require('nodemailer');
 
 const { ASSETS, VALID_INTERVALS, getAnalysis } = require('./lib/marketData');
 const { assetConfig } = require('./lib/strategy');
+const { getCommentary, MODEL: AI_MODEL } = require('./lib/aiCommentary');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -19,7 +20,14 @@ app.get('/', (req, res) => {
 });
 
 app.get('/api/health', (req, res) => {
-  res.json({ ok: true, hasDataKey: !!process.env.TWELVE_DATA_API_KEY, emailAlerts: !!mailer, time: new Date().toISOString() });
+  res.json({
+    ok: true,
+    hasDataKey: !!process.env.TWELVE_DATA_API_KEY,
+    hasAiKey: !!process.env.ANTHROPIC_API_KEY,
+    aiModel: process.env.ANTHROPIC_API_KEY ? AI_MODEL : null,
+    emailAlerts: !!mailer,
+    time: new Date().toISOString(),
+  });
 });
 
 function pickInterval(q) {
@@ -40,6 +48,32 @@ app.get('/api/signal', async (req, res) => {
   } catch (err) {
     console.error('/api/signal', err.message);
     res.status(502).json({ error: 'ดึงข้อมูลราคาไม่สำเร็จ: ' + err.message });
+  }
+});
+
+// Optional AI commentary on the current deterministic signal. Does not change
+// the verdict or levels — explanation only. Button-triggered on the client
+// (each call has a real Claude API cost); cached per asset+interval+candle.
+app.get('/api/commentary', async (req, res) => {
+  if (!process.env.TWELVE_DATA_API_KEY) {
+    return res.status(500).json({ error: 'ยังไม่ได้ตั้งค่า TWELVE_DATA_API_KEY บนเซิร์ฟเวอร์' });
+  }
+  if (!process.env.ANTHROPIC_API_KEY) {
+    return res.status(400).json({ error: 'ยังไม่ได้เปิดใช้ AI — ตั้งค่า ANTHROPIC_API_KEY บนเซิร์ฟเวอร์ก่อน' });
+  }
+  try {
+    const analysis = await getAnalysis(pickAsset(req.query.asset), pickInterval(req.query.interval));
+    const commentary = await getCommentary(analysis);
+    res.json({
+      asset: analysis.assetKey,
+      interval: analysis.interval,
+      direction: analysis.signal.direction,
+      tradable: analysis.signal.tradable,
+      ...commentary,
+    });
+  } catch (err) {
+    console.error('/api/commentary', err.message);
+    res.status(502).json({ error: 'ขอคำวิเคราะห์จาก AI ไม่สำเร็จ: ' + err.message });
   }
 });
 

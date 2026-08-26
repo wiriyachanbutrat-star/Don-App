@@ -161,6 +161,10 @@
           ระบบจะไม่ให้เข้าเทรดเว้นแต่ ADX ผ่านเกณฑ์ ทิศทางตรงกับเทรนด์ HTF และคะแนนแข็งแรงพอ
         </div>
         <ul class="reasons" id="reasons"></ul>
+        <div style="border-top:1px solid var(--hair);padding-top:12px;">
+          <button id="aiBtn" style="background:var(--panel-2);border:1px solid var(--gold);color:var(--gold-b);">🧠 ขอคำวิเคราะห์เชิงลึกจาก AI (มีค่าใช้จ่ายต่อครั้ง)</button>
+          <div id="aiOut" class="sub" style="margin-top:10px;line-height:1.7;"></div>
+        </div>
       </div>
     </div>
   </div>
@@ -502,13 +506,33 @@ $('assetSel').addEventListener('change', e=>{
   ASSET = e.target.value;
   $('title').textContent = META[ASSET].title;
   $('contract').value = META[ASSET].contract;
-  last=null; lastTrade=null;
+  last=null; lastTrade=null; $('aiOut').innerHTML='';
   initChart(); load(); renderHist();
 });
-$('intervalSel').addEventListener('change', ()=>{ initChart(); load(); });
+$('intervalSel').addEventListener('change', ()=>{ $('aiOut').innerHTML=''; initChart(); load(); });
 $('lot').addEventListener('input', ()=>{ if(last) riskCalc(last.levels); });
 $('contract').addEventListener('input', ()=>{ if(last) riskCalc(last.levels); });
 $('clearHist').addEventListener('click', ()=>{ if(confirm('ล้างประวัติทั้งหมดในเครื่องนี้?')){ saveHist([]); renderHist(); } });
+
+// AI commentary is explanation-only — it never changes the signal above.
+let aiKeyOfLast = null;
+$('aiBtn').addEventListener('click', async ()=>{
+  const btn = $('aiBtn'), out = $('aiOut');
+  btn.disabled = true;
+  out.textContent = 'กำลังให้ AI วิเคราะห์…';
+  try{
+    const iv = $('intervalSel').value;
+    const j = await api('/api/commentary?asset='+ASSET+'&interval='+iv);
+    out.innerHTML = '<div style="color:var(--faint);margin-bottom:6px;">🧠 ' + j.model +
+      (j.cached ? ' · ผลเดิม (ยังไม่มีแท่งใหม่)' : '') + ' · อธิบายประกอบ ไม่เปลี่ยนสัญญาณด้านบน</div>' +
+      j.commentary.replace(/\*\*(.+?)\*\*/g,'$1').replace(/^#+\s*/gm,'').split(/\n\s*\n/).map(p=>'<p style="margin-bottom:8px;">'+p.replace(/\n/g,'<br>')+'</p>').join('');
+    aiKeyOfLast = ASSET+iv;
+  }catch(e){
+    out.innerHTML = '<span style="color:var(--sell)">'+e.message+'</span>';
+  }finally{
+    btn.disabled = false;
+  }
+});
 
 initChart();
 load();

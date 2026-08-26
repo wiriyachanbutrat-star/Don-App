@@ -8,6 +8,8 @@ services:
     envVars:
       - key: TWELVE_DATA_API_KEY
         sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
       - key: EMAIL_USER
         sync: false
       - key: EMAIL_APP_PASSWORD
