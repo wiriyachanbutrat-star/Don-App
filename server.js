@@ -444,6 +444,21 @@ function ictZones(swing, currentPrice) {
 // is open.
 function computeSmartMoneyBias(m) {
   const votes = [];
+  // Trend gets weight 2 (same as HTF's weight in computeSignalScore) so this
+  // verdict can't come out flatly opposite the visible chart direction —
+  // structural reversal signals (sweep/OB/FVG/OTE) below still get their say,
+  // but they no longer outvote a clear trend on their own the way a single
+  // ICT OTE zone did before.
+  if (m.ema20 != null && m.ema50 != null) {
+    const emaBullish = m.ema200 != null ? (m.ema20 > m.ema50 && m.ema50 > m.ema200) : m.ema20 > m.ema50;
+    const emaBearish = m.ema200 != null ? (m.ema20 < m.ema50 && m.ema50 < m.ema200) : m.ema20 < m.ema50;
+    if (emaBullish) votes.push({ dir: 1, weight: 2, label: 'EMA cascade ขาขึ้น — เทรนด์หลักยังเป็นฝั่งซื้อ' });
+    else if (emaBearish) votes.push({ dir: -1, weight: 2, label: 'EMA cascade ขาลง — เทรนด์หลักยังเป็นฝั่งขาย' });
+  }
+  if (m.higherTimeframe && m.higherTimeframe.trend) {
+    const htfBullish = m.higherTimeframe.trend.includes('Uptrend');
+    votes.push({ dir: htfBullish ? 1 : -1, weight: 2, label: `Higher timeframe (${m.higherTimeframe.interval}) เป็น${htfBullish ? 'ขาขึ้น' : 'ขาลง'} — เทรนด์กรอบใหญ่กว่ายืนยัน${htfBullish ? 'ฝั่งซื้อ' : 'ฝั่งขาย'}` });
+  }
   if (m.liquiditySweep) {
     if (m.liquiditySweep.bullish) votes.push({ dir: 1, label: `Liquidity Sweep ใต้แนวรับ ${m.liquiditySweep.bullish.level.toFixed(2)} แล้วเด้งกลับขึ้น — เจ้าตลาดกวาด stop ฝั่งขายก่อนดันราคาขึ้น` });
     else if (m.liquiditySweep.bearish) votes.push({ dir: -1, label: `Liquidity Sweep เหนือแนวต้าน ${m.liquiditySweep.bearish.level.toFixed(2)} แล้วร่วงกลับลง — เจ้าตลาดกวาด stop ฝั่งซื้อก่อนกดราคาลง` });
@@ -463,9 +478,10 @@ function computeSmartMoneyBias(m) {
     else if (m.ict.inOteSell) votes.push({ dir: -1, label: 'ราคาอยู่ใน ICT OTE zone (61.8-79% retracement) ฝั่งขาย — โซนที่เจ้าตลาดมักกลับเข้าขายของ' });
   }
 
-  const score = votes.reduce((s, v) => s + v.dir, 0);
+  const totalWeight = votes.reduce((s, v) => s + (v.weight || 1), 0);
+  const score = votes.reduce((s, v) => s + v.dir * (v.weight || 1), 0);
   const bias = votes.length === 0 ? 'NEUTRAL' : score > 0 ? 'BUY' : score < 0 ? 'SELL' : 'NEUTRAL';
-  const confidence = votes.length ? Math.round((Math.abs(score) / votes.length) * 100) : 0;
+  const confidence = totalWeight ? Math.round((Math.abs(score) / totalWeight) * 100) : 0;
   return { bias, score, votesCount: votes.length, confidence, reasons: votes.map(v => v.label) };
 }
 
@@ -1278,7 +1294,12 @@ async function getMarketDataPayload(assetKey, interval) {
     const structureResult = structureBreak(candles);
     const liquiditySweepResult = liquiditySweep(candles);
     const ictResult = ictZones(swingResult, currentPrice);
-    const smartMoney = computeSmartMoneyBias({ smc: smcResult, structure: structureResult, liquiditySweep: liquiditySweepResult, ict: ictResult });
+    const smartMoney = computeSmartMoneyBias({
+      smc: smcResult, structure: structureResult, liquiditySweep: liquiditySweepResult, ict: ictResult,
+      ema20: ema20Series[ema20Series.length - 1], ema50: ema50Series[ema50Series.length - 1],
+      ema200: ema200Series ? ema200Series[ema200Series.length - 1] : null,
+      higherTimeframe: { interval: higherInterval, trend: higherTrend },
+    });
     const atrVal = atr(candles);
     const smartMoneyScore = computeSmartMoneyScore({
       ema20: ema20Series[ema20Series.length - 1],
