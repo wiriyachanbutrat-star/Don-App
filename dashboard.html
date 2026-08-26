@@ -3,1715 +3,517 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Gold Analysis Dashboard V.3 · XAUUSD</title>
+<title>Gold Trading System · XAU/USD</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600;700&family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root{
-    --bg: #0a0e17;
-    --bg-panel: rgba(20,26,41,0.75);
-    --bg-panel-raised: rgba(27,34,53,0.85);
-    --bg-panel-sunk: rgba(12,16,27,0.6);
-    --glass-border: rgba(255,255,255,0.07);
-    --hairline: rgba(255,255,255,0.08);
-    --gold: #d19700;
-    --gold-bright: #ffcc33;
-    --gold-soft: rgba(224,169,0,0.12);
-    --ink: #e8ecf6;
-    --ink-dim: #8892a8;
-    --ink-faint: #5b6379;
-    --buy: #00a367;
-    --buy-bright: #00d685;
-    --buy-dim: rgba(0,184,113,0.14);
-    --sell: #e13e5a;
-    --sell-bright: #ff4d6a;
-    --sell-dim: rgba(255,77,106,0.13);
-    --wait: #e08600;
-    --wait-bright: #ffb238;
-    --wait-dim: rgba(255,152,0,0.15);
-    --font-display: 'Space Grotesk', sans-serif;
-    --font-body: 'Sarabun', sans-serif;
-    --font-mono: 'IBM Plex Mono', monospace;
-    --shadow-panel: 0 20px 50px -20px rgba(0,0,0,0.55), 0 1px 0 rgba(255,255,255,0.04) inset;
-    --glass-blur: blur(24px) saturate(180%);
+    --bg:#0a0e17; --panel:rgba(20,26,41,0.78); --panel-2:rgba(27,34,53,0.85); --sunk:rgba(12,16,27,0.6);
+    --border:rgba(255,255,255,0.08); --hair:rgba(255,255,255,0.07);
+    --gold:#d19700; --gold-b:#ffcc33;
+    --ink:#e8ecf6; --dim:#8892a8; --faint:#5b6379;
+    --buy:#00d685; --sell:#ff4d6a; --wait:#ffb238;
+    --buy-d:rgba(0,214,133,0.14); --sell-d:rgba(255,77,106,0.13); --wait-d:rgba(255,178,56,0.15);
+    --fd:'Space Grotesk',sans-serif; --fb:'Sarabun',sans-serif; --fm:'IBM Plex Mono',monospace;
+    --shadow:0 20px 50px -20px rgba(0,0,0,0.55), 0 1px 0 rgba(255,255,255,0.04) inset;
   }
-  *{box-sizing:border-box; margin:0; padding:0;}
-  body{
-    background: var(--bg);
-    color: var(--ink);
-    font-family: var(--font-body);
-    min-height:100vh;
-    background-image:
-      radial-gradient(ellipse 900px 600px at 15% -10%, rgba(255,204,51,0.08), transparent 55%),
-      radial-gradient(ellipse 800px 600px at 100% 10%, rgba(0,214,133,0.10), transparent 50%),
-      radial-gradient(ellipse 700px 700px at 90% 90%, rgba(124,58,237,0.10), transparent 55%),
-      radial-gradient(ellipse 700px 600px at 0% 100%, rgba(255,77,106,0.06), transparent 55%);
-    background-attachment: fixed;
-  }
-  .layout{ display:flex; align-items:flex-start; max-width: 1560px; margin: 0 auto; }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--ink);font-family:var(--fb);min-height:100vh;
+    background-image:radial-gradient(ellipse 900px 600px at 12% -10%,rgba(255,204,51,0.08),transparent 55%),
+      radial-gradient(ellipse 800px 600px at 100% 8%,rgba(0,214,133,0.09),transparent 50%),
+      radial-gradient(ellipse 700px 600px at 90% 100%,rgba(124,58,237,0.09),transparent 55%);
+    background-attachment:fixed;}
+  .wrap{max-width:1180px;margin:0 auto;padding:22px 16px 60px;display:flex;flex-direction:column;gap:16px;}
+  .panel{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:18px 20px;box-shadow:var(--shadow);}
+  h2{font-family:var(--fd);font-size:13px;letter-spacing:0.06em;text-transform:uppercase;color:var(--dim);margin-bottom:12px;}
+  .row{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;}
+  select,button,input{font-family:var(--fb);background:var(--panel-2);color:var(--ink);border:1px solid var(--border);
+    border-radius:10px;padding:8px 12px;font-size:14px;}
+  select,button{cursor:pointer;}
+  button.primary{background:var(--gold);color:#1a1200;font-weight:700;border:none;}
+  .symbol{font-family:var(--fd);font-size:18px;font-weight:700;}
+  .sub{font-size:12px;color:var(--dim);}
+  .price{font-family:var(--fm);font-size:24px;font-weight:600;text-align:right;}
+  .price .chg{font-size:14px;margin-left:8px;}
+  .live{display:inline-flex;align-items:center;gap:6px;color:var(--buy);font-family:var(--fm);font-size:11px;margin-top:2px;}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--buy);box-shadow:0 0 8px var(--buy);animation:pulse 1.6s infinite;}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
 
-  /* ---- Sidebar ---- */
-  .sidebar{
-    width: 220px; flex: none; position: sticky; top: 0; height: 100vh;
-    padding: 24px 14px; display:flex; flex-direction:column; gap:4px;
-    border-right: 1px solid var(--glass-border);
-  }
-  .brand{ display:flex; align-items:center; gap:10px; padding: 4px 10px 20px; }
-  .brand .icon{ font-size:22px; }
-  .brand .title{ font-family: var(--font-display); font-size:13px; font-weight:700; line-height:1.25; }
-  .brand .sub{ font-size:11px; color: var(--ink-dim); }
-  .nav-link{
-    display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:10px;
-    color: var(--ink-dim); text-decoration:none; font-size:14px; transition: background 0.15s, color 0.15s;
-  }
-  .nav-link:hover{ background: var(--bg-panel-raised); color: var(--ink); }
-  .nav-link.active{ background: var(--gold-soft); color: var(--gold-bright); font-weight:600; }
-  .nav-link .ic{ width:18px; text-align:center; }
-  @media (max-width: 980px){ .sidebar{ display:none; } }
+  .hero{display:grid;grid-template-columns:1fr;gap:18px;}
+  @media(min-width:860px){.hero{grid-template-columns:250px 1fr;}}
+  .gauge-box{display:flex;flex-direction:column;align-items:center;text-align:center;gap:8px;}
+  .gauge{width:168px;height:168px;}
+  .dir{font-family:var(--fd);font-size:30px;font-weight:800;}
+  .dir.buy{color:var(--buy)} .dir.sell{color:var(--sell)} .dir.wait{color:var(--wait)}
+  .flag{font-size:12px;font-weight:600;padding:4px 10px;border-radius:8px;}
+  .flag.dev{background:var(--wait-d);color:var(--wait)}
+  .flag.strong{background:var(--buy-d);color:var(--buy)}
+  .meta{display:flex;justify-content:space-between;width:100%;font-size:13px;color:var(--dim);padding:3px 0;border-bottom:1px solid var(--hair);}
+  .meta:last-child{border-bottom:none}
+  .meta b{color:var(--ink);font-weight:600;font-family:var(--fm);font-size:12px;}
 
-  /* ---- Main column ---- */
-  .main{ flex:1; min-width:0; padding: 24px 16px 60px; display:flex; flex-direction:column; gap:16px; }
-  .panel{
-    background: var(--bg-panel);
-    border: 1px solid var(--glass-border);
-    border-radius: 16px;
-    padding: 18px 20px;
-    box-shadow: var(--shadow-panel);
-    backdrop-filter: var(--glass-blur);
-    scroll-margin-top: 20px;
-  }
-  h2{ font-family: var(--font-display); font-size: 14px; letter-spacing:0.06em; text-transform:uppercase; color: var(--ink-dim); margin-bottom:12px; }
-  .section-label{ display:flex; align-items:center; gap:8px; }
-  .section-label .free-tag, .section-label .ai-tag{ font-size:10px; font-weight:700; letter-spacing:0.03em; text-transform:uppercase; padding:2px 7px; border-radius:5px; }
-  .free-tag{ background: var(--buy-dim); color: var(--buy-bright); }
-  .ai-tag{ background: var(--gold-soft); color: var(--gold-bright); }
-  .topbar{ display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; }
-  .topbar .symbol{ font-family: var(--font-display); font-size:18px; font-weight:700; }
-  .topbar .subtitle{ font-size:12px; color: var(--ink-dim); }
-  .live-badge{ display:inline-flex; align-items:center; gap:6px; color: var(--buy-bright); font-family: var(--font-mono); font-size:12px; margin-top:2px; }
-  .live-dot{ width:8px; height:8px; border-radius:50%; background: var(--buy-bright); box-shadow: 0 0 8px var(--buy-bright); animation: pulse 1.6s infinite; }
-  @keyframes pulse{ 0%,100%{opacity:1;} 50%{opacity:0.3;} }
-  .price{ font-family: var(--font-mono); font-size:22px; font-weight:600; text-align:right; }
-  .price .chg{ font-size:14px; margin-left:8px; }
-  select, button{
-    font-family: var(--font-body); background: var(--bg-panel-raised); color: var(--ink);
-    border: 1px solid var(--glass-border); border-radius:10px; padding:8px 12px; font-size:14px; cursor:pointer;
-  }
+  .ladder{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;}
+  @media(max-width:560px){.ladder{grid-template-columns:1fr}}
+  .tile{background:var(--sunk);border:1px solid var(--hair);border-radius:14px;padding:14px 16px;position:relative;overflow:hidden;}
+  .tile::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;}
+  .tile.entry::before{background:var(--gold-b)} .tile.sl::before{background:var(--sell)} .tile.tp::before{background:var(--buy)}
+  .tile .lbl{font-size:11px;text-transform:uppercase;letter-spacing:0.05em;color:var(--dim);font-weight:600;}
+  .tile .v{font-family:var(--fm);font-size:24px;font-weight:600;margin-top:4px;}
+  .tile.sl .v{color:var(--sell)} .tile.tp .v{color:var(--buy)}
+  .tile .d{font-size:11px;color:var(--faint);margin-top:3px;font-family:var(--fm);}
 
-  /* ======================================================================
-     HERO — Direction + Entry/Exit ladder. This is the headline of the page:
-     everything else lives below the fold. Left = bias gauge (free,
-     quick-check driven, always live). Right = price ladder showing
-     computed Entry/SL/TP — deterministic ATR-based numbers the instant
-     price loads, upgraded in place to AI-refined numbers once the paid
-     call runs. A clear free-vs-AI badge always shows which is which.
-     ====================================================================== */
-  .hero{
-    display:grid; grid-template-columns: 1fr; gap:16px;
-    border: 1px solid var(--glass-border); border-radius:20px;
-    padding: 22px 24px;
-    background: var(--bg-panel-raised);
-    box-shadow: var(--shadow-panel);
-    backdrop-filter: var(--glass-blur);
-    position: relative;
-    overflow: hidden;
-  }
-  .hero::before{
-    content:""; position:absolute; inset:0; pointer-events:none; opacity:0.5;
-    background: radial-gradient(ellipse 500px 300px at 0% 0%, var(--hero-glow, rgba(255,204,51,0.10)), transparent 60%);
-    transition: background 0.4s;
-  }
-  @media (min-width: 1000px){ .hero{ grid-template-columns: 260px 1fr; } }
-  .hero-bias{ display:flex; flex-direction:column; align-items:center; text-align:center; gap:8px; z-index:1; }
-  .hero-gauge{ width:172px; height:172px; }
-  .hero-dir-label{ font-family: var(--font-display); font-size:30px; font-weight:800; letter-spacing:0.01em; }
-  .hero-dir-label.buy{ color: var(--buy-bright); } .hero-dir-label.sell{ color: var(--sell-bright); } .hero-dir-label.wait{ color: var(--wait-bright); }
-  .hero-sub{ font-size:12.5px; color: var(--ink-dim); line-height:1.5; }
-  .hero-flag{ font-size:12px; font-weight:600; padding:4px 10px; border-radius:8px; margin-top:2px; }
-  .hero-flag.mtf{ background: var(--buy-dim); color: var(--buy-bright); }
-  .hero-flag.dev{ background: var(--wait-dim); color: var(--wait-bright); }
-  .hero-conf-row{ width:100%; margin-top:4px; }
-  .hero-conf-row .lbl-row{ display:flex; justify-content:space-between; font-size:11.5px; color:var(--ink-dim); }
-  .conf-bar-track{ height:9px; border-radius:6px; background: rgba(255,255,255,0.08); overflow:hidden; margin-top:4px; }
-  .conf-bar-fill{ height:100%; border-radius:6px; transition: width 0.6s ease; }
+  .pills{display:flex;gap:10px;flex-wrap:wrap;}
+  .pill{display:flex;align-items:center;gap:8px;background:var(--sunk);border:1px solid var(--hair);border-radius:10px;padding:8px 14px;}
+  .pill .lbl{font-size:11px;color:var(--dim)} .pill .v{font-family:var(--fm);font-weight:600;font-size:14px;}
+  .calc{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;}
+  .calc label{display:block;font-size:12px;color:var(--dim);margin-bottom:4px;}
+  .calc input{width:100%;text-align:center;font-family:var(--fm);}
+  .wait-banner{background:var(--wait-d);color:var(--wait);border-radius:10px;padding:10px 14px;font-size:13px;line-height:1.5;}
+  .reasons{list-style:none;display:flex;flex-direction:column;gap:5px;font-size:13px;color:var(--dim);}
+  .reasons li{line-height:1.4;}
 
-  .hero-trade{ display:flex; flex-direction:column; gap:14px; z-index:1; min-width:0; }
-  .hero-trade-top{ display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; }
-  .source-toggle{ display:flex; gap:6px; font-size:12px; }
-  .source-toggle .free-tag, .source-toggle .ai-tag{ font-size:10.5px; padding:3px 9px; border-radius:6px; }
-  .source-toggle .ai-tag.dim{ opacity:0.4; }
+  table{width:100%;border-collapse:collapse;font-size:13px;min-width:460px;}
+  .scroll{overflow-x:auto;}
+  th{text-align:left;color:var(--dim);font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:0.04em;padding:6px 8px;border-bottom:1px solid var(--hair);white-space:nowrap;}
+  td{padding:8px;border-bottom:1px solid var(--hair);white-space:nowrap;}
+  tr:last-child td{border-bottom:none}
+  .tag{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:6px;font-size:12px;font-weight:600;}
+  .tag.buy{background:var(--buy-d);color:var(--buy)} .tag.sell{background:var(--sell-d);color:var(--sell)} .tag.wait{background:var(--wait-d);color:var(--wait)}
+  .tag .tag-dot{width:7px;height:7px;border-radius:50%;background:currentColor;}
 
-  .ladder{ display:grid; grid-template-columns: repeat(3, 1fr); gap:10px; }
-  @media (max-width: 620px){ .ladder{ grid-template-columns: 1fr; } }
-  .ladder-tile{
-    background: var(--bg-panel-sunk); border-radius:14px; padding:14px 16px;
-    border: 1px solid var(--hairline); position:relative; overflow:hidden;
-  }
-  .ladder-tile::before{ content:""; position:absolute; left:0; top:0; bottom:0; width:4px; }
-  .ladder-tile.entry::before{ background: var(--gold-bright); }
-  .ladder-tile.sl::before{ background: var(--sell-bright); }
-  .ladder-tile.tp::before{ background: var(--buy-bright); }
-  .ladder-tile .lbl{ font-size:11.5px; text-transform:uppercase; letter-spacing:0.05em; color: var(--ink-dim); font-weight:600; }
-  .ladder-tile .v{ font-family: var(--font-mono); font-size:26px; font-weight:600; margin-top:4px; line-height:1.1; }
-  .ladder-tile.sl .v{ color: var(--sell-bright); }
-  .ladder-tile.tp .v{ color: var(--buy-bright); }
-  .ladder-tile .dist{ font-size:11.5px; color: var(--ink-faint); margin-top:3px; font-family: var(--font-mono); }
-
-  .hero-rr-row{ display:flex; align-items:center; gap:18px; flex-wrap:wrap; }
-  .rr-pill{ display:flex; align-items:center; gap:8px; background: var(--bg-panel-sunk); border:1px solid var(--hairline); border-radius:10px; padding:8px 14px; }
-  .rr-pill .lbl{ font-size:11.5px; color:var(--ink-dim); }
-  .rr-pill .v{ font-family: var(--font-mono); font-weight:700; font-size:15px; }
-  .hero-note{ font-size:12px; color: var(--ink-faint); line-height:1.6; }
-  .hero-note b{ color: var(--ink-dim); }
-
-  .risk-row{ display:grid; grid-template-columns: repeat(3,1fr); gap:10px; }
-  .risk-lbl{ display:block; font-size:12px; color: var(--ink-dim); margin-bottom:4px; }
-  .risk-row input{ width:100%; text-align:center; }
-  .risk-row input[readonly]{ color: var(--ink-dim); cursor:not-allowed; }
-  .risk-hint{ font-size:12px; color: var(--ink-dim); margin-top:6px; }
-  .btn-primary{ background: var(--gold); color:#1a1200; font-weight:700; border:none; }
-  .btn-primary:disabled{ opacity:0.5; cursor:not-allowed; }
-  .ai-reasons{ list-style: none; display:flex; flex-direction:column; gap:4px; font-size:13px; color: var(--ink-dim); margin-top:8px; }
-  .ai-reasons li::before{ content:"• "; color: var(--gold-bright); }
-
-  /* ---- Chart panel (below hero) ---- */
-  #tvChart{ height: 560px; border-radius: 12px; overflow:hidden; }
-
-  .table-scroll{ overflow-x:auto; }
-  table{ width:100%; min-width:480px; border-collapse: collapse; font-size:14px; }
-  th{ text-align:left; color: var(--ink-dim); font-weight:500; font-size:12px; text-transform:uppercase; letter-spacing:0.04em; padding: 6px 8px; white-space:nowrap; border-bottom:1px solid var(--hairline); }
-  td{ padding: 8px; white-space:nowrap; border-bottom:1px solid var(--hairline); }
-  tr:last-child td{ border-bottom:none; }
-  .tag{ display:inline-flex; align-items:center; gap:5px; padding:3px 9px; border-radius:6px; font-size:12px; font-weight:600; white-space:nowrap; }
-  .tag.buy{ background: var(--buy-dim); color: var(--buy-bright); }
-  .tag.sell{ background: var(--sell-dim); color: var(--sell-bright); }
-  .tag.wait{ background: var(--wait-dim); color: var(--wait-bright); }
-  .tag-dot{ width:7px; height:7px; border-radius:50%; background: currentColor; flex: none; }
-  .trend-arrow.up{ color: var(--buy-bright); } .trend-arrow.down{ color: var(--sell-bright); } .trend-arrow.flat{ color: var(--ink-dim); }
-
-  .meta-row{ display:flex; justify-content:space-between; font-size:13px; color: var(--ink-dim); margin-top:8px; }
-
-  .indicator-grid{ display:grid; grid-template-columns: repeat(2, 1fr); gap:10px; }
-  @media (min-width: 700px){ .indicator-grid{ grid-template-columns: repeat(3, 1fr); } }
-  .indicator{ background: var(--bg-panel-raised); border-radius:10px; padding:10px 12px; }
-  .indicator .name{ font-size:12px; color: var(--ink-dim); }
-  .indicator .val{ font-family: var(--font-mono); font-size:15px; margin-top:2px; }
-  .val.up{ color: var(--buy-bright); } .val.down{ color: var(--sell-bright); }
-
-  .sr-row{ display:grid; grid-template-columns: repeat(2, 1fr); gap:10px; }
-  @media (min-width: 900px){ .sr-row{ grid-template-columns: repeat(5, 1fr); } }
-  .sr-card{ background: var(--bg-panel-raised); border-radius:10px; padding:12px; text-align:center; }
-  .sr-card .lbl{ font-size:12px; color: var(--ink-dim); }
-  .sr-card .v{ font-family: var(--font-mono); font-size:17px; margin-top:4px; }
-  .sr-card.res .v{ color: var(--sell-bright); }
-  .sr-card.sup .v{ color: var(--buy-bright); }
-  .sr-card.current{ background: var(--gold-soft); }
-  .sr-card.current .v{ color: var(--gold-bright); font-weight:700; }
-
-  .ai-grid{ display:grid; grid-template-columns: repeat(auto-fit, minmax(140px,1fr)); gap:10px; }
-  .ai-tile{ background: var(--bg-panel-raised); border-radius:10px; padding:10px 12px; }
-  .ai-tile .lbl{ font-size:12px; color: var(--ink-dim); }
-  .ai-tile .v{ font-family: var(--font-mono); font-size:16px; margin-top:2px; }
-  .reason-list{ list-style: none; display:flex; flex-direction:column; gap:4px; font-size:13px; color: var(--ink-dim); }
-  .reason-list li::before{ content:"• "; color: var(--gold-bright); }
-  .empty{ color: var(--ink-dim); font-size:13px; }
-
-  .smc-grid{ display:grid; grid-template-columns: repeat(2, 1fr); gap:10px; }
-  @media (min-width: 700px){ .smc-grid{ grid-template-columns: repeat(4, 1fr); } }
-  .smc-card{ background: var(--bg-panel-raised); border-radius:10px; padding:12px; text-align:center; }
-  .smc-card .ic{ font-size:20px; }
-  .smc-card .name{ font-size:12px; color: var(--ink-dim); margin-top:4px; }
-  .smc-card .val{ font-size:13px; margin-top:4px; font-weight:600; }
-  .market-context{ margin-top:10px; background: var(--bg-panel-raised); border-radius:10px; padding:12px; font-size:13px; color: var(--ink-dim); display:flex; gap:10px; align-items:center; }
-
-  .strength-dots{ display:inline-flex; gap:3px; }
-  .strength-dots span{ width:7px; height:7px; border-radius:50%; background: rgba(255,255,255,0.12); }
-  .strength-dots span.on.buy{ background: var(--buy-bright); }
-  .strength-dots span.on.sell{ background: var(--sell-bright); }
-  .strength-dots span.on.wait{ background: var(--wait-bright); }
-
-  .setup-grid{ display:grid; grid-template-columns: 1fr; gap:10px; }
-  @media (min-width: 700px){ .setup-grid{ grid-template-columns: repeat(3, 1fr); } }
-  .setup-card{ background: var(--bg-panel-raised); border-radius:10px; padding:14px; }
-  .setup-card .name{ font-size:12px; color: var(--ink-dim); text-transform:uppercase; letter-spacing:0.04em; }
-  .setup-card .verdict{ font-family: var(--font-display); font-size:20px; font-weight:700; margin-top:6px; }
-  .setup-card .verdict.buy{ color: var(--buy-bright); } .setup-card .verdict.sell{ color: var(--sell-bright); } .setup-card .verdict.wait{ color: var(--wait-bright); }
-  .setup-card .hint{ font-size:12px; color: var(--ink-dim); margin-top:4px; }
-
-  .gauge-wrap{ display:flex; flex-direction:column; align-items:center; gap:6px; }
-  .gauge-svg{ width:130px; height:130px; }
-  .gauge-sub{ font-size:12px; color: var(--ink-dim); }
-
-  footer{ display:flex; justify-content:space-between; flex-wrap:wrap; gap:8px; font-size:12px; color: var(--ink-dim); padding: 8px 4px 0; }
+  .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;}
+  @media(min-width:640px){.grid{grid-template-columns:repeat(3,1fr)}}
+  .cell{background:var(--panel-2);border-radius:10px;padding:10px 12px;}
+  .cell .n{font-size:12px;color:var(--dim)} .cell .x{font-family:var(--fm);font-size:14px;margin-top:2px;}
+  .x.up{color:var(--buy)} .x.down{color:var(--sell)}
+  #tv{height:480px;border-radius:12px;overflow:hidden;}
+  footer{display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;font-size:12px;color:var(--dim);padding:4px;}
+  .hist-num{font-family:var(--fm);font-size:20px;font-weight:700;}
 </style>
 </head>
 <body>
-<div class="layout">
+<div class="wrap">
 
-  <nav class="sidebar">
-    <div class="brand">
-      <span class="icon">🪙</span>
-      <div>
-        <div class="title">XAU/USD Gold<br>Analysis Dashboard</div>
-        <div class="sub">Real-time Market Intelligence</div>
-      </div>
+  <div class="panel row">
+    <div>
+      <div class="symbol" id="title">XAU/USD — GOLD TRADING SYSTEM</div>
+      <div class="sub">ระบบสัญญาณเชิงปริมาณล้วน · Intraday · ไม่มี AI</div>
+      <div class="live"><span class="dot"></span>LIVE · อัปเดตทุก 2 นาที</div>
     </div>
-    <a class="nav-link" data-target="overview" href="#overview"><span class="ic">🎯</span>Direction &amp; Trade</a>
-    <a class="nav-link" data-target="entryConfirm" href="#entryConfirm"><span class="ic">✅</span>Entry Confirmation</a>
-    <a class="nav-link" data-target="smc" href="#smc"><span class="ic">🧠</span>Smart Money</a>
-    <a class="nav-link" data-target="paEntry" href="#paEntry"><span class="ic">🕯️</span>Price Action Entry</a>
-    <a class="nav-link" data-target="chart" href="#chart"><span class="ic">📈</span>Chart</a>
-    <a class="nav-link" data-target="mtf" href="#mtf"><span class="ic">⏱</span>Multi-Timeframe</a>
-    <a class="nav-link" data-target="indicators" href="#indicators"><span class="ic">📊</span>Indicators</a>
-    <a class="nav-link" data-target="sr" href="#sr"><span class="ic">📏</span>Support / Resistance</a>
-  </nav>
-
-  <div class="main">
-
-    <div class="panel topbar">
-      <div>
-        <div class="symbol" id="dashboardTitle">XAU/USD GOLD ANALYSIS DASHBOARD</div>
-        <div class="subtitle">Real-time Market Intelligence</div>
-        <div class="live-badge"><span class="live-dot"></span>LIVE</div>
-      </div>
-      <div style="display:flex; align-items:center; gap:14px;">
-        <div class="price"><span id="priceVal">—</span><span class="chg" id="priceChg"></span></div>
-        <select id="assetSelect">
-          <option value="XAU" selected>XAU/USD (Gold)</option>
-          <option value="BTC">BTC/USD (Bitcoin)</option>
-        </select>
-        <select id="intervalSelect">
-          <option value="15min">15min</option>
-          <option value="30min">30min</option>
-          <option value="1h" selected>1h</option>
-          <option value="4h">4h</option>
-          <option value="1day">1day</option>
-        </select>
-      </div>
+    <div style="display:flex;align-items:center;gap:12px;">
+      <div class="price"><span id="priceVal">—</span><span class="chg" id="priceChg"></span></div>
+      <select id="assetSel">
+        <option value="XAU" selected>XAU/USD</option>
+        <option value="BTC">BTC/USD</option>
+      </select>
+      <select id="intervalSel">
+        <option value="15min">15m</option>
+        <option value="30min">30m</option>
+        <option value="1h" selected>1h</option>
+        <option value="4h">4h</option>
+      </select>
     </div>
-
-    <!-- ============ HERO: Direction + Entry/Exit — headline of the page ============ -->
-    <div class="hero" id="overview">
-      <div class="hero-bias">
-        <div style="display:flex; align-items:center; gap:6px;">
-          <h2 style="margin:0;">Market Bias</h2>
-          <span class="free-tag">FREE · LIVE</span>
-        </div>
-        <svg class="hero-gauge" viewBox="0 0 120 120">
-          <circle cx="60" cy="60" r="52" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="10"/>
-          <circle id="biasArc" cx="60" cy="60" r="52" fill="none" stroke="var(--wait-bright)" stroke-width="10"
-            stroke-linecap="round" stroke-dasharray="326.7" stroke-dashoffset="326.7" transform="rotate(-90 60 60)"/>
-          <text id="biasArcLabel" x="60" y="66" text-anchor="middle" font-family="Space Grotesk" font-size="18" font-weight="700" fill="var(--wait-bright)">—</text>
-        </svg>
-        <div class="hero-dir-label wait" id="heroDirLabel">WAIT</div>
-        <div id="biasMtfConfirm" class="hero-flag mtf" style="display:none;"></div>
-        <div id="biasDeveloping" class="hero-flag dev" style="display:none;"></div>
-        <div class="hero-conf-row">
-          <div class="lbl-row"><span>Signal Strength (score/max)</span><span id="confPct">—</span></div>
-          <div class="conf-bar-track"><div class="conf-bar-fill" id="confBar" style="width:0%; background:var(--wait-bright);"></div></div>
-          <div class="hint" id="confHint" style="margin-top:4px;"></div>
-        </div>
-        <div class="meta-row" style="width:100%;"><span>Trend</span><span id="trendVal">—</span></div>
-        <div class="meta-row" style="width:100%;"><span>Higher TF</span><span id="higherTrendVal">—</span></div>
-        <div class="meta-row" style="width:100%;"><span>Session</span><span id="sessionVal">—</span></div>
-        <div class="meta-row" style="width:100%;"><span>Volatility</span><span id="volatilityVal">—</span></div>
-        <div class="meta-row" style="width:100%;"><span>ราคากลาง 200 แท่ง</span><span id="midpointBiasVal">—</span></div>
-        <div class="hint" id="midpointBiasHint" style="width:100%;"></div>
-      </div>
-
-      <div class="hero-trade">
-        <div class="hero-trade-top">
-          <div class="section-label">
-            <h2 style="margin:0;">Entry / Exit Levels</h2>
-          </div>
-          <div class="source-toggle">
-            <span class="free-tag" id="sourceFreeTag">⚡ FREE — คำนวณจาก ATR</span>
-            <span class="ai-tag dim" id="sourceAiTag">✨ AI-confirmed</span>
-          </div>
-        </div>
-
-        <div class="ladder">
-          <div class="ladder-tile entry">
-            <div class="lbl">Entry</div>
-            <div class="v" id="ladderEntry">—</div>
-            <div class="dist" id="ladderEntryHint">รอข้อมูล…</div>
-          </div>
-          <div class="ladder-tile sl">
-            <div class="lbl">Stop Loss</div>
-            <div class="v" id="ladderSl">—</div>
-            <div class="dist" id="ladderSlDist">—</div>
-          </div>
-          <div class="ladder-tile tp">
-            <div class="lbl">Take Profit</div>
-            <div class="v" id="ladderTp">—</div>
-            <div class="dist" id="ladderTpDist">—</div>
-          </div>
-        </div>
-
-        <div class="hero-rr-row">
-          <div class="rr-pill"><span class="lbl">Risk / Reward</span><span class="v" id="ladderRR">—</span></div>
-          <div class="rr-pill"><span class="lbl">TP ($, ที่ lot ปัจจุบัน)</span><span class="v" id="tpUsdDisplay">—</span></div>
-        </div>
-
-        <div class="risk-row">
-          <div>
-            <label class="risk-lbl" for="lotInput">Lot</label>
-            <input id="lotInput" type="number" step="0.01" min="0.01" value="0.01">
-          </div>
-          <div>
-            <label class="risk-lbl" for="slUsdInput">SL ($)</label>
-            <input id="slUsdInput" type="number" step="1" min="1" value="20">
-          </div>
-          <div>
-            <label class="risk-lbl" for="tpUsdInput">TP ($, auto)</label>
-            <input id="tpUsdInput" type="number" readonly value="30">
-          </div>
-        </div>
-        <div class="hero-note">
-          <b>⚡ FREE:</b> ทิศทางด้านบนคำนวณอัตโนมัติจากสัญญาณเชิงปริมาณ (quick-check) ทันทีที่ราคาโหลดเสร็จ ไม่มีค่าใช้จ่าย และอัปเดตทุก 2 นาที — Entry จะใช้โซน Order Block/ICT OTE/EMA Pullback/แนวรับ-ต้าน ก็ต่อเมื่อ Smart Money หรือ Price Action (อย่างน้อยหนึ่งเครื่องมือ) ยืนยันทิศทางเดียวกันและโซนนั้นไม่ไกลจากราคาเกินไป ไม่งั้นใช้ราคาตลาดปัจจุบันแทน ส่วน SL จะขยายให้พ้น Swing Low/High (หรือแนวรับ-ต้าน) ก่อนหน้าเสมอ ไม่ว่าจะตั้ง SL ($) ไว้แคบแค่ไหน และ TP = ระยะ SL × 1.5<br>
-          <b>✨ AI-confirmed:</b> กดปุ่มด้านล่างเพื่อให้ AI (มีค่าใช้จ่ายต่อครั้ง) ยืนยัน/ปรับปรุงตัวเลข Entry/SL/TP พร้อมเหตุผลประกอบข่าวและบริบทตลาด — ตัวเลขในกล่องด้านบนจะอัปเดตทันทีเมื่อ AI วิเคราะห์เสร็จ
-        </div>
-        <button class="btn-primary" id="analyzeBtn" style="width:100%;">✨ ยืนยันด้วย AI (มีค่าใช้จ่าย)</button>
-        <div id="aiResult" class="empty">ยังไม่ได้วิเคราะห์ด้วย AI — ตัวเลขด้านบนเป็นค่าคำนวณฟรีจาก ATR เท่านั้น</div>
-      </div>
-    </div>
-
-    <div class="panel" id="entryConfirm">
-      <h2>Entry Confirmation — Smart Money + Price Action</h2>
-      <div class="setup-card" id="entryConfirmCard">
-        <div class="name">จุดเข้าจะยืนยันก็ต่อเมื่อทั้งสองเครื่องมือชี้ทิศทางเดียวกัน</div>
-        <div class="verdict wait" id="entryConfirmVerdict">กำลังโหลด…</div>
-        <div class="hint" id="entryConfirmHint"></div>
-      </div>
-    </div>
-
-    <div class="panel" id="smc">
-      <h2>Smart Money Concepts</h2>
-      <div class="ai-grid" style="margin-bottom:12px;">
-        <div class="ai-tile">
-          <div class="lbl">Market State</div>
-          <div class="v" id="smcMarketState">กำลังโหลด…</div>
-        </div>
-        <div class="ai-tile">
-          <div class="lbl">Smart Money Score</div>
-          <div class="v" id="smcScoreVal">—</div>
-        </div>
-      </div>
-      <div class="setup-card" id="smcVerdictCard" style="margin-bottom:12px;">
-        <div class="name">เจ้าตลาด (Smart Money) กำลังจะ</div>
-        <div class="verdict wait" id="smcVerdict">กำลังโหลด…</div>
-        <div class="hint" id="smcVerdictHint"></div>
-      </div>
-      <div class="smc-grid" id="smcGrid"><div class="empty">กำลังโหลด…</div></div>
-      <ul class="reason-list" id="smcScoreBreakdown" style="margin-top:10px;"></ul>
-      <ul class="reason-list" id="smcReasons" style="margin-top:10px;"></ul>
-      <div class="market-context" id="marketContext"><span>📈</span><span>กำลังโหลดบริบทตลาด…</span></div>
-      <div class="hint" id="smcDisclaimer" style="margin-top:8px; font-size:11px;"></div>
-    </div>
-
-    <div class="panel" id="paEntry">
-      <h2>Price Action Entry (Trend → Location → Trigger)</h2>
-      <div class="setup-card" id="paVerdictCard" style="margin-bottom:12px;">
-        <div class="name">คุณภาพจุดเข้าตามหลัก EMA Pullback + Price Action</div>
-        <div class="verdict wait" id="paVerdict">กำลังโหลด…</div>
-        <div class="hint" id="paVerdictHint"></div>
-      </div>
-      <ul class="reason-list" id="paReasons"></ul>
-      <div class="hint" style="margin-top:8px; font-size:11px;">คนละคะแนนกับ Direction &amp; Trade ด้านบน — อันนี้เช็คเฉพาะว่าจุดนี้เข้าเงื่อนไข Trend (EMA9/21/50/200) → Location (ย่อเข้า EMA21/50 หรือแนวรับ/ต้าน) → Trigger (Engulfing/Pin Bar/Break+Retest) แบบคลาสสิกมากแค่ไหน</div>
-    </div>
-
-    <div class="panel" id="chart">
-      <h2>Chart</h2>
-      <div id="tvChart"></div>
-    </div>
-
-    <div class="panel" id="mtf">
-      <div class="section-label"><h2 style="margin:0;">Multi-Timeframe Analysis</h2><span class="free-tag">FREE</span></div>
-      <div class="table-scroll">
-        <table>
-          <thead><tr><th>Timeframe</th><th>Signal</th><th>Score</th><th>Trend</th><th>Strength</th></tr></thead>
-          <tbody id="mtfBody"><tr><td colspan="5" class="empty">กำลังโหลด…</td></tr></tbody>
-        </table>
-      </div>
-    </div>
-
-    <div class="panel" id="setup">
-      <h2>Trading Setup Suggestion</h2>
-      <div class="setup-grid" id="setupGrid"><div class="empty">กำลังโหลด…</div></div>
-    </div>
-
-    <div class="panel" id="indicators">
-      <h2>Key Indicators</h2>
-      <div class="indicator-grid" id="indicatorGrid"><div class="empty">กำลังโหลด…</div></div>
-    </div>
-
-    <div class="panel" id="sr">
-      <h2>Support / Resistance</h2>
-      <div class="sr-row" id="srLadder"><div class="empty">กำลังโหลด…</div></div>
-    </div>
-
-    <div class="panel" id="historyPanel" style="display:none;">
-      <h2>สถิติผลการวิเคราะห์ย้อนหลัง</h2>
-      <div class="ai-grid">
-        <div class="ai-tile"><div class="lbl">ชนะ (Win)</div><div class="v" id="winCount" style="color:var(--buy-bright);">0</div></div>
-        <div class="ai-tile"><div class="lbl">แพ้ (Loss)</div><div class="v" id="lossCount" style="color:var(--sell-bright);">0</div></div>
-        <div class="ai-tile"><div class="lbl">รอผล</div><div class="v" id="pendingCount">0</div></div>
-        <div class="ai-tile"><div class="lbl">อัตราชนะ</div><div class="v" id="winRateVal">—</div></div>
-      </div>
-      <ul class="reason-list" id="lossPatternList" style="display:none; margin-top:10px;"></ul>
-      <ul class="reason-list" id="historyList" style="margin-top:10px;"></ul>
-      <div style="display:flex; gap:8px; margin-top:12px; flex-wrap:wrap;">
-        <button id="suggestConfigBtn">วิเคราะห์ & แนะนำค่าตั้งค่าจากประวัติเทรด</button>
-        <button id="clearHistoryBtn" style="background:var(--sell-dim); color:var(--sell-bright);">ล้างประวัติทั้งหมด</button>
-      </div>
-      <div id="configSuggestionBox" style="display:none; border-radius:10px; padding:10px 12px; margin-top:10px; font-size:13px; line-height:1.6; background:var(--bg-panel-raised); border:1px solid var(--hairline);"></div>
-    </div>
-
-    <div class="top-grid" id="signalsRow" style="display:none; grid-template-columns: 1fr; gap:16px;">
-      <div class="panel">
-        <h2>Recent Signals</h2>
-        <div class="table-scroll">
-          <table>
-            <thead><tr><th>Time</th><th>Timeframe</th><th>Signal</th><th>Price</th><th>Result</th></tr></thead>
-            <tbody id="recentSignalsBody"></tbody>
-          </table>
-        </div>
-      </div>
-      <div class="panel">
-        <h2>Signal Accuracy (all-time local history)</h2>
-        <div class="gauge-wrap">
-          <svg class="gauge-svg" viewBox="0 0 120 120">
-            <circle cx="60" cy="60" r="52" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="10"/>
-            <circle id="accuracyArc" cx="60" cy="60" r="52" fill="none" stroke="var(--buy-bright)" stroke-width="10"
-              stroke-linecap="round" stroke-dasharray="326.7" stroke-dashoffset="326.7" transform="rotate(-90 60 60)"/>
-            <text id="accuracyArcLabel" x="60" y="66" text-anchor="middle" font-family="Space Grotesk" font-size="20" font-weight="700" fill="var(--buy-bright)">—</text>
-          </svg>
-          <div class="gauge-sub" id="accuracySub">—</div>
-        </div>
-      </div>
-    </div>
-
-    <footer>
-      <span>Data provided by Twelve Data · Chart by TradingView</span>
-      <span id="lastUpdated">Last updated: —</span>
-    </footer>
-
   </div>
+
+  <div class="panel">
+    <div class="hero">
+      <div class="gauge-box">
+        <h2>สัญญาณหลัก</h2>
+        <svg class="gauge" viewBox="0 0 120 120">
+          <circle cx="60" cy="60" r="52" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="10"/>
+          <circle id="arc" cx="60" cy="60" r="52" fill="none" stroke="var(--wait)" stroke-width="10"
+            stroke-linecap="round" stroke-dasharray="326.7" stroke-dashoffset="326.7" transform="rotate(-90 60 60)"/>
+          <text id="arcLabel" x="60" y="67" text-anchor="middle" font-family="Space Grotesk" font-size="17" font-weight="700" fill="var(--wait)">—</text>
+        </svg>
+        <div class="dir wait" id="dirLabel">—</div>
+        <div id="strongFlag" class="flag strong" style="display:none;"></div>
+        <div id="devFlag" class="flag dev" style="display:none;"></div>
+        <div style="width:100%;margin-top:6px;">
+          <div class="meta"><span>Confidence</span><b id="confVal">—</b></div>
+          <div class="meta"><span>คะแนนสุทธิ</span><b id="netVal">—</b></div>
+          <div class="meta"><span>เทรนด์ HTF</span><b id="regimeVal">—</b></div>
+          <div class="meta"><span>โครงสร้าง</span><b id="structVal">—</b></div>
+          <div class="meta"><span>ADX</span><b id="adxVal">—</b></div>
+          <div class="meta"><span>Session</span><b id="sessionVal">—</b></div>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:14px;min-width:0;">
+        <h2 style="margin:0;">จุดเข้า / จุดออก</h2>
+        <div id="waitBanner" class="wait-banner" style="display:none;"></div>
+        <div class="ladder">
+          <div class="tile entry"><div class="lbl">Entry</div><div class="v" id="lEntry">—</div><div class="d" id="lEntryD">—</div></div>
+          <div class="tile sl"><div class="lbl">Stop Loss</div><div class="v" id="lSl">—</div><div class="d" id="lSlD">—</div></div>
+          <div class="tile tp"><div class="lbl">Take Profit</div><div class="v" id="lTp">—</div><div class="d" id="lTpD">—</div></div>
+        </div>
+        <div class="pills">
+          <div class="pill"><span class="lbl">Risk / Reward</span><span class="v" id="lRR">—</span></div>
+          <div class="pill"><span class="lbl">ความเสี่ยง</span><span class="v" id="riskUsd">—</span></div>
+          <div class="pill"><span class="lbl">กำไรเป้าหมาย</span><span class="v" id="rewardUsd">—</span></div>
+        </div>
+        <div class="calc">
+          <div><label for="lot">Lot</label><input id="lot" type="number" step="0.01" min="0.01" value="0.10"></div>
+          <div><label for="contract">Contract size / lot</label><input id="contract" type="number" step="1" min="1" value="100"></div>
+          <div><label>SL อิงจาก</label><input id="slBasis" type="text" readonly value="—"></div>
+        </div>
+        <div class="sub" style="line-height:1.6;">
+          Entry = ราคาปัจจุบัน · SL วางพ้น Swing Low/High (หรือแนวรับ-ต้าน 30 แท่ง) แล้วบีบให้อยู่ในกรอบ 1–3 เท่าของ ATR · TP = ระยะ SL × 1.5 ·
+          ระบบจะไม่ให้เข้าเทรดเว้นแต่ ADX ผ่านเกณฑ์ ทิศทางตรงกับเทรนด์ HTF และคะแนนแข็งแรงพอ
+        </div>
+        <ul class="reasons" id="reasons"></ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Multi-Timeframe</h2>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>TF</th><th>สัญญาณ</th><th>Confidence</th><th>คะแนน</th><th>ADX</th><th>เทรนด์ HTF</th></tr></thead>
+        <tbody id="mtfBody"><tr><td colspan="6" class="sub">กำลังโหลด…</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Chart</h2>
+    <div id="tv"></div>
+  </div>
+
+  <div class="panel">
+    <h2>อินดิเคเตอร์</h2>
+    <div class="grid" id="indGrid"><div class="sub">กำลังโหลด…</div></div>
+  </div>
+
+  <div class="panel">
+    <h2>แนวรับ / แนวต้าน</h2>
+    <div class="grid" id="srGrid"><div class="sub">กำลังโหลด…</div></div>
+  </div>
+
+  <div class="panel" id="histPanel" style="display:none;">
+    <h2>สถิติผลย้อนหลัง (เก็บในเครื่องนี้เท่านั้น)</h2>
+    <div class="grid" style="grid-template-columns:repeat(4,1fr);">
+      <div class="cell"><div class="n">ชนะ</div><div class="hist-num" style="color:var(--buy)" id="hWin">0</div></div>
+      <div class="cell"><div class="n">แพ้</div><div class="hist-num" style="color:var(--sell)" id="hLoss">0</div></div>
+      <div class="cell"><div class="n">รอผล</div><div class="hist-num" id="hPend">0</div></div>
+      <div class="cell"><div class="n">อัตราชนะ</div><div class="hist-num" id="hRate">—</div></div>
+    </div>
+    <ul class="reasons" id="histList" style="margin-top:12px;"></ul>
+    <button id="clearHist" style="margin-top:12px;background:var(--sell-d);color:var(--sell);">ล้างประวัติ</button>
+  </div>
+
+  <footer>
+    <span>ข้อมูลราคาจาก Twelve Data · กราฟจาก TradingView · ไม่ใช่คำแนะนำการลงทุน</span>
+    <span id="updated">—</span>
+  </footer>
 </div>
 
 <script src="https://s3.tradingview.com/tv.js"></script>
 <script>
-  let ASSET = 'XAU';
-  const ASSET_META = {
-    XAU: { title: 'XAU/USD GOLD ANALYSIS DASHBOARD', tvSymbol: 'OANDA:XAUUSD' },
-    BTC: { title: 'BTC/USD BITCOIN ANALYSIS DASHBOARD', tvSymbol: 'BITSTAMP:BTCUSD' },
-  };
-  const GAUGE_CIRCUMFERENCE = 326.7; // 2 * PI * r(52)
-  const MTF_LIST = [
-    { key: '1min', label: 'M1' },
-    { key: '5min', label: 'M5' },
-    { key: '15min', label: 'M15' },
-    { key: '30min', label: 'M30' },
-    { key: '1h', label: 'H1' },
-    { key: '4h', label: 'H4' },
-    { key: '1day', label: 'D1' },
+'use strict';
+const CIRC = 326.7;
+const META = {
+  XAU: { title: 'XAU/USD — GOLD TRADING SYSTEM', tv: 'OANDA:XAUUSD', contract: 100 },
+  BTC: { title: 'BTC/USD — CRYPTO TRADING SYSTEM', tv: 'BITSTAMP:BTCUSD', contract: 1 },
+};
+const MTF_LABEL = { '5min':'M5','15min':'M15','30min':'M30','1h':'H1','4h':'H4','1day':'D1' };
+let ASSET = 'XAU';
+let last = null;      // last /api/signal payload
+let lastTrade = null; // {entry,sl,tp} for chart lines
+
+const $ = id => document.getElementById(id);
+const fmt = (v,d=2) => (v==null||!isFinite(v)) ? '—' : Number(v).toFixed(d);
+
+function sessionLabel(){
+  const h = new Date().getUTCHours(), p = [];
+  if(h>=0 && h<9) p.push('Tokyo');
+  if(h>=7 && h<16) p.push('London');
+  if(h>=13 && h<22) p.push('New York');
+  return p.length ? p.join(' / ') : 'นอกเวลาทำการหลัก';
+}
+
+function setGauge(cls, label, pct){
+  const color = cls==='buy'?'var(--buy)':cls==='sell'?'var(--sell)':'var(--wait)';
+  const arc = $('arc'), lab = $('arcLabel');
+  arc.setAttribute('stroke', color);
+  lab.setAttribute('fill', color);
+  lab.textContent = label;
+  const off = CIRC * (1 - Math.max(0,Math.min(100,pct))/100);
+  requestAnimationFrame(() => { arc.style.transition='stroke-dashoffset .8s ease-out, stroke .3s'; arc.style.strokeDashoffset = off; });
+}
+
+async function api(path){
+  const r = await fetch(path);
+  const j = await r.json();
+  if(!r.ok) throw new Error(j.error || ('HTTP '+r.status));
+  return j;
+}
+
+function riskCalc(levels){
+  const lot = Math.max(Number($('lot').value)||0.01, 0.01);
+  const contract = Math.max(Number($('contract').value)||1, 1);
+  const unit = lot * contract;
+  if(levels.slDistance==null){ $('riskUsd').textContent='—'; $('rewardUsd').textContent='—'; return; }
+  $('riskUsd').textContent   = '$' + Math.round(levels.slDistance * unit).toLocaleString();
+  $('rewardUsd').textContent = '$' + Math.round(levels.tpDistance * unit).toLocaleString();
+}
+
+function renderSignal(d){
+  const s = d.signal, L = d.levels, ind = d.indicators;
+  const tradable = s.tradable && s.direction;
+  const cls = !tradable ? 'wait' : (s.direction==='BUY'?'buy':'sell');
+  const label = !tradable ? 'WAIT' : s.direction;
+  setGauge(cls, label, s.confidence);
+  const dl = $('dirLabel'); dl.className = 'dir '+cls; dl.textContent = (s.strong && tradable ? '⭐ ':'') + label;
+
+  $('strongFlag').style.display = (s.strong && tradable) ? 'inline-block' : 'none';
+  $('strongFlag').textContent = 'สัญญาณแข็งแรง (' + Math.abs(s.net) + '/' + s.maxWeight + ' ≥ ' + s.strongThreshold + ')';
+  $('devFlag').style.display = (!tradable && s.developing) ? 'inline-block' : 'none';
+  $('devFlag').textContent = '🟡 กำลังก่อตัว — ใกล้เกณฑ์เข้าเทรด';
+
+  $('confVal').textContent = s.confidence + '%';
+  $('netVal').textContent = (s.net>=0?'+':'') + s.net + ' / ±' + s.maxWeight + ' (มีเสียง ' + s.totalWeight + ')';
+  $('regimeVal').textContent = d.regime.label + ' (' + d.higherInterval + ')';
+  $('structVal').textContent = structLabel(d.structure);
+  $('adxVal').textContent = ind.adx==null ? '—' : ind.adx.toFixed(1) + (ind.adx>=20?' (เทรนด์)':' (ไซด์เวย์)');
+  $('sessionVal').textContent = sessionLabel();
+
+  const wb = $('waitBanner');
+  if(!tradable && s.waitReason){ wb.style.display='block'; wb.textContent = '⏸ ' + s.waitReason; }
+  else wb.style.display='none';
+
+  if(L.entry!=null){
+    $('lEntry').textContent = fmt(L.entry);
+    $('lEntryD').textContent = tradable ? (s.direction + ' @ ราคาปัจจุบัน') : 'ยังไม่เข้า';
+    $('lSl').textContent = fmt(L.sl);
+    $('lSlD').textContent = L.slDistance!=null ? ('-' + fmt(L.slDistance)) : '—';
+    $('lTp').textContent = fmt(L.tp);
+    $('lTpD').textContent = L.tpDistance!=null ? ('+' + fmt(L.tpDistance)) : '—';
+    $('lRR').textContent = L.riskReward || '—';
+    $('slBasis').value = L.slBasis || '—';
+    riskCalc(L);
+    lastTrade = tradable ? { entry:L.entry, sl:L.sl, tp:L.tp } : null;
+  } else {
+    ['lEntry','lSl','lTp'].forEach(id=>$(id).textContent='—');
+    ['lEntryD','lSlD','lTpD'].forEach(id=>$(id).textContent='—');
+    $('lRR').textContent='—'; $('slBasis').value='—'; $('riskUsd').textContent='—'; $('rewardUsd').textContent='—';
+    lastTrade = null;
+  }
+
+  $('reasons').innerHTML = s.reasons.map(r=>'<li>'+r+'</li>').join('');
+  if(tradable && s.strong) recordTrade(d);
+}
+
+function structLabel(st){
+  const t = st.trend==='UP'?'ขาขึ้น (HH/HL)':st.trend==='DOWN'?'ขาลง (LH/LL)':'sideways';
+  const ev = st.bos ? ' · BOS '+ (st.bos==='UP'?'ขึ้น':'ลง') : st.choch ? ' · ⚠️ CHoCH '+(st.choch==='UP'?'ขึ้น':'ลง') : '';
+  return t + ev;
+}
+
+function renderIndicators(d){
+  const i = d.indicators;
+  const emaRel = (i.emaFast!=null && i.emaSlow!=null)
+    ? (i.emaFast>i.emaSlow ? {t:`EMA${i.fastPeriod} > EMA${i.slowPeriod} (bullish)`,c:'up'} : {t:`EMA${i.fastPeriod} < EMA${i.slowPeriod} (bearish)`,c:'down'})
+    : {t:'—',c:''};
+  const e200 = i.ema200==null ? {t:'ข้อมูลไม่พอ',c:''} : (d.price>i.ema200 ? {t:'ราคาเหนือ EMA200',c:'up'} : {t:'ราคาใต้ EMA200',c:'down'});
+  const macd = i.macd ? (i.macd.crossUp ? {t:'Bullish cross',c:'up'} : i.macd.crossDown ? {t:'Bearish cross',c:'down'} : {t:'hist '+i.macd.histogram.toFixed(3)+(i.macd.rising?' ↑':' ↓'),c:i.macd.histogram>0?'up':'down'}) : {t:'—',c:''};
+  const rsi = i.rsi==null ? {t:'—',c:''} : {t:i.rsi.toFixed(1)+(i.rsi>=55?' (ซื้อ)':i.rsi<=45?' (ขาย)':' (กลาง)'),c:i.rsi>=55?'up':i.rsi<=45?'down':''};
+  const di = (i.plusDI!=null) ? {t:'+DI '+i.plusDI.toFixed(0)+' / -DI '+i.minusDI.toFixed(0),c:i.plusDI>i.minusDI?'up':'down'} : {t:'—',c:''};
+  const pb = i.pullback ? {t:'ราคาย่อเข้าโซน EMA ('+i.pullback+')',c:i.pullback==='BUY'?'up':'down'} : {t:'ราคาไม่ได้อยู่ในโซนย่อ',c:''};
+  const items = [
+    ['EMA cascade', emaRel.t, emaRel.c],
+    ['EMA200', e200.t, e200.c],
+    ['RSI (14)', rsi.t, rsi.c],
+    ['MACD (12,26,9)', macd.t, macd.c],
+    ['ADX / DI (14)', (i.adx==null?'—':i.adx.toFixed(1)) + ' · ' + di.t, di.c],
+    ['ATR (14)', i.atr==null?'—':i.atr.toFixed(2), ''],
+    ['Bollinger bandwidth', i.bollinger ? (i.bollinger.bandwidth*100).toFixed(2)+'%' : '—', ''],
+    ['Pullback location', pb.t, pb.c],
   ];
+  $('indGrid').innerHTML = items.map(([n,x,c])=>`<div class="cell"><div class="n">${n}</div><div class="x ${c}">${x}</div></div>`).join('');
+}
 
-  let lastMarketData = null;
-  let lastQuickCheck = null;
-  let lastTrade = null; // whichever ladder (free or AI) is currently displayed — drives the chart's entry/SL/TP lines
-  let aiConfirmed = false; // whether the ladder is currently showing AI-confirmed numbers
+function renderSR(d){
+  const i = d.indicators, cards = [];
+  if(d.structure.lastHigh) cards.push(['Swing High', d.structure.lastHigh.price, 'down']);
+  cards.push(['แนวต้าน 30 แท่ง', i.resistance, 'down']);
+  cards.push(['ราคาปัจจุบัน', d.price, '']);
+  cards.push(['แนวรับ 30 แท่ง', i.support, 'up']);
+  if(d.structure.lastLow) cards.push(['Swing Low', d.structure.lastLow.price, 'up']);
+  $('srGrid').innerHTML = cards.map(([n,v,c])=>`<div class="cell"><div class="n">${n}</div><div class="x ${c}">${fmt(v)}</div></div>`).join('');
+}
 
-  // "Developing" is a separate, informational-only tier from the server —
-  // it never changes tradable/strong, just flags setups close to the gate.
-  function tagHtml(direction, strong, tradable, developing, mtfConfirmed){
-    if(!tradable || !direction){
-      if(mtfConfirmed && direction) return '<span class="tag ' + (direction === 'BUY' ? 'buy' : 'sell') + '"><span class="tag-dot"></span>✅ ' + direction + ' (MTF confirm)</span>';
-      if(developing) return '<span class="tag wait"><span class="tag-dot"></span>กำลังก่อตัว</span>';
-      return '<span class="tag wait"><span class="tag-dot"></span>WAIT</span>';
-    }
-    const cls = direction === 'BUY' ? 'buy' : 'sell';
-    const label = (strong ? 'Strong ' : '') + direction;
-    return '<span class="tag ' + cls + '"><span class="tag-dot"></span>' + label + '</span>';
+function tag(row){
+  if(!row.ok) return '<span class="sub">ผิดพลาด</span>';
+  if(row.tradable && row.direction){
+    const c = row.direction==='BUY'?'buy':'sell';
+    return `<span class="tag ${c}"><span class="tag-dot"></span>${row.strong?'⭐ ':''}${row.direction}</span>`;
   }
+  if(row.developing && row.direction) return `<span class="tag wait"><span class="tag-dot"></span>${row.direction} กำลังก่อตัว</span>`;
+  return '<span class="tag wait"><span class="tag-dot"></span>WAIT</span>';
+}
 
-  function trendHtml(direction){
-    if(direction === 'BUY') return '<span class="trend-arrow up">↗ ขึ้น</span>';
-    if(direction === 'SELL') return '<span class="trend-arrow down">↘ ลง</span>';
-    return '<span class="trend-arrow flat">→ เป็นกลาง</span>';
-  }
-
-  // 5-dot strength meter from the real quick-check score/maxScore ratio.
-  function strengthDotsHtml(pct, direction){
-    const cls = direction === 'BUY' ? 'buy' : direction === 'SELL' ? 'sell' : 'wait';
-    const filled = Math.max(0, Math.min(5, Math.round(pct / 20)));
-    let html = '<span class="strength-dots">';
-    for(let i = 0; i < 5; i++){
-      html += '<span class="' + (i < filled ? 'on ' + cls : '') + '"></span>';
-    }
-    return html + '</span>';
-  }
-
-  // Shared ring-gauge renderer for Market Bias + AI Recommendation.
-  function setGauge(arcId, labelId, cls, labelText, pct){
-    const colorVar = cls === 'buy' ? 'var(--buy-bright)' : cls === 'sell' ? 'var(--sell-bright)' : 'var(--wait-bright)';
-    const arc = document.getElementById(arcId);
-    const label = document.getElementById(labelId);
-    arc.setAttribute('stroke', colorVar);
-    label.setAttribute('fill', colorVar);
-    label.textContent = labelText;
-    const offset = GAUGE_CIRCUMFERENCE * (1 - Math.max(0, Math.min(100, pct)) / 100);
-    requestAnimationFrame(() => {
-      arc.style.transition = 'stroke-dashoffset 0.8s ease-out, stroke 0.3s';
-      arc.style.strokeDashoffset = offset;
-    });
-  }
-
-  async function fetchQuickCheck(interval){
-    const res = await fetch('/api/quick-check?interval=' + encodeURIComponent(interval) + '&asset=' + ASSET);
-    const data = await res.json();
-    if(!res.ok) throw new Error(data.error || 'quick-check failed');
-    return data;
-  }
-
-  async function fetchMarketData(interval){
-    const res = await fetch('/api/market-data?interval=' + encodeURIComponent(interval) + '&asset=' + ASSET);
-    const data = await res.json();
-    if(!res.ok) throw new Error(data.error || 'market-data failed');
-    checkHistory(data.currentPrice, data.recentCandles);
-    return data;
-  }
-
-  // ---- Position sizing ----
-  // Units per 1.00 lot, i.e. $ profit/loss per $1 price move at lot=1.
-  // Standard XAUUSD CFD spec is 100oz/lot; BTC CFDs are commonly quoted
-  // 1 lot = 1 BTC. Adjust either if your broker's contract size differs.
-  const CONTRACT_SIZE = { XAU: 100, BTC: 1 };
-
-  // SL is sized from the user's real $ risk (adjustable via lot size); TP =
-  // SL x 1.5 (matching the server's deterministic RR rule) so the ratio
-  // stays constant regardless of volatility.
-  // Finds "the support/resistance before this point" for SL, per the PA
-  // framework's own rule (SL below the swing low for BUY / above the swing
-  // high for SELL) — the nearest swing pivot in the trade's direction, or
-  // the 30-candle support/resistance if no swing is available, with a small
-  // ATR buffer beyond it so SL doesn't sit exactly on the level itself.
-  function findStructuralStop(isBuy, entry, m){
-    const atrVal = isFinite(m.atr) && m.atr > 0 ? m.atr : 0;
-    const buffer = atrVal * 0.2;
-    if(isBuy){
-      const swingLow = m.swing && m.swing.low ? m.swing.low.price : null;
-      if(swingLow != null && swingLow < entry) return { price: swingLow - buffer, source: 'Swing Low' };
-      if(m.support != null && m.support < entry) return { price: m.support - buffer, source: 'Support (30 แท่ง)' };
-    } else {
-      const swingHigh = m.swing && m.swing.high ? m.swing.high.price : null;
-      if(swingHigh != null && swingHigh > entry) return { price: swingHigh + buffer, source: 'Swing High' };
-      if(m.resistance != null && m.resistance > entry) return { price: m.resistance + buffer, source: 'Resistance (30 แท่ง)' };
-    }
-    return null;
-  }
-
-  function reconcileTrade(a, isBuy, atr, structuralStop){
-    let entry = Number(a.entry);
-    if(!isFinite(entry)){
-      return { entry: a.entry, tp: a.tp, sl: a.sl, riskReward: a.risk_reward || '—' };
-    }
-    const lot = Math.max(Number(document.getElementById('lotInput').value) || 0.01, 0.01);
-    const slUsd = Math.max(Number(document.getElementById('slUsdInput').value) || 20, 0);
-    const contractSize = CONTRACT_SIZE[ASSET] || 100;
-    const unitValue = lot * contractSize;
-
-    let slDistance = unitValue > 0 ? slUsd / unitValue : 0;
-    let atrWidened = false;
-    const atrFloor = isFinite(atr) && atr > 0 ? atr * 1.5 : 0;
-    if(atrFloor > 0 && slDistance > 0 && slDistance < atrFloor){
-      slDistance = atrFloor;
-      atrWidened = true;
-    }
-    // Widen further to clear the nearest swing low/high (or support/
-    // resistance) in the trade's direction, if that's farther out than the
-    // ATR floor above — SL should never sit between entry and a real
-    // structural level price is likely to react at, no matter how tight the
-    // user's configured $ risk is.
-    let structuralWidened = false;
-    if(structuralStop != null && isFinite(structuralStop.price)){
-      const structuralDistance = Math.abs(entry - structuralStop.price);
-      if(structuralDistance > slDistance){
-        slDistance = structuralDistance;
-        structuralWidened = true;
-      }
-    }
-    const tpDistance = slDistance * 1.5;
-    const tp = isBuy ? entry + tpDistance : entry - tpDistance;
-    const sl = isBuy ? entry - slDistance : entry + slDistance;
-
-    const reward = Math.abs(tp - entry);
-    const risk = Math.abs(entry - sl);
-    const ratio = risk > 0 ? (reward / risk) : 0;
-    const riskReward = risk > 0 ? ('1 : ' + ratio.toFixed(2)) : '—';
-    const tpUsd = Math.round(tpDistance * unitValue);
-    document.getElementById('tpUsdInput').value = tpUsd;
-    return { entry, tp, sl, riskReward, lot, tpUsd, slUsd, atrWidened, structuralWidened, structuralSource: structuralStop ? structuralStop.source : null };
-  }
-
-  // ---- Free/deterministic entry-exit ladder, shown immediately on load ----
-  // Uses the quick-check direction + market-data ATR — same math as
-  // reconcileTrade() but driven by the free signal instead of the paid AI
-  // response, so the hero always has real numbers even before /api/analyze
-  // is ever called.
-  function renderFreeLadder(qc, m){
-    const entryEl = document.getElementById('ladderEntry');
-    const entryHintEl = document.getElementById('ladderEntryHint');
-    const slEl = document.getElementById('ladderSl');
-    const slDistEl = document.getElementById('ladderSlDist');
-    const tpEl = document.getElementById('ladderTp');
-    const tpDistEl = document.getElementById('ladderTpDist');
-    const rrEl = document.getElementById('ladderRR');
-    const tpUsdDisplay = document.getElementById('tpUsdDisplay');
-
-    if(!qc.tradable || !qc.direction || !m || !isFinite(m.currentPrice)){
-      entryEl.textContent = '—';
-      entryHintEl.textContent = qc.waitReason || 'ยังไม่มีสัญญาณเข้าเทรดชัดเจน';
-      slEl.textContent = '—'; slDistEl.textContent = '—';
-      tpEl.textContent = '—'; tpDistEl.textContent = '—';
-      rrEl.textContent = '—';
-      tpUsdDisplay.textContent = '—';
-      return null;
-    }
-    const isBuy = qc.direction === 'BUY';
-    // qc.entryZone is computed server-side by computeRecommendedEntryZone(),
-    // which cross-checks Smart Money (both its engines agreeing with each
-    // other) and Price Action Entry before trusting a zone, and filters out
-    // stale/too-far levels — the single canonical "where do the analysis
-    // tools say to enter" answer, instead of the client re-deriving its own
-    // gating logic here.
-    const zone = qc.entryZone;
-    const entryPrice = zone ? zone.mid : m.currentPrice;
-    const fakeA = { entry: entryPrice };
-    const structuralStop = findStructuralStop(isBuy, entryPrice, m);
-    const trade = reconcileTrade(fakeA, isBuy, m.atr, structuralStop);
-    entryEl.textContent = Number(trade.entry).toFixed(2);
-    entryHintEl.textContent = zone
-      ? `โซน ${zone.source} (${zone.low.toFixed(2)}-${zone.high.toFixed(2)}) ยืนยันโดย ${zone.confirmedBy.join(' + ')} — ${qc.direction}${qc.strong ? ', สัญญาณชัดเจน' : ''}`
-      : 'ราคาตลาดปัจจุบัน (' + qc.direction + (qc.strong ? ', สัญญาณชัดเจน' : '') + ')' + (qc.entryZoneReason ? ' — ' + qc.entryZoneReason : '');
-    slEl.textContent = isFinite(trade.sl) ? Number(trade.sl).toFixed(2) : '—';
-    slDistEl.textContent = isFinite(trade.sl)
-      ? '-' + Math.abs(trade.entry - trade.sl).toFixed(2) + (trade.structuralWidened ? ' (พ้น ' + trade.structuralSource + ')' : '')
-      : '—';
-    tpEl.textContent = isFinite(trade.tp) ? Number(trade.tp).toFixed(2) : '—';
-    tpDistEl.textContent = isFinite(trade.tp) ? '+' + Math.abs(trade.tp - trade.entry).toFixed(2) : '—';
-    rrEl.textContent = trade.riskReward || '—';
-    tpUsdDisplay.textContent = trade.tpUsd != null ? ('$' + trade.tpUsd) : '—';
-    return trade;
-  }
-
-  function setLadderSourceBadge(isAi){
-    aiConfirmed = isAi;
-    const freeTag = document.getElementById('sourceFreeTag');
-    const aiTag = document.getElementById('sourceAiTag');
-    if(isAi){
-      freeTag.classList.add('dim');
-      aiTag.classList.remove('dim');
-      freeTag.textContent = '⚡ FREE (ATR)';
-      aiTag.textContent = '✨ AI-confirmed — ใช้ค่านี้';
-    } else {
-      freeTag.classList.remove('dim');
-      aiTag.classList.add('dim');
-      freeTag.textContent = '⚡ FREE — คำนวณจาก ATR';
-      aiTag.textContent = '✨ AI-confirmed';
-    }
-  }
-
-  // Push AI-derived trade numbers into the same hero ladder tiles the free
-  // calculation populated, so Entry/SL/TP always live in one place.
-  function renderAiLadder(trade, direction){
-    document.getElementById('ladderEntry').textContent = isFinite(trade.entry) ? Number(trade.entry).toFixed(2) : '—';
-    document.getElementById('ladderEntryHint').textContent = '✨ ยืนยันโดย AI (' + direction + ')';
-    document.getElementById('ladderSl').textContent = isFinite(trade.sl) ? Number(trade.sl).toFixed(2) : '—';
-    document.getElementById('ladderSlDist').textContent = isFinite(trade.sl) && isFinite(trade.entry) ? '-' + Math.abs(trade.entry - trade.sl).toFixed(2) : '—';
-    document.getElementById('ladderTp').textContent = isFinite(trade.tp) ? Number(trade.tp).toFixed(2) : '—';
-    document.getElementById('ladderTpDist').textContent = isFinite(trade.tp) && isFinite(trade.entry) ? '+' + Math.abs(trade.tp - trade.entry).toFixed(2) : '—';
-    document.getElementById('ladderRR').textContent = trade.riskReward || '—';
-    document.getElementById('tpUsdDisplay').textContent = trade.tpUsd != null ? ('$' + trade.tpUsd) : '—';
-    setLadderSourceBadge(true);
-  }
-
-  // Smart Money verdict lock: freezes the SMC card to whatever it read when
-  // the current trade was opened, instead of recomputing (and potentially
-  // flip-flopping) on every 2-minute auto-refresh — the read should hold
-  // steady until this trade actually resolves win/loss, not chase every
-  // tick of new order-block/FVG data.
-  // Locking was disabled per user request — cards always show the live
-  // read instead of freezing to the snapshot from when a trade opened.
-  function smcLockKey(){ return 'goldSmcLock_' + ASSET; }
-  function loadSmcLock(){ return null; }
-  function saveSmcLock(marketData){}
-  function clearSmcLock(){ localStorage.removeItem(smcLockKey()); }
-
-  // ---- Win/Loss track record (local-only, per-browser localStorage) ----
-  function historyKey(){ return 'goldAnalysisHistory_' + ASSET; }
-  function loadHistory(){
-    try { return JSON.parse(localStorage.getItem(historyKey())) || []; }
-    catch(e){ return []; }
-  }
-  function saveHistory(list){
-    localStorage.setItem(historyKey(), JSON.stringify(list.slice(-50)));
-  }
-
-  // A bare "🔒 locked" note doesn't say *what* it's locked to — this builds
-  // a one-line summary of the actual pending trade governing the lock, so
-  // "locked" points at something visible instead of reading as an opaque
-  // frozen state.
-  function pendingTradeSummary(){
-    const list = loadHistory();
-    const rec = list.slice().reverse().find(r => r.status === 'pending');
-    if(!rec) return null;
-    const timeStr = new Date(rec.time).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
-    return `เทรด ${rec.direction} ที่เปิดไว้เมื่อ ${timeStr} (Entry ${Number(rec.entry).toFixed(2)}, SL ${Number(rec.sl).toFixed(2)}, TP ${Number(rec.tp).toFixed(2)})`;
-  }
-
-  function addHistoryEntry(a, trade, marketData){
-    if(String(a.recommendation).toUpperCase() === 'WAIT') return;
-    const isBuy = String(a.recommendation).toUpperCase().indexOf('BUY') !== -1;
-    const entry = Number(trade.entry), tp = Number(trade.tp), sl = Number(trade.sl);
-    if(!isFinite(entry) || !isFinite(tp) || !isFinite(sl)) return;
-    const list = loadHistory();
-    const last = list[list.length - 1];
-    if(last && last.status === 'pending' && last.direction === (isBuy ? 'BUY' : 'SELL')){
-      const priceDiffPct = Math.abs(entry - last.entry) / last.entry;
-      if(priceDiffPct < 0.001) return;
-    }
-    const snapshot = marketData ? {
-      adx: marketData.adx,
-      rsi: marketData.rsi,
-      emaAligned: marketData.ema20 != null && marketData.ema50 != null
-        ? (isBuy ? marketData.ema20 > marketData.ema50 : marketData.ema20 < marketData.ema50)
-        : null,
-      counterHigherTrend: marketData.higherTimeframe
-        ? (isBuy ? marketData.higherTimeframe.trend.indexOf('Downtrend') !== -1 : marketData.higherTimeframe.trend.indexOf('Uptrend') !== -1)
-        : null,
-      signalScore: a._signal ? a._signal.score : null,
-      signalStrong: a._signal ? a._signal.strong : null,
-    } : null;
-    list.push({
-      time: Date.now(),
-      direction: isBuy ? 'BUY' : 'SELL',
-      interval: marketData ? marketData.interval : null,
-      entry, tp, sl,
-      status: 'pending',
-      closedPrice: null,
-      closedTime: null,
-      snapshot,
-    });
-    saveHistory(list);
-    saveSmcLock(marketData);
-    renderHistory();
-  }
-
-  // Look for recurring setups among CLOSED trades where the loss rate is
-  // meaningfully worse than the overall loss rate.
-  function analyzeLossPatterns(list){
-    const closed = list.filter(r => (r.status === 'win' || r.status === 'loss') && r.snapshot);
-    if(closed.length < 6) return [];
-    const overallLossRate = closed.filter(r => r.status === 'loss').length / closed.length;
-    const buckets = {
-      counterTrend: { label: 'เข้าเทรดสวนแนวโน้มกรอบเวลาใหญ่ (counter-trend)', match: r => r.snapshot.counterHigherTrend === true },
-      rsiNeutral: { label: 'RSI อยู่โซนกลางๆ ไม่ชัดเจน (45-55) ตอนเข้าเทรด', match: r => isFinite(r.snapshot.rsi) && r.snapshot.rsi > 45 && r.snapshot.rsi < 55 },
-      weakScore: { label: 'สัญญาณเชิงปริมาณอ่อน (|score|<=1) ตอนเข้าเทรด', match: r => r.snapshot.signalScore != null && Math.abs(r.snapshot.signalScore) <= 1 },
-      emaMisaligned: { label: 'EMA20/EMA50 ไม่สอดคล้องกับทิศทางที่เข้าเทรด', match: r => r.snapshot.emaAligned === false },
-    };
-    const patterns = [];
-    for (const [key, { label, match }] of Object.entries(buckets)) {
-      const subset = closed.filter(match);
-      if(subset.length < 3) continue;
-      const lossRate = subset.filter(r => r.status === 'loss').length / subset.length;
-      if(lossRate - overallLossRate >= 0.15){
-        patterns.push({ key, text: `${label}: แพ้ ${Math.round(lossRate*100)}% (${subset.length} เทรด) เทียบกับค่าเฉลี่ยแพ้ ${Math.round(overallLossRate*100)}%` });
-      }
-    }
-    return patterns;
-  }
-
-  function parseCandleTime(t){
-    const ts = Date.parse(String(t).replace(' ', 'T') + 'Z');
-    return isFinite(ts) ? ts : null;
-  }
-
-  function checkHistory(currentPrice, candles){
-    if(!isFinite(currentPrice)) return;
-    const list = loadHistory();
-    if(!list.length) return;
-    let changed = false;
-    list.forEach(rec => {
-      if(rec.status !== 'pending') return;
-      let hit = null;
-      if(Array.isArray(candles) && candles.length){
-        for(const c of candles){
-          const ct = parseCandleTime(c.time);
-          if(ct == null || ct < rec.time) continue;
-          const slHit = rec.direction === 'BUY' ? c.low <= rec.sl : c.high >= rec.sl;
-          const tpHit = rec.direction === 'BUY' ? c.high >= rec.tp : c.low <= rec.tp;
-          if(slHit && tpHit){
-            // Both levels fall inside one candle (no tick data to know the
-            // real order) — assume price reached whichever level is closer
-            // to the candle's open first, rather than always assuming SL,
-            // which silently inflated the loss count on wide-range candles.
-            hit = Math.abs(c.open - rec.sl) <= Math.abs(c.open - rec.tp) ? 'loss' : 'win';
-          } else if(slHit){ hit = 'loss'; }
-          else if(tpHit){ hit = 'win'; }
-          if(hit) break;
-        }
-      }
-      if(!hit){
-        if(rec.direction === 'BUY'){
-          if(currentPrice >= rec.tp) hit = 'win';
-          else if(currentPrice <= rec.sl) hit = 'loss';
-        } else {
-          if(currentPrice <= rec.tp) hit = 'win';
-          else if(currentPrice >= rec.sl) hit = 'loss';
-        }
-      }
-      if(hit){
-        rec.status = hit;
-        rec.closedPrice = currentPrice;
-        rec.closedTime = Date.now();
-        changed = true;
-      }
-    });
-    if(changed){
-      saveHistory(list);
-      // Once nothing is left pending, unlock the SMC card so the next open
-      // trade locks in a fresh read instead of reusing this closed one.
-      if(!list.some(r => r.status === 'pending')) clearSmcLock();
-    }
-    renderHistory();
-  }
-
-  function renderHistory(){
-    const list = loadHistory();
-    const panel = document.getElementById('historyPanel');
-    if(list.length === 0){ panel.style.display = 'none'; return; }
-    panel.style.display = 'block';
-
-    const wins = list.filter(r => r.status === 'win').length;
-    const losses = list.filter(r => r.status === 'loss').length;
-    const pending = list.filter(r => r.status === 'pending').length;
-    const closed = wins + losses;
-    const winRate = closed > 0 ? Math.round((wins/closed)*100) : null;
-
-    document.getElementById('winCount').textContent = wins;
-    document.getElementById('lossCount').textContent = losses;
-    document.getElementById('pendingCount').textContent = pending;
-    document.getElementById('winRateVal').textContent = winRate == null ? '—' : (winRate + '%');
-
-    const patternEl = document.getElementById('lossPatternList');
-    const patterns = analyzeLossPatterns(list);
-    if(patterns.length){
-      patternEl.style.display = 'block';
-      patternEl.innerHTML = '<li style="color:var(--ink-dim);">⚠ จุดที่ระบบนี้เคยแพ้บ่อย:</li>' +
-        patterns.map(p => '<li style="color:var(--sell-bright);">' + p.text + '</li>').join('');
-    } else {
-      patternEl.style.display = 'none';
-      patternEl.innerHTML = '';
-    }
-
-    const recent = list.slice(-8).reverse();
-    document.getElementById('historyList').innerHTML = recent.map(rec => {
-      const dt = new Date(rec.time).toLocaleString('th-TH', { hour:'2-digit', minute:'2-digit', day:'2-digit', month:'2-digit' });
-      const statusLabel = rec.status === 'win' ? '✓ ชนะ' : rec.status === 'loss' ? '✕ แพ้' : '… รอผล';
-      const color = rec.status === 'win' ? 'var(--buy-bright)' : rec.status === 'loss' ? 'var(--sell-bright)' : 'var(--ink-dim)';
-      return '<li>' + dt + ' · ' + rec.direction + ' @ ' + rec.entry + ' → <b style="color:' + color + '">' + statusLabel + '</b></li>';
+async function loadMtf(){
+  try{
+    const j = await api('/api/mtf?asset='+ASSET);
+    $('mtfBody').innerHTML = j.rows.map(r=>{
+      const lbl = MTF_LABEL[r.interval] || r.interval;
+      if(!r.ok) return `<tr><td>${lbl}</td><td colspan="5" class="sub">ผิดพลาด</td></tr>`;
+      return `<tr><td>${lbl}</td><td>${tag(r)}</td><td>${r.confidence}%</td><td>${(r.net>=0?'+':'')+r.net}/±${r.maxWeight}</td><td>${r.adx==null?'—':r.adx.toFixed(1)}</td><td>${r.regime==='UP'?'↗ ขึ้น':r.regime==='DOWN'?'↘ ลง':'– ไม่ชัด'}</td></tr>`;
     }).join('');
+  }catch(e){ $('mtfBody').innerHTML = `<tr><td colspan="6" class="sub">โหลดไม่สำเร็จ: ${e.message}</td></tr>`; }
+}
 
-    renderRecentSignals(list);
-    renderSignalAccuracy(list);
-  }
+function renderPrice(d){
+  const c = d.recentCandles || [];
+  const first = c.length ? c[0].close : d.price;
+  const chg = first ? ((d.price-first)/first*100) : 0;
+  $('priceVal').textContent = fmt(d.price);
+  const el = $('priceChg');
+  el.textContent = (chg>=0?'+':'') + chg.toFixed(2) + '%';
+  el.style.color = chg>=0 ? 'var(--buy)' : 'var(--sell)';
+  $('updated').textContent = 'อัปเดต ' + new Date().toLocaleTimeString('th-TH');
+}
 
-  // Real recent-signals table and win-rate gauge, both sourced from the same
-  // local win/loss history used above — no fabricated numbers.
-  function renderRecentSignals(list){
-    const row = document.getElementById('signalsRow');
-    if(!list.length){ row.style.display = 'none'; return; }
-    row.style.display = 'grid';
-    const recent = list.slice(-8).reverse();
-    document.getElementById('recentSignalsBody').innerHTML = recent.map(rec => {
-      const dt = new Date(rec.time).toLocaleString('th-TH', { hour:'2-digit', minute:'2-digit', day:'2-digit', month:'2-digit' });
-      const resultLabel = rec.status === 'win' ? 'WIN' : rec.status === 'loss' ? 'LOSS' : '—';
-      const resultColor = rec.status === 'win' ? 'var(--buy-bright)' : rec.status === 'loss' ? 'var(--sell-bright)' : 'var(--ink-dim)';
-      return '<tr><td>' + dt + '</td><td>' + (rec.interval || '—') + '</td><td>' + tagHtml(rec.direction, false, true) +
-        '</td><td>' + Number(rec.entry).toFixed(2) + '</td><td style="color:' + resultColor + '; font-weight:600;">' + resultLabel + '</td></tr>';
-    }).join('');
-  }
-
-  function renderSignalAccuracy(list){
-    const closed = list.filter(r => r.status === 'win' || r.status === 'loss');
-    const wins = closed.filter(r => r.status === 'win').length;
-    const pct = closed.length ? Math.round((wins / closed.length) * 100) : 0;
-    const cls = pct >= 55 ? 'buy' : pct >= 40 ? 'wait' : 'sell';
-    setGauge('accuracyArc', 'accuracyArcLabel', cls, pct + '%', pct);
-    document.getElementById('accuracySub').textContent = closed.length
-      ? (wins + '/' + closed.length + ' ชนะ — ' + (pct >= 55 ? 'ผลงานดี' : pct >= 40 ? 'ปานกลาง' : 'ควรทบทวนกลยุทธ์'))
-      : 'ยังไม่มีเทรดที่ปิดจบ';
-  }
-
-  function sessionLabel(){
-    const h = new Date().getUTCHours();
-    const parts = [];
-    if(h >= 0 && h < 9) parts.push('Tokyo');
-    if(h >= 7 && h < 16) parts.push('London');
-    if(h >= 13 && h < 22) parts.push('New York');
-    return parts.length ? parts.join(' / ') : 'Off-hours';
-  }
-
-  function renderBias(qc, marketData){
-    const cls = !qc.tradable || !qc.direction ? 'wait' : (qc.direction === 'BUY' ? 'buy' : 'sell');
-    const label = !qc.tradable || !qc.direction ? 'WAIT' : ((qc.strong ? '⭐ ' : '') + qc.direction);
-    const pct = qc.maxScore ? Math.round(Math.abs(qc.score) / qc.maxScore * 100) : 0;
-    setGauge('biasArc', 'biasArcLabel', cls, qc.tradable && qc.direction ? qc.direction : 'WAIT', pct);
-
-    const heroDir = document.getElementById('heroDirLabel');
-    heroDir.className = 'hero-dir-label ' + cls;
-    heroDir.textContent = label;
-
-    // Hero background glow follows the current bias direction.
-    const hero = document.querySelector('.hero');
-    hero.style.setProperty('--hero-glow', cls === 'buy' ? 'rgba(0,214,133,0.14)' : cls === 'sell' ? 'rgba(255,77,106,0.14)' : 'rgba(255,178,56,0.12)');
-
-    const devEl = document.getElementById('biasDeveloping');
-    if(!qc.tradable && qc.developing && !qc.mtfConfirmed){
-      devEl.style.display = 'inline-block';
-      devEl.textContent = '🟡 ' + qc.developingReason;
-    } else {
-      devEl.style.display = 'none';
-    }
-
-    const confirmEl = document.getElementById('biasMtfConfirm');
-    if(qc.mtfConfirmed){
-      confirmEl.style.display = 'inline-block';
-      confirmEl.textContent = '✅ ยืนยันจาก ' + qc.mtfConfirmedInterval + ' — เข้าได้เร็วขึ้น';
-    } else {
-      confirmEl.style.display = 'none';
-    }
-
-    document.getElementById('confPct').textContent = pct + '%';
-    const fill = document.getElementById('confBar');
-    fill.style.width = pct + '%';
-    fill.style.background = cls === 'buy' ? 'var(--buy-bright)' : cls === 'sell' ? 'var(--sell-bright)' : 'var(--wait-bright)';
-    // This is |score|/maxScore, not a probability — a number like 38% still
-    // clears the (much lower) "strong" bar the system actually gates on, so
-    // showing 38% next to a ⭐ BUY badge with no context read as the badge
-    // contradicting the percentage. Spell out which bar it cleared instead.
-    const confHintEl = document.getElementById('confHint');
-    if (!qc.tradable || !qc.direction) {
-      confHintEl.textContent = '';
-    } else if (qc.strong) {
-      confHintEl.textContent = `คะแนน ${Math.abs(qc.score)}/${qc.maxScore} — ผ่านเกณฑ์ "สัญญาณแข็งแรง" (⭐) แล้ว แม้ตัวเลข % จะดูไม่สูงเพราะเทียบกับคะแนนเต็มที่ยากจะได้ครบทุกข้อ`;
-    } else {
-      confHintEl.textContent = `คะแนน ${Math.abs(qc.score)}/${qc.maxScore} — ยังไม่ถึงเกณฑ์ "สัญญาณแข็งแรง" ระบบจึงยังไม่เข้าเทรด`;
-    }
-
-    const trend = marketData.ema20 > marketData.ema50 && marketData.ema50 > (marketData.ema200 || 0)
-      ? 'ขาขึ้น (Bull)'
-      : marketData.ema20 < marketData.ema50 && marketData.ema50 < (marketData.ema200 || Infinity)
-        ? 'ขาลง (Bear)'
-        : 'ผสม (Mixed)';
-    document.getElementById('trendVal').textContent = trend;
-
-    const higherEl = document.getElementById('higherTrendVal');
-    if(marketData.higherTimeframe && marketData.higherTimeframe.trend){
-      const isUp = marketData.higherTimeframe.trend.indexOf('Uptrend') !== -1;
-      higherEl.textContent = (isUp ? '↗ ' : '↘ ') + marketData.higherTimeframe.trend + ' (' + marketData.higherTimeframe.interval + ')';
-      higherEl.style.color = isUp ? 'var(--buy-bright)' : 'var(--sell-bright)';
-    } else {
-      higherEl.textContent = '—';
-      higherEl.style.color = '';
-    }
-
-    document.getElementById('sessionVal').textContent = sessionLabel();
-
-    // Volatility bucket from real avgRange (avg candle high-low) as a % of
-    // price — no fixed thresholds exist server-side, so this is a simple
-    // relative read, not a claimed precise metric.
-    const volEl = document.getElementById('volatilityVal');
-    if(marketData.volatility && marketData.volatility.avgRange != null && marketData.currentPrice){
-      const rangePct = marketData.volatility.avgRange / marketData.currentPrice * 100;
-      volEl.textContent = rangePct < 0.15 ? 'Low' : rangePct < 0.35 ? 'Medium' : 'High';
-    } else {
-      volEl.textContent = '—';
-    }
-
-    // Median of each candle's (high+low)/2 over the last 200 bars reads as
-    // a stable "fair value" line — comparing current price against it shows
-    // which side price has been leaning toward, independent of any fast MA.
-    const mpEl = document.getElementById('midpointBiasVal');
-    const mpHintEl = document.getElementById('midpointBiasHint');
-    const mp = marketData.midpointBias;
-    if(mp){
-      const isUp = mp.bias === 'BULLISH';
-      const isDown = mp.bias === 'BEARISH';
-      const arrow = isUp ? '↗' : isDown ? '↘' : '↔';
-      const biasTh = isUp ? 'เอนขึ้น (Bullish)' : isDown ? 'เอนลง (Bearish)' : 'กลาง (Neutral)';
-      mpEl.textContent = arrow + ' ' + biasTh;
-      mpEl.style.color = isUp ? 'var(--buy-bright)' : isDown ? 'var(--sell-bright)' : 'var(--wait-bright)';
-      const sign = mp.diff >= 0 ? '+' : '';
-      // ADX high means price is trending, not mean-reverting — a big gap from
-      // the 200-bar median there is the trend itself, not an overextension
-      // about to snap back, so the hint should say so instead of reading as
-      // a reversal cue.
-      const strongTrend = marketData.adx != null && marketData.adx >= 25;
-      const trendNote = strongTrend
-        ? ` · ⚠️ ADX ${marketData.adx.toFixed(0)} (เทรนด์แรง) — ห่างจากราคากลางเพราะกำลังเป็นเทรนด์ ไม่ใช่สัญญาณ mean-reversion`
-        : '';
-      mpHintEl.textContent = `ราคากลาง (median) ${mp.period} แท่ง = ${mp.median.toFixed(2)} · ราคาปัจจุบันห่าง ${sign}${mp.diff.toFixed(2)} (${sign}${mp.diffPct.toFixed(2)}%) · แท่งอยู่เหนือราคากลาง ${mp.aboveCount}/${mp.period} (${mp.abovePct.toFixed(0)}%)${trendNote}`;
-    } else {
-      mpEl.textContent = '—';
-      mpEl.style.color = '';
-      mpHintEl.textContent = '';
-    }
-  }
-
-  function renderPrice(marketData){
-    const candles = marketData.recentCandles || [];
-    const first = candles[0] ? candles[0].close : marketData.currentPrice;
-    const chgPct = first ? ((marketData.currentPrice - first) / first * 100) : 0;
-    document.getElementById('priceVal').textContent = Number(marketData.currentPrice).toFixed(2);
-    const chgEl = document.getElementById('priceChg');
-    chgEl.textContent = (chgPct >= 0 ? '+' : '') + chgPct.toFixed(2) + '%';
-    chgEl.style.color = chgPct >= 0 ? 'var(--buy-bright)' : 'var(--sell-bright)';
-    document.getElementById('lastUpdated').textContent = 'Last updated: ' + new Date().toLocaleTimeString('th-TH');
-  }
-
-  async function loadMultiTimeframe(){
-    const body = document.getElementById('mtfBody');
-    const results = await Promise.all(MTF_LIST.map(async tf => {
-      try {
-        const qc = await fetchQuickCheck(tf.key);
-        const pct = qc.maxScore ? Math.round(Math.abs(qc.score) / qc.maxScore * 100) : 0;
-        return { tf, qc, pct, ok: true };
-      } catch (e) {
-        return { tf, ok: false };
-      }
-    }));
-    body.innerHTML = results.map(r => r.ok
-      ? '<tr><td>' + r.tf.label + '</td><td>' + tagHtml(r.qc.direction, r.qc.strong, r.qc.tradable, r.qc.developing, r.qc.mtfConfirmed) + '</td><td>' + r.pct + '%</td><td>' + trendHtml(r.qc.direction) + '</td><td>' + strengthDotsHtml(r.pct, r.qc.direction) + '</td></tr>'
-      : '<tr><td>' + r.tf.label + '</td><td class="empty">ผิดพลาด</td><td>—</td><td>—</td><td>—</td></tr>'
-    ).join('');
-    renderSetupSuggestion(results);
-  }
-
-  // Groups the multi-timeframe results (already fetched above, no extra API
-  // calls) into three horizon buckets and takes the majority direction
-  // within each — a real synthesis of the quick-check data, not a separate
-  // fabricated strategy engine.
-  function renderSetupSuggestion(results){
-    const buckets = [
-      { name: 'Scalping (M1-M5)', keys: ['1min', '5min'] },
-      { name: 'Day Trading (M15-H1)', keys: ['15min', '30min', '1h'] },
-      { name: 'Swing Trading (H4-D1)', keys: ['4h', '1day'] },
-    ];
-    const html = buckets.map(b => {
-      const rows = results.filter(r => r.ok && b.keys.includes(r.tf.key));
-      const tradableRows = rows.filter(r => r.qc.tradable && r.qc.direction);
-      let cls = 'wait', verdict = 'WAIT', hint = 'รอสัญญาณชัดเจนกว่านี้';
-      if(tradableRows.length){
-        const buyCount = tradableRows.filter(r => r.qc.direction === 'BUY').length;
-        const sellCount = tradableRows.length - buyCount;
-        if(buyCount !== sellCount){
-          const dir = buyCount > sellCount ? 'BUY' : 'SELL';
-          cls = dir === 'BUY' ? 'buy' : 'sell';
-          verdict = dir;
-          hint = tradableRows.filter(r => r.qc.direction === dir).map(r => r.tf.label).join(', ') + ' เห็นตรงกัน';
-        } else {
-          hint = 'สัญญาณในกลุ่มนี้ขัดแย้งกัน';
-        }
-      }
-      return '<div class="setup-card"><div class="name">' + b.name + '</div><div class="verdict ' + cls + '">' + verdict + '</div><div class="hint">' + hint + '</div></div>';
-    }).join('');
-    document.getElementById('setupGrid').innerHTML = html;
-  }
-
-  function relLabel(a, b, upWord, downWord){
-    if(a == null || b == null) return { text: '—', cls: '' };
-    return a > b ? { text: upWord, cls: 'up' } : { text: downWord, cls: 'down' };
-  }
-
-  function renderIndicators(m){
-    const emaRel = relLabel(m.ema20, m.ema50, 'EMA20 > EMA50 (Bullish)', 'EMA20 < EMA50 (Bearish)');
-    const ema200Rel = m.ema200 != null ? relLabel(m.ema50, m.ema200, 'EMA50 > EMA200 (Bullish)', 'EMA50 < EMA200 (Bearish)') : { text: 'ไม่พอข้อมูล', cls: '' };
-    const macdRel = m.macd && m.macd.crossUp ? { text: 'Bull Cross', cls: 'up' } : (m.macd && m.macd.crossDown ? { text: 'Bear Cross', cls: 'down' } : { text: 'No Cross', cls: '' });
-    const stoch = m.stochastic ? (m.stochastic.crossUpFromOversold ? { text: 'Buy Signal (K=' + m.stochastic.k.toFixed(1) + ')', cls: 'up' } : m.stochastic.crossDownFromOverbought ? { text: 'Sell Signal (K=' + m.stochastic.k.toFixed(1) + ')', cls: 'down' } : { text: 'K=' + m.stochastic.k.toFixed(1) + ' D=' + m.stochastic.d.toFixed(1), cls: '' }) : { text: '—', cls: '' };
-    const adxStrong = m.adx != null && m.adx >= 18;
-    const bb = m.bollinger ? (
-      m.currentPrice > m.bollinger.upper ? { text: 'หลุดกรอบบน (ยืดเกิน)', cls: 'down' }
-      : m.currentPrice < m.bollinger.lower ? { text: 'หลุดกรอบล่าง (ยืดเกิน)', cls: 'up' }
-      : { text: 'อยู่ในกรอบ (' + m.bollinger.lower.toFixed(1) + '-' + m.bollinger.upper.toFixed(1) + ')', cls: '' }
-    ) : { text: '—', cls: '' };
-    const kc = m.keltner ? (
-      m.currentPrice > m.keltner.upper ? { text: 'ทะลุกรอบบน (Breakout)', cls: 'up' }
-      : m.currentPrice < m.keltner.lower ? { text: 'ทะลุกรอบล่าง (Breakout)', cls: 'down' }
-      : { text: 'อยู่ในกรอบ (' + m.keltner.lower.toFixed(1) + '-' + m.keltner.upper.toFixed(1) + ')', cls: '' }
-    ) : { text: '—', cls: '' };
-    const squeeze = !!(m.bollinger && m.keltner && m.bollinger.upper < m.keltner.upper && m.bollinger.lower > m.keltner.lower);
-    const items = [
-      ['EMA20 vs EMA50', emaRel.text, emaRel.cls],
-      ['EMA50 vs EMA200', ema200Rel.text, ema200Rel.cls],
-      ['RSI (14)', m.rsi != null ? m.rsi.toFixed(1) : '—', ''],
-      ['MACD', macdRel.text, macdRel.cls],
-      ['Stochastic', stoch.text, stoch.cls],
-      ['ADX', m.adx != null ? m.adx.toFixed(1) + (adxStrong ? ' (Strong Trend)' : ' (Weak/Range)') : '—', adxStrong ? 'up' : ''],
-      ['Bollinger Bands (20, 2σ)', bb.text, bb.cls],
-      ['Keltner Channel (20, ATR×2)', kc.text, kc.cls],
-      ['Squeeze (BB in Keltner)', squeeze ? 'ใช่ — ผันผวนต่ำ' : 'ไม่', squeeze ? 'up' : ''],
-      ['Volume (proxy: candle count)', m.candleCounts ? (m.candleCounts.up + ' up / ' + m.candleCounts.down + ' down') : '—', ''],
-    ];
-    document.getElementById('indicatorGrid').innerHTML = items.map(([name, val, cls]) =>
-      '<div class="indicator"><div class="name">' + name + '</div><div class="val ' + cls + '">' + val + '</div></div>'
-    ).join('');
-  }
-
-  function renderSR(m){
-    const cards = [];
-    if(m.resistance != null) cards.push(['res', 'Resistance', m.resistance]);
-    if(m.swing && m.swing.high) cards.push(['res', 'Strong High', m.swing.high.price]);
-    cards.push(['current', 'Current Price', m.currentPrice]);
-    if(m.swing && m.swing.low) cards.push(['sup', 'Strong Low', m.swing.low.price]);
-    if(m.support != null) cards.push(['sup', 'Support', m.support]);
-    document.getElementById('srLadder').innerHTML = cards.map(([cls, label, price]) =>
-      '<div class="sr-card ' + cls + '"><div class="lbl">' + label + '</div><div class="v">' + Number(price).toFixed(2) + '</div></div>'
-    ).join('');
-  }
-
-  // Smart Money has two independent read engines — sm.bias (vote-count) and
-  // score.tier (weighted 7-factor) — that can disagree. Shared by renderSmc
-  // and renderEntryConfirmation so "is Smart Money really BUY/SELL" means
-  // the same thing in both places instead of each card reconciling (or not)
-  // on its own and potentially showing contradictory verdicts.
-  function reconcileSmartMoneyDirection(sm, score){
-    if (!sm || (sm.bias !== 'BUY' && sm.bias !== 'SELL')) return null;
-    if (!score) return sm.bias;
-    const scoreDir = ['STRONG_BULLISH', 'BULLISH'].includes(score.tier) ? 'BUY' : ['STRONG_BEARISH', 'BEARISH'].includes(score.tier) ? 'SELL' : null;
-    return scoreDir === sm.bias ? sm.bias : null;
-  }
-
-  function renderSmc(liveData){
-    // While a trade is open, show the SMC read frozen from when it was
-    // opened instead of the live one — otherwise this card would flip
-    // BUY/SELL/NEUTRAL every 2-minute auto-refresh as new candles roll in,
-    // even though nothing about the open trade has actually changed yet.
-    const locked = loadSmcLock();
-    // Merge rather than swap the whole object: saveSmcLock() has grown new
-    // fields (smartMoneyScore, priceActionEntry) since it first shipped, so
-    // a lock saved by an older build of this page won't have them — merging
-    // falls back to live data for whatever the lock is missing instead of
-    // silently rendering blank while locked.
-    const m = locked ? Object.assign({}, liveData, locked) : liveData;
-    const liq = m.liquiditySweep && (m.liquiditySweep.bullish || m.liquiditySweep.bearish);
-    const ob = m.smc && (m.smc.bullishOB || m.smc.bearishOB);
-    const fvg = m.smc && (m.smc.bullishFvg || m.smc.bearishFvg);
-    const structureText = m.structure && m.structure.event ? m.structure.event : (m.structure && m.structure.structure) || 'ไม่มีสัญญาณ';
-    const cards = [
-      ['💧', 'Liquidity', liq ? (m.liquiditySweep.bullish ? 'Bullish Sweep' : 'Bearish Sweep') : 'ไม่มี'],
-      ['🧱', 'Order Block', ob ? (m.smc.bullishOB ? 'Bullish @ ' + m.smc.bullishOB.low.toFixed(1) + '-' + m.smc.bullishOB.high.toFixed(1) : 'Bearish @ ' + m.smc.bearishOB.low.toFixed(1) + '-' + m.smc.bearishOB.high.toFixed(1)) : 'ไม่มี'],
-      ['⬜', 'Fair Value Gap', fvg ? (m.smc.bullishFvg ? 'Bullish @ ' + m.smc.bullishFvg.gapLow.toFixed(1) + '-' + m.smc.bullishFvg.gapHigh.toFixed(1) : 'Bearish @ ' + m.smc.bearishFvg.gapLow.toFixed(1) + '-' + m.smc.bearishFvg.gapHigh.toFixed(1)) : 'ไม่มี'],
-      ['🧭', 'Market Structure', structureText],
-    ];
-    document.getElementById('smcGrid').innerHTML = cards.map(([ic, name, val]) =>
-      '<div class="smc-card"><div class="ic">' + ic + '</div><div class="name">' + name + '</div><div class="val">' + val + '</div></div>'
-    ).join('');
-
-    const score = m.smartMoneyScore;
-    const stateColor = { ACCUMULATION: 'var(--buy-bright)', MARKUP: 'var(--buy-bright)', DISTRIBUTION: 'var(--sell-bright)', MARKDOWN: 'var(--sell-bright)', CONSOLIDATION: 'var(--wait-bright)' };
-    const tierColor = { STRONG_BULLISH: 'var(--buy-bright)', BULLISH: 'var(--buy-bright)', WAIT: 'var(--wait-bright)', BEARISH: 'var(--sell-bright)', STRONG_BEARISH: 'var(--sell-bright)' };
-    const stateEl = document.getElementById('smcMarketState');
-    const scoreEl = document.getElementById('smcScoreVal');
-    const breakdownEl = document.getElementById('smcScoreBreakdown');
-    const disclaimerEl = document.getElementById('smcDisclaimer');
-    if (score) {
-      stateEl.textContent = score.marketStateLabel + (score.zone ? ` (${score.zone.low.toFixed(1)}-${score.zone.high.toFixed(1)})` : '');
-      stateEl.style.color = stateColor[score.marketState] || 'var(--ink-dim)';
-      scoreEl.textContent = score.total + '/100 · ' + score.tierLabel;
-      scoreEl.style.color = tierColor[score.tier] || 'var(--ink-dim)';
-      breakdownEl.innerHTML = score.breakdown.map(b =>
-        `<li>${b.label} (${b.weightPct}%): ${b.sub}/100 → +${b.contribution}</li>`
-      ).join('');
-      disclaimerEl.textContent = score.disclaimer || '';
-    } else {
-      stateEl.textContent = '—'; scoreEl.textContent = '—'; breakdownEl.innerHTML = ''; disclaimerEl.textContent = '';
-    }
-
-    const sm = m.smartMoney;
-    const verdictEl = document.getElementById('smcVerdict');
-    const hintEl = document.getElementById('smcVerdictHint');
-    const reasonsEl = document.getElementById('smcReasons');
-    // sm.bias (vote-count engine) and score.tier (weighted 7-factor engine)
-    // are two independent reads that can disagree — showing "เข้าซื้อ
-    // (Accumulate)" here while the Smart Money Score card above says WAIT
-    // read as the same panel contradicting itself. Reconcile: only show a
-    // confident BUY/SELL verdict when both agree; otherwise say so plainly
-    // instead of leading with whichever engine happens to sound stronger.
-    const scoreDir = score ? (['STRONG_BULLISH', 'BULLISH'].includes(score.tier) ? 'BUY' : ['STRONG_BEARISH', 'BEARISH'].includes(score.tier) ? 'SELL' : null) : undefined;
-    if (sm) {
-      const lockNote = locked ? ` · 🔒 ล็อกตาม${pendingTradeSummary() || 'เทรดปัจจุบัน'} (จนกว่าจะถึง SL/TP)` : '';
-      let cls, label;
-      if (sm.bias === 'BUY' || sm.bias === 'SELL') {
-        if (scoreDir === undefined || scoreDir === sm.bias) {
-          cls = sm.bias === 'BUY' ? 'buy' : 'sell';
-          label = sm.bias === 'BUY' ? '🟢 เข้าซื้อ (Accumulate)' : '🔴 เข้าขาย (Distribute)';
-        } else if (scoreDir === null) {
-          cls = 'wait';
-          label = '🟡 เอนไปทาง' + (sm.bias === 'BUY' ? 'ซื้อ' : 'ขาย') + ' — แต่ Smart Money Score ยัง WAIT';
-        } else {
-          cls = 'wait';
-          label = '⚠️ สองระบบขัดแย้งกัน (Bias vs Score)';
-        }
-      } else {
-        cls = 'wait';
-        label = '⚪ ยังไม่ชัดเจน';
-      }
-      verdictEl.className = 'verdict ' + cls;
-      verdictEl.textContent = label;
-      const scoreNote = score ? ` · Smart Money Score: ${score.total}/100 (${score.tierLabel})` : '';
-      hintEl.textContent = (sm.votesCount
-        ? `ความมั่นใจ ${sm.confidence}% จาก ${sm.votesCount} สัญญาณ (คะแนนสุทธิ ${sm.score >= 0 ? '+' : ''}${sm.score})`
-        : 'ยังไม่พบร่องรอย Smart Money ในรอบนี้') + scoreNote + lockNote;
-      reasonsEl.innerHTML = sm.reasons.length
-        ? sm.reasons.map(r => '<li>' + r + '</li>').join('')
-        : '<li>ไม่มีสัญญาณ Liquidity Sweep / Order Block / FVG / BOS-CHoCH / OTE ในรอบนี้</li>';
-    } else {
-      verdictEl.className = 'verdict wait';
-      verdictEl.textContent = '⚪ ไม่มีข้อมูล';
-      hintEl.textContent = '';
-      reasonsEl.innerHTML = '';
-    }
-
-    const bull = [liq && m.liquiditySweep.bullish, ob && m.smc.bullishOB, fvg && m.smc.bullishFvg].filter(Boolean).length;
-    const bear = [liq && m.liquiditySweep.bearish, ob && m.smc.bearishOB, fvg && m.smc.bearishFvg].filter(Boolean).length;
-    const contextText = bull > bear
-      ? 'ตลาดมีสัญญาณ Smart Money เอนไปทางฝั่งซื้อ (Bullish) มากกว่าฝั่งขาย'
-      : bear > bull
-        ? 'ตลาดมีสัญญาณ Smart Money เอนไปทางฝั่งขาย (Bearish) มากกว่าฝั่งซื้อ'
-        : 'ยังไม่มีสัญญาณ Smart Money ที่ชัดเจนไปทางใดทางหนึ่ง';
-    document.getElementById('marketContext').innerHTML = '<span>' + (bull > bear ? '📈' : bear > bull ? '📉' : '➖') + '</span><span>' + contextText + '</span>';
-  }
-
-  // Trend -> Location -> Trigger PA entry-quality score — separate card from
-  // the SMC panel above (different question: "how textbook is this EMA-
-  // pullback price-action setup?" vs "what is smart money doing?"). Shares
-  // the same SMC lock so it also freezes while a trade is open instead of
-  // flip-flopping every 2-minute auto-refresh.
-  function renderPriceAction(liveData){
-    const locked = loadSmcLock();
-    const pa = (locked && locked.priceActionEntry) || liveData.priceActionEntry;
-    const verdictEl = document.getElementById('paVerdict');
-    const hintEl = document.getElementById('paVerdictHint');
-    const reasonsEl = document.getElementById('paReasons');
-    if (!pa) {
-      verdictEl.className = 'verdict wait';
-      verdictEl.textContent = '⚪ ข้อมูลไม่พอ (ต้องการแท่งเทียนมากกว่านี้)';
-      hintEl.textContent = '';
-      reasonsEl.innerHTML = '';
-      return;
-    }
-    const cls = pa.tier === 'STRONG_ENTRY' ? (pa.direction === 'BUY' ? 'buy' : 'sell') : 'wait';
-    const label = pa.tier === 'STRONG_ENTRY'
-      ? (pa.direction === 'BUY' ? '🟢 จุดเข้า BUY แข็งแรง' : '🔴 จุดเข้า SELL แข็งแรง')
-      : pa.tier === 'WATCH' ? '🟡 รอดู' : '⚪ ยังไม่เข้า';
-    verdictEl.className = 'verdict ' + cls;
-    verdictEl.textContent = label;
-    const lockNote = (locked && locked.priceActionEntry) ? ` · 🔒 ล็อกตาม${pendingTradeSummary() || 'เทรดปัจจุบัน'} (จนกว่าจะถึง SL/TP)` : '';
-    hintEl.textContent = `คะแนน ${pa.score}/${pa.maxScore} (${pa.tierLabel})` +
-      (pa.direction ? ` · ทิศทาง ${pa.direction}` : ' · ยังไม่มีเทรนด์ชัดเจนตาม EMA50') + lockNote;
-    reasonsEl.innerHTML = pa.reasons.map(r => '<li>' + r + '</li>').join('');
-  }
-
-  // Only calls an entry "confirmed" when Smart Money and Price Action Entry
-  // agree on direction — requested specifically because showing each tool's
-  // own read separately, with no reconciliation, meant a user could see
-  // Smart Money say BUY right next to PA saying SELL/no-entry and not know
-  // which one to trust. This banner is the single answer; the two panels
-  // below stay as the detail behind it.
-  function renderEntryConfirmation(liveData){
-    const locked = loadSmcLock();
-    const d = locked ? Object.assign({}, liveData, locked) : liveData;
-    const sm = d.smartMoney;
-    const pa = d.priceActionEntry;
-    const verdictEl = document.getElementById('entryConfirmVerdict');
-    const hintEl = document.getElementById('entryConfirmHint');
-    const lockNote = locked ? ` · 🔒 ล็อกตาม${pendingTradeSummary() || 'เทรดปัจจุบัน'} (จนกว่าจะถึง SL/TP)` : '';
-
-    if (!sm || !pa) {
-      verdictEl.className = 'verdict wait';
-      verdictEl.textContent = '⚪ ข้อมูลไม่พอ';
-      hintEl.textContent = '';
-      return;
-    }
-
-    // Requires sm.bias and Smart Money Score to already agree with each
-    // other (see reconcileSmartMoneyDirection) — otherwise this banner
-    // could say "ยืนยัน BUY" from sm.bias alone while the Smart Money card
-    // itself shows a Score still at WAIT, which is the same contradiction
-    // this banner exists to prevent, just one level up.
-    const smDir = reconcileSmartMoneyDirection(sm, d.smartMoneyScore);
-    // Only STRONG_ENTRY counts as PA actually confirming a direction — WATCH
-    // means the PA card itself says "รอดู" (not ready yet), so treating it
-    // as a confirmed direction here made the banner say "ยืนยัน" (confirmed)
-    // right above a PA card that still said "รอดู", which read as the two
-    // cards contradicting each other.
-    const paReady = pa.tier === 'STRONG_ENTRY';
-    const paDir = paReady ? pa.direction : null;
-    // For the conflict check, "watch" still counts as a directional lean —
-    // conflicting with Smart Money is worth flagging even before PA is
-    // fully confirmed.
-    const paLean = pa.tier !== 'NO_ENTRY' ? pa.direction : null;
-
-    if (smDir && paDir && smDir === paDir) {
-      verdictEl.className = 'verdict ' + (smDir === 'BUY' ? 'buy' : 'sell');
-      verdictEl.textContent = (smDir === 'BUY' ? '🟢 ยืนยัน BUY' : '🔴 ยืนยัน SELL') + ' — เจ้าตลาด + Price Action ตรงกัน';
-      hintEl.textContent = `Smart Money: ${sm.bias} (${sm.confidence}%) · Price Action: ${pa.tierLabel} (${pa.score}/${pa.maxScore})` + lockNote;
-    } else if (smDir && paLean && smDir !== paLean) {
-      verdictEl.className = 'verdict wait';
-      verdictEl.textContent = '⚠️ สัญญาณขัดแย้งกัน — รอ';
-      hintEl.textContent = `Smart Money ชี้ ${smDir} แต่ Price Action ชี้ ${paLean} — รอจนกว่าทั้งสองจะไปทิศทางเดียวกัน ก่อนเข้าเทรด` + lockNote;
-    } else if (smDir && paLean && smDir === paLean) {
-      // Same direction but PA hasn't reached STRONG_ENTRY yet — a real lean,
-      // not a false "confirmed", and not a conflict either.
-      verdictEl.className = 'verdict wait';
-      verdictEl.textContent = '🟡 ทิศทางตรงกัน — รอ Price Action ยืนยันเพิ่ม';
-      hintEl.textContent = `Smart Money: ${sm.bias} (${sm.confidence}%) · Price Action: ${pa.tierLabel} (${pa.score}/${pa.maxScore}, ต้องการ 8/11 ขึ้นไปจึงจะยืนยัน)` + lockNote;
-    } else {
-      verdictEl.className = 'verdict wait';
-      verdictEl.textContent = '⚪ ยังไม่มีจุดเข้าที่ยืนยันได้';
-      const smText = sm.bias === 'NEUTRAL' ? 'ยังไม่ชัดเจน'
-        : (sm.bias === 'BUY' || sm.bias === 'SELL') ? `${sm.bias} แต่ Score ยังไม่ยืนยัน (WAIT)`
-        : sm.bias;
-      const paText = paLean ? pa.tierLabel : (pa.direction ? `${pa.tierLabel} (คะแนนยังไม่ถึงเกณฑ์)` : 'ยังไม่มีเทรนด์ตาม EMA50');
-      hintEl.textContent = `Smart Money: ${smText} · Price Action: ${paText} — ต้องมีทิศทางจากทั้งสองฝั่งก่อนถึงจะยืนยันได้` + lockNote;
-    }
-  }
-
-  let tvWidget = null;
-  let tvChartReady = false;
-  let tvShapeIds = [];
-
-  function initChart(){
-    const container = document.getElementById('tvChart');
-    if(typeof TradingView === 'undefined'){
-      container.innerHTML = '<div class="empty" style="padding:20px;">โหลดกราฟไม่สำเร็จ</div>';
-      return;
-    }
-    container.innerHTML = ''; // clear the previous widget when switching assets
-    tvChartReady = false;
-    tvShapeIds = [];
-    tvWidget = new TradingView.widget({
-      autosize: true,
-      symbol: ASSET_META[ASSET].tvSymbol,
-      interval: '60',
-      timezone: 'Etc/UTC',
-      theme: 'dark',
-      style: '1',
-      locale: 'th',
-      toolbar_bg: '#0a0e17',
-      enable_publishing: false,
-      hide_top_toolbar: false,
-      container_id: 'tvChart',
-      // Plots the same EMA the backend uses for its trend read (EMA50, or
-      // EMA21 on the 15min/30min/1h timeframes where the backend switches to
-      // the faster 9/21 pair) directly on the chart, so the "Trend" text
-      // above has a visual anchor instead of being a number you have to trust.
-      // The per-study `overrides` key on this array is Charting Library-only
-      // API and is silently ignored by the embed widget, so these three MAs
-      // render in the same default color — colors are applied after the
-      // chart is ready instead, via applyOverrides() below.
-      studies: [
-        { id: 'MAExp@tv-basicstudies', inputs: { length: ['15min', '30min', '1h'].includes(document.getElementById('intervalSelect').value) ? 21 : 50 } },
-        { id: 'MASimple@tv-basicstudies', inputs: { length: 9 } },
-        { id: 'MASimple@tv-basicstudies', inputs: { length: 50 } },
-      ],
-    });
-    tvWidget.onChartReady(() => {
-      tvChartReady = true;
-      try {
-        const chart = tvWidget.chart();
-        // getAllStudies() returns the studies in the order they were added
-        // above, so position lines up with the EMA/MA9/MA50 order.
-        const colorByIndex = ['#2962FF', '#FF9800', '#AB47BC']; // EMA, MA9, MA50
-        chart.getAllStudies().forEach((s, i) => {
-          if (colorByIndex[i]) chart.getStudyById(s.id).applyOverrides({ 'plot.color': colorByIndex[i] });
-        });
-      } catch (e) {
-        console.error('Failed to apply MA line colors', e);
-      }
-      drawChartAnnotations();
-    });
-  }
-
-  function tvTimeSeconds(t){
-    const ms = parseCandleTime(t);
-    return ms != null ? Math.floor(ms / 1000) : null;
-  }
-
-  // Draws HH/HL/LH/LL swing labels (from the same market-structure read the
-  // Indicators panel shows) and Entry/SL/TP horizontal lines (from whichever
-  // ladder — free or AI-confirmed — is currently displayed) directly on the
-  // TradingView chart, so the numbers in the hero ladder have a visual
-  // anchor instead of living only in the text tiles above.
-  function drawChartAnnotations(){
-    if(!tvWidget || !tvChartReady || !lastMarketData) return;
-    let chart;
-    try { chart = tvWidget.chart(); } catch(e){ return; }
-
-    tvShapeIds.forEach(id => { try { chart.removeEntity(id); } catch(e){} });
-    tvShapeIds = [];
-
-    const m = lastMarketData;
-    if(m.swing){
-      const trendUp = m.structure && m.structure.trendUp;
-      const trendDown = m.structure && m.structure.trendDown;
-      const swingLabel = (point, hiLabel, loLabel, neutralLabel, isHigh) => {
-        if(!point) return;
-        const t = tvTimeSeconds(point.time);
-        if(t == null) return;
-        try {
-          const id = chart.createShape({ time: t, price: point.price }, {
-            shape: 'text',
-            text: trendUp ? hiLabel : trendDown ? loLabel : neutralLabel,
-            overrides: {
-              color: trendUp ? '#22c55e' : trendDown ? '#ef4444' : '#94a3b8',
-              fontsize: 13, bold: true,
-              vertAlign: isHigh ? 'bottom' : 'top',
-            },
-            zOrder: 'top', disableSelection: true, disableSave: true, lock: true,
-          });
-          if(id) tvShapeIds.push(id);
-        } catch(e){ /* older widget builds may not support createShape */ }
-      };
-      swingLabel(m.swing.high, 'HH', 'LH', 'H', true);
-      swingLabel(m.swing.low, 'HL', 'LL', 'L', false);
-    }
-
-    if(m.midpointBias && isFinite(m.midpointBias.median)){
-      const nowSec = Math.floor(Date.now() / 1000);
-      try {
-        const id = chart.createShape({ time: nowSec, price: m.midpointBias.median }, {
-          shape: 'horizontal_line',
-          text: 'ราคากลาง ' + m.midpointBias.period + ' แท่ง ' + Number(m.midpointBias.median).toFixed(2),
-          overrides: { linecolor: '#94a3b8', linewidth: 1, linestyle: 1, showLabel: true, textcolor: '#94a3b8', fontsize: 12 },
-          disableSelection: true, disableSave: true, lock: true,
-        });
-        if(id) tvShapeIds.push(id);
-      } catch(e){ /* older widget builds may not support createShape */ }
-    }
-
-    if(lastTrade && isFinite(lastTrade.entry)){
-      const nowSec = Math.floor(Date.now() / 1000);
-      const lines = [
-        { price: lastTrade.entry, text: 'Entry ' + Number(lastTrade.entry).toFixed(2), color: '#eab308' },
-        isFinite(lastTrade.sl) ? { price: lastTrade.sl, text: 'SL ' + Number(lastTrade.sl).toFixed(2), color: '#ef4444' } : null,
-        isFinite(lastTrade.tp) ? { price: lastTrade.tp, text: 'TP ' + Number(lastTrade.tp).toFixed(2), color: '#22c55e' } : null,
-      ].filter(Boolean);
-      lines.forEach(l => {
-        try {
-          const id = chart.createShape({ time: nowSec, price: l.price }, {
-            shape: 'horizontal_line',
-            text: l.text,
-            overrides: { linecolor: l.color, linewidth: 1, linestyle: 2, showLabel: true, textcolor: l.color, fontsize: 12 },
-            disableSelection: true, disableSave: true, lock: true,
-          });
-          if(id) tvShapeIds.push(id);
-        } catch(e){ /* older widget builds may not support createShape */ }
-      });
-    }
-  }
-
-  async function loadPrimary(){
-    const interval = document.getElementById('intervalSelect').value;
-    const [marketData, qc] = await Promise.all([fetchMarketData(interval), fetchQuickCheck(interval)]);
-    lastMarketData = marketData;
-    lastQuickCheck = qc;
-    renderPrice(marketData);
-    renderBias(qc, marketData);
-    renderIndicators(marketData);
-    renderSR(marketData);
-    renderSmc(marketData);
-    renderPriceAction(marketData);
-    renderEntryConfirmation(marketData);
-    if(!aiConfirmed){
-      lastTrade = renderFreeLadder(qc, marketData);
-      setLadderSourceBadge(false);
-    }
-    drawChartAnnotations();
-  }
-
-  async function runAI(){
-    const btn = document.getElementById('analyzeBtn');
-    const out = document.getElementById('aiResult');
-    if(!lastMarketData){ out.innerHTML = '<div class="empty">ยังไม่มีข้อมูลราคา รอโหลดให้เสร็จก่อน</div>'; return; }
-    btn.disabled = true;
-    out.innerHTML = '<div class="empty">กำลังวิเคราะห์…</div>';
-    try {
-      const lossPatterns = analyzeLossPatterns(loadHistory());
-      const res = await fetch('/api/analyze', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          marketData: lastMarketData,
-          lossPatterns: lossPatterns.map(p => p.text),
-          lossPatternKeys: lossPatterns.map(p => p.key),
-        }),
-      });
-      const data = await res.json();
-      if(!res.ok) throw new Error(data.error || 'วิเคราะห์ไม่สำเร็จ');
-      const textBlock = (data.content || []).find(b => b.type === 'text');
-      if(!textBlock) throw new Error('ไม่ได้รับข้อความตอบกลับจาก AI');
-      let clean = textBlock.text.trim().replace(/^```json/i, '').replace(/^```/, '').replace(/```$/, '').trim();
-      const a = JSON.parse(clean);
-      if(a.error) throw new Error(a.error);
-
-      const isWait = String(a.recommendation).toUpperCase() === 'WAIT';
-      const isBuy = !isWait && String(a.recommendation).toUpperCase().indexOf('BUY') !== -1;
-      const cls = isWait ? 'wait' : (isBuy ? 'buy' : 'sell');
-      const aiStructuralStop = isWait ? null : findStructuralStop(isBuy, Number(a.entry), lastMarketData);
-      const trade = isWait ? { entry: null, tp: null, sl: null, riskReward: '—' } : reconcileTrade(a, isBuy, lastMarketData.atr, aiStructuralStop);
-      addHistoryEntry(a, trade, lastMarketData);
-
-      const confPct = a.confidence_percent != null ? Math.round(a.confidence_percent) : 0;
-
-      if(!isWait){
-        renderAiLadder(trade, isBuy ? 'BUY' : 'SELL');
-        lastTrade = trade;
-      } else {
-        setLadderSourceBadge(false);
-      }
-      drawChartAnnotations();
-
-      out.innerHTML =
-        '<div class="tag ' + cls + '" style="font-size:16px; padding:6px 14px;">' + (isWait ? '⏸ AI แนะนำ WAIT' : (isBuy ? '🟢 AI ยืนยัน BUY — ' + confPct + '% confidence' : '🔴 AI ยืนยัน SELL — ' + confPct + '% confidence')) + '</div>' +
-        (trade.atrWidened ? '<div class="risk-hint">⚠ ขยาย SL/TP ตาม ATR (SL เดิมแคบกว่าความผันผวนตลาด)</div>' : '') +
-        (trade.structuralWidened ? '<div class="risk-hint">⚠ ขยาย SL/TP ให้พ้น ' + trade.structuralSource + ' (SL เดิมแคบกว่าแนวรับ/แนวต้าน)</div>' : '') +
-        (a.smart_money ? '<div class="market-context" style="margin-top:10px;"><span>🧠</span><span><strong>เจ้าตลาด:</strong> ' + a.smart_money + '</span></div>' : '') +
-        '<ul class="ai-reasons">' + (Array.isArray(a.reasons) ? a.reasons.map(r => '<li>' + r + '</li>').join('') : '') + '</ul>';
-    } catch (err) {
-      out.innerHTML = '<div class="empty" style="color:var(--sell-bright);">' + (err.message || 'เกิดข้อผิดพลาด') + '</div>';
-    } finally {
-      btn.disabled = false;
-    }
-  }
-
-  document.getElementById('intervalSelect').addEventListener('change', () => {
-    aiConfirmed = false;
-    loadPrimary().catch(e => console.error(e));
+// ---- TradingView chart ----
+let tvWidget=null, tvReady=false, tvShapes=[];
+function initChart(){
+  const box = $('tv');
+  if(typeof TradingView === 'undefined'){ box.innerHTML='<div class="sub" style="padding:20px;">โหลดกราฟไม่สำเร็จ</div>'; return; }
+  box.innerHTML=''; tvReady=false; tvShapes=[];
+  const interval = $('intervalSel').value;
+  const tvInt = { '15min':'15','30min':'30','1h':'60','4h':'240' }[interval] || '60';
+  tvWidget = new TradingView.widget({
+    autosize:true, symbol:META[ASSET].tv, interval:tvInt, timezone:'Etc/UTC', theme:'dark', style:'1',
+    locale:'th', toolbar_bg:'#0a0e17', enable_publishing:false, container_id:'tv',
+    studies:[
+      { id:'MAExp@tv-basicstudies', inputs:{ length: ['15min','30min','1h'].includes(interval)?21:50 } },
+      { id:'MAExp@tv-basicstudies', inputs:{ length:200 } },
+    ],
   });
-  document.getElementById('analyzeBtn').addEventListener('click', runAI);
-  document.getElementById('lotInput').addEventListener('input', () => { if(!aiConfirmed && lastQuickCheck && lastMarketData) renderFreeLadder(lastQuickCheck, lastMarketData); });
-  document.getElementById('slUsdInput').addEventListener('input', () => { if(!aiConfirmed && lastQuickCheck && lastMarketData) renderFreeLadder(lastQuickCheck, lastMarketData); });
-
-  document.getElementById('assetSelect').addEventListener('change', (e) => {
-    ASSET = e.target.value;
-    document.getElementById('dashboardTitle').textContent = ASSET_META[ASSET].title;
-    lastMarketData = null;
-    lastQuickCheck = null;
-    aiConfirmed = false;
-    initChart();
-    loadPrimary().catch(err => console.error(err));
-    loadMultiTimeframe().catch(err => console.error(err));
-    renderHistory(); // historyKey() reads ASSET, so this switches to the other asset's local history
-    document.getElementById('aiResult').innerHTML = 'ยังไม่ได้วิเคราะห์ด้วย AI — ตัวเลขด้านบนเป็นค่าคำนวณฟรีจาก ATR เท่านั้น';
+  tvWidget.onChartReady(()=>{ tvReady=true; drawLines(); });
+}
+function parseTime(t){ const ts = Date.parse(String(t).replace(' ','T')+'Z'); return isFinite(ts)?Math.floor(ts/1000):null; }
+function drawLines(){
+  if(!tvWidget || !tvReady) return;
+  let chart; try{ chart = tvWidget.chart(); }catch(e){ return; }
+  tvShapes.forEach(id=>{ try{ chart.removeEntity(id); }catch(e){} });
+  tvShapes=[];
+  if(!lastTrade) return;
+  const now = Math.floor(Date.now()/1000);
+  [['Entry',lastTrade.entry,'#eab308'],['SL',lastTrade.sl,'#ef4444'],['TP',lastTrade.tp,'#22c55e']].forEach(([txt,price,col])=>{
+    if(price==null||!isFinite(price)) return;
+    try{
+      const id = chart.createShape({time:now,price}, { shape:'horizontal_line', text:txt+' '+Number(price).toFixed(2),
+        overrides:{ linecolor:col, linewidth:1, linestyle:2, showLabel:true, textcolor:col, fontsize:12 },
+        disableSelection:true, disableSave:true, lock:true });
+      if(id) tvShapes.push(id);
+    }catch(e){}
   });
+}
 
-  document.getElementById('suggestConfigBtn').addEventListener('click', async () => {
-    const box = document.getElementById('configSuggestionBox');
-    box.style.display = 'block';
-    box.textContent = '— กำลังวิเคราะห์ประวัติเทรด...';
-    try {
-      const history = loadHistory();
-      const res = await fetch('/api/config-suggestion', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ assetKey: ASSET, history }),
-      });
-      const data = await res.json();
-      if(!res.ok || data.error){
-        box.innerHTML = '⚠ วิเคราะห์ไม่สำเร็จ: ' + (data.error || 'ไม่ทราบสาเหตุ');
-        return;
-      }
-      if(!data.ready){
-        box.innerHTML = '— ' + data.message;
-        return;
-      }
-      const c = data.currentConfig, s = data.suggestedConfig;
-      let html = '<div style="margin-bottom:8px;">จากประวัติเทรดที่ปิดแล้ว ' + data.sampleSize + ' รายการ — win rate โดยรวม <b>' +
-        (data.overallWinRate != null ? (data.overallWinRate*100).toFixed(0)+'%' : '—') + '</b></div>';
-      if(data.changed){
-        html += '<div style="margin-bottom:8px; padding:8px 10px; border-radius:10px; background:var(--buy-dim); color:var(--buy-bright);">' +
-          '<b>แนะนำปรับค่าตั้งค่า</b><br>' +
-          'ADX gate: ' + c.adxGate + ' → <b>' + s.adxGate + '</b><br>' +
-          'strongFactor: ' + c.strongFactor + ' → <b>' + s.strongFactor + '</b><br>' +
-          'Risk:Reward: 1:' + c.rr + ' → <b>1:' + s.rr + '</b>' +
-          '</div>';
-      } else {
-        html += '<div style="margin-bottom:8px; padding:8px 10px; border-radius:10px; background:var(--hairline); color:var(--ink-dim);">ค่าตั้งค่าปัจจุบันยังเหมาะสมกับผลเทรดจริง ไม่มีคำแนะนำให้ปรับตอนนี้</div>';
-      }
-      html += '<ul class="reason-list">' + data.reasons.map(r => '<li>' + r + '</li>').join('') + '</ul>';
-      if(data.changed){
-        html += '<div style="margin-top:8px; color:var(--ink-dim); font-size:12px;">ค่าที่แนะนำนี้ยังไม่ถูกนำไปใช้อัตโนมัติ — แจ้งผู้ดูแลระบบให้ปรับ ASSET_CONFIG ใน server.js ตามตัวเลขข้างต้นถ้าต้องการใช้จริง</div>';
-      }
-      box.innerHTML = html;
-    } catch(e){
-      box.innerHTML = '⚠ วิเคราะห์ไม่สำเร็จ — ลองใหม่อีกครั้ง';
-    }
-  });
+// ---- Local win/loss history ----
+const hKey = () => 'goldSysHist_' + ASSET;
+const loadHist = () => { try{ return JSON.parse(localStorage.getItem(hKey())) || []; }catch(e){ return []; } };
+const saveHist = l => localStorage.setItem(hKey(), JSON.stringify(l.slice(-60)));
 
-  document.getElementById('clearHistoryBtn').addEventListener('click', () => {
-    if(!confirm('ล้างประวัติผลวิเคราะห์ทั้งหมด (ในเครื่องนี้) ใช่ไหม?')) return;
-    saveHistory([]);
-    clearSmcLock();
-    renderHistory();
-    if(lastMarketData){ renderSmc(lastMarketData); renderPriceAction(lastMarketData); renderEntryConfirmation(lastMarketData); }
-  });
-
-  // Highlight the sidebar nav link matching the section currently in view.
-  const navLinks = Array.from(document.querySelectorAll('.nav-link'));
-  const sections = navLinks.map(a => document.getElementById(a.dataset.target)).filter(Boolean);
-  if('IntersectionObserver' in window && sections.length){
-    const observer = new IntersectionObserver((entries) => {
-      entries.forEach(entry => {
-        if(entry.isIntersecting){
-          const link = navLinks.find(a => a.dataset.target === entry.target.id);
-          if(link){
-            navLinks.forEach(a => a.classList.remove('active'));
-            link.classList.add('active');
-          }
-        }
-      });
-    }, { rootMargin: '-20% 0px -70% 0px' });
-    sections.forEach(s => observer.observe(s));
+function recordTrade(d){
+  const s=d.signal, L=d.levels;
+  if(!L.entry || !isFinite(L.sl) || !isFinite(L.tp)) return;
+  const list = loadHist();
+  const openPending = list.find(r=>r.status==='pending');
+  if(openPending){
+    // Only replace a pending trade if direction flipped; ignore small drift.
+    if(openPending.direction === s.direction) return;
   }
-  navLinks[0].classList.add('active');
+  list.push({ time:Date.now(), interval:d.interval, direction:s.direction,
+    entry:L.entry, sl:L.sl, tp:L.tp, status:'pending', closedPrice:null });
+  saveHist(list); renderHist();
+}
 
-  initChart();
-  // AI entry-point analysis runs once automatically on page load so the
-  // dashboard opens with a smart-money-aware BUY/SELL/WAIT call already in
-  // place — it stays button-triggered after that (each call has a real
-  // Claude API cost, see AUTO_REFRESH_MS comment below), so switching
-  // asset/interval or the 2-minute auto-refresh does not re-spend on it.
-  loadPrimary().then(() => runAI()).catch(e => console.error(e));
-  loadMultiTimeframe().catch(e => console.error(e));
-  renderHistory();
+function checkHist(d){
+  const list = loadHist();
+  if(!list.length) return;
+  const candles = d.recentCandles || [];
+  let changed = false;
+  list.forEach(rec=>{
+    if(rec.status!=='pending') return;
+    let hit = null;
+    for(const c of candles){
+      const ct = parseTime(c.time);
+      if(ct==null || ct < rec.time) continue;
+      const slHit = rec.direction==='BUY' ? c.low<=rec.sl : c.high>=rec.sl;
+      const tpHit = rec.direction==='BUY' ? c.high>=rec.tp : c.low<=rec.tp;
+      if(slHit && tpHit){ hit = Math.abs(c.open-rec.sl) <= Math.abs(c.open-rec.tp) ? 'loss' : 'win'; }
+      else if(slHit) hit='loss';
+      else if(tpHit) hit='win';
+      if(hit) break;
+    }
+    if(!hit){
+      const p = d.price;
+      if(rec.direction==='BUY'){ if(p>=rec.tp) hit='win'; else if(p<=rec.sl) hit='loss'; }
+      else { if(p<=rec.tp) hit='win'; else if(p>=rec.sl) hit='loss'; }
+    }
+    if(hit){ rec.status=hit; rec.closedPrice=d.price; changed=true; }
+  });
+  if(changed) saveHist(list);
+  renderHist();
+}
 
-  // Auto-refresh every 2 minutes (price, multi-timeframe). 60s was
-  // tried first but Twelve Data's free tier caps at 800 credits/DAY (not
-  // just per-minute) — the multi-timeframe table alone costs ~8 credits per
-  // cycle, so a 60s cadence burns the entire daily quota in under 2 hours
-  // of just leaving the tab open. 5min was tried next but felt too stale
-  // for "real-time" use. 2 minutes is the middle ground: still burns the
-  // daily quota if left open ~3+ hours straight, but feels responsive for
-  // an active session. Does not touch the AI panel (runAI stays
-  // button-triggered — that call has a real per-request cost on top).
-  const AUTO_REFRESH_MS = 2 * 60 * 1000;
-  setInterval(() => {
-    loadPrimary().catch(e => console.error(e));
-    loadMultiTimeframe().catch(e => console.error(e));
-  }, AUTO_REFRESH_MS);
+function renderHist(){
+  const list = loadHist();
+  const panel = $('histPanel');
+  if(!list.length){ panel.style.display='none'; return; }
+  panel.style.display='block';
+  const wins = list.filter(r=>r.status==='win').length;
+  const loss = list.filter(r=>r.status==='loss').length;
+  const pend = list.filter(r=>r.status==='pending').length;
+  const closed = wins+loss;
+  $('hWin').textContent=wins; $('hLoss').textContent=loss; $('hPend').textContent=pend;
+  $('hRate').textContent = closed ? Math.round(wins/closed*100)+'%' : '—';
+  $('histList').innerHTML = list.slice(-10).reverse().map(r=>{
+    const dt = new Date(r.time).toLocaleString('th-TH',{hour:'2-digit',minute:'2-digit',day:'2-digit',month:'2-digit'});
+    const st = r.status==='win'?'✓ ชนะ':r.status==='loss'?'✕ แพ้':'… รอผล';
+    const col = r.status==='win'?'var(--buy)':r.status==='loss'?'var(--sell)':'var(--dim)';
+    return `<li>${dt} · ${r.interval} · ${r.direction} @ ${fmt(r.entry)} → <b style="color:${col}">${st}</b></li>`;
+  }).join('');
+}
+
+// ---- Orchestration ----
+async function load(){
+  const interval = $('intervalSel').value;
+  try{
+    const d = await api('/api/signal?asset='+ASSET+'&interval='+interval);
+    last = d;
+    renderPrice(d);
+    renderSignal(d);
+    renderIndicators(d);
+    renderSR(d);
+    checkHist(d);
+    drawLines();
+  }catch(e){
+    $('waitBanner').style.display='block';
+    $('waitBanner').textContent = 'โหลดข้อมูลไม่สำเร็จ: ' + e.message;
+  }
+  loadMtf();
+}
+
+$('assetSel').addEventListener('change', e=>{
+  ASSET = e.target.value;
+  $('title').textContent = META[ASSET].title;
+  $('contract').value = META[ASSET].contract;
+  last=null; lastTrade=null;
+  initChart(); load(); renderHist();
+});
+$('intervalSel').addEventListener('change', ()=>{ initChart(); load(); });
+$('lot').addEventListener('input', ()=>{ if(last) riskCalc(last.levels); });
+$('contract').addEventListener('input', ()=>{ if(last) riskCalc(last.levels); });
+$('clearHist').addEventListener('click', ()=>{ if(confirm('ล้างประวัติทั้งหมดในเครื่องนี้?')){ saveHist([]); renderHist(); } });
+
+initChart();
+load();
+renderHist();
+setInterval(load, 2*60*1000);
 </script>
 </body>
 </html>

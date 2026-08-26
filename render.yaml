@@ -1,12 +1,14 @@
 services:
   - type: web
-    name: gold-ai-analyzer
+    name: gold-trading-system
     env: node
     plan: free
     buildCommand: npm install
     startCommand: npm start
     envVars:
-      - key: ANTHROPIC_API_KEY
-        sync: false
       - key: TWELVE_DATA_API_KEY
+        sync: false
+      - key: EMAIL_USER
+        sync: false
+      - key: EMAIL_APP_PASSWORD
         sync: false
