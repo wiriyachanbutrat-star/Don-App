@@ -98,7 +98,7 @@
     <div>
       <div class="symbol" id="title">XAU/USD — GOLD TRADING SYSTEM</div>
       <div class="sub">ระบบสัญญาณเชิงปริมาณล้วน · Intraday · ไม่มี AI</div>
-      <div class="live"><span class="dot"></span>LIVE · อัปเดตทุก 2 นาที</div>
+      <div class="live"><span class="dot"></span>LIVE · อัปเดตทุก 5 นาที</div>
     </div>
     <div style="display:flex;align-items:center;gap:12px;">
       <div class="price"><span id="priceVal">—</span><span class="chg" id="priceChg"></span></div>
@@ -561,7 +561,7 @@ function boot(){
   guard(renderHist, 'renderHist');
   refresh();
   guard(initChart, 'initChart');
-  setInterval(refresh, 2*60*1000);
+  setInterval(refresh, 5*60*1000);
 }
 if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
 else boot();

@@ -77,8 +77,11 @@ app.get('/api/commentary', async (req, res) => {
   }
 });
 
-// Compact multi-timeframe summary — one row per timeframe.
-const MTF_INTERVALS = ['5min', '15min', '30min', '1h', '4h', '1day'];
+// Compact multi-timeframe summary — one row per timeframe. Kept to four
+// timeframes and fetched SEQUENTIALLY (not Promise.all) so a cold load
+// trickles requests instead of firing a burst that trips Twelve Data's
+// 8-credits-per-minute limit. Most calls hit the 5-minute cache anyway.
+const MTF_INTERVALS = ['15min', '1h', '4h', '1day'];
 
 app.get('/api/mtf', async (req, res) => {
   if (!process.env.TWELVE_DATA_API_KEY) {
@@ -86,10 +89,11 @@ app.get('/api/mtf', async (req, res) => {
   }
   const asset = pickAsset(req.query.asset);
   try {
-    const rows = await Promise.all(MTF_INTERVALS.map(async interval => {
+    const rows = [];
+    for (const interval of MTF_INTERVALS) {
       try {
         const d = await getAnalysis(asset, interval);
-        return {
+        rows.push({
           interval,
           direction: d.signal.direction,
           tradable: d.signal.tradable,
@@ -103,11 +107,11 @@ app.get('/api/mtf', async (req, res) => {
           regime: d.regime.direction,
           price: d.price,
           ok: true,
-        };
+        });
       } catch (e) {
-        return { interval, ok: false, error: e.message };
+        rows.push({ interval, ok: false, error: e.message });
       }
-    }));
+    }
     res.json({ asset, rows });
   } catch (err) {
     console.error('/api/mtf', err.message);
