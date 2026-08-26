@@ -212,7 +212,8 @@
   </footer>
 </div>
 
-<script src="https://s3.tradingview.com/tv.js"></script>
+<script>window.__tvFailed = false;</script>
+<script src="https://s3.tradingview.com/tv.js" async onerror="window.__tvFailed = true"></script>
 <script>
 'use strict';
 const CIRC = 326.7;
@@ -380,22 +381,35 @@ function renderPrice(d){
 }
 
 // ---- TradingView chart ----
-let tvWidget=null, tvReady=false, tvShapes=[];
+// tv.js is loaded async so a blocked/slow CDN can never hold up the data
+// panels. initChart() polls for the global for a few seconds, then gives up
+// gracefully — the rest of the dashboard works fine without the chart.
+let tvWidget=null, tvReady=false, tvShapes=[], tvTries=0;
 function initChart(){
   const box = $('tv');
-  if(typeof TradingView === 'undefined'){ box.innerHTML='<div class="sub" style="padding:20px;">โหลดกราฟไม่สำเร็จ</div>'; return; }
-  box.innerHTML=''; tvReady=false; tvShapes=[];
+  if(typeof TradingView === 'undefined'){
+    if(window.__tvFailed || tvTries++ > 40){
+      box.innerHTML='<div class="sub" style="padding:20px;">โหลดกราฟ TradingView ไม่ได้ (เครือข่ายอาจบล็อก s3.tradingview.com) — ส่วนอื่นของหน้ายังทำงานปกติ</div>';
+      return;
+    }
+    setTimeout(initChart, 250);
+    return;
+  }
+  try{ box.innerHTML=''; }catch(e){}
+  tvReady=false; tvShapes=[];
   const interval = $('intervalSel').value;
   const tvInt = { '15min':'15','30min':'30','1h':'60','4h':'240' }[interval] || '60';
-  tvWidget = new TradingView.widget({
-    autosize:true, symbol:META[ASSET].tv, interval:tvInt, timezone:'Etc/UTC', theme:'dark', style:'1',
-    locale:'th', toolbar_bg:'#0a0e17', enable_publishing:false, container_id:'tv',
-    studies:[
-      { id:'MAExp@tv-basicstudies', inputs:{ length: ['15min','30min','1h'].includes(interval)?21:50 } },
-      { id:'MAExp@tv-basicstudies', inputs:{ length:200 } },
-    ],
-  });
-  tvWidget.onChartReady(()=>{ tvReady=true; drawLines(); });
+  try{
+    tvWidget = new TradingView.widget({
+      autosize:true, symbol:META[ASSET].tv, interval:tvInt, timezone:'Etc/UTC', theme:'dark', style:'1',
+      locale:'th', toolbar_bg:'#0a0e17', enable_publishing:false, container_id:'tv',
+      studies:[
+        { id:'MAExp@tv-basicstudies', inputs:{ length: ['15min','30min','1h'].includes(interval)?21:50 } },
+        { id:'MAExp@tv-basicstudies', inputs:{ length:200 } },
+      ],
+    });
+    tvWidget.onChartReady(()=>{ tvReady=true; drawLines(); });
+  }catch(e){ console.error('chart init failed', e); }
 }
 function parseTime(t){ const ts = Date.parse(String(t).replace(' ','T')+'Z'); return isFinite(ts)?Math.floor(ts/1000):null; }
 function drawLines(){
@@ -484,32 +498,39 @@ function renderHist(){
 }
 
 // ---- Orchestration ----
+const guard = (fn,label) => { try{ fn(); }catch(e){ console.error(label, e); } };
+
 async function load(){
   const interval = $('intervalSel').value;
+  let d;
   try{
-    const d = await api('/api/signal?asset='+ASSET+'&interval='+interval);
-    last = d;
-    renderPrice(d);
-    renderSignal(d);
-    renderIndicators(d);
-    renderSR(d);
-    checkHist(d);
-    drawLines();
+    d = await api('/api/signal?asset='+ASSET+'&interval='+interval);
   }catch(e){
     $('waitBanner').style.display='block';
-    $('waitBanner').textContent = 'โหลดข้อมูลไม่สำเร็จ: ' + e.message;
+    $('waitBanner').textContent = 'โหลดข้อมูลไม่สำเร็จ: ' + e.message + ' — ระบบจะลองใหม่อัตโนมัติ';
+    console.error('load /api/signal', e);
+    return;
   }
-  loadMtf();
+  $('waitBanner').style.display='none';
+  last = d;
+  guard(()=>renderPrice(d), 'renderPrice');
+  guard(()=>renderSignal(d), 'renderSignal');
+  guard(()=>renderIndicators(d), 'renderIndicators');
+  guard(()=>renderSR(d), 'renderSR');
+  guard(()=>checkHist(d), 'checkHist');
+  guard(drawLines, 'drawLines');
 }
+
+function refresh(){ load().catch(e=>console.error(e)); loadMtf().catch(e=>console.error(e)); }
 
 $('assetSel').addEventListener('change', e=>{
   ASSET = e.target.value;
   $('title').textContent = META[ASSET].title;
   $('contract').value = META[ASSET].contract;
   last=null; lastTrade=null; $('aiOut').innerHTML='';
-  initChart(); load(); renderHist();
+  guard(initChart,'initChart'); refresh(); guard(renderHist,'renderHist');
 });
-$('intervalSel').addEventListener('change', ()=>{ $('aiOut').innerHTML=''; initChart(); load(); });
+$('intervalSel').addEventListener('change', ()=>{ $('aiOut').innerHTML=''; guard(initChart,'initChart'); refresh(); });
 $('lot').addEventListener('input', ()=>{ if(last) riskCalc(last.levels); });
 $('contract').addEventListener('input', ()=>{ if(last) riskCalc(last.levels); });
 $('clearHist').addEventListener('click', ()=>{ if(confirm('ล้างประวัติทั้งหมดในเครื่องนี้?')){ saveHist([]); renderHist(); } });
@@ -534,10 +555,16 @@ $('aiBtn').addEventListener('click', async ()=>{
   }
 });
 
-initChart();
-load();
-renderHist();
-setInterval(load, 2*60*1000);
+// Data first — never gated on the chart. Each call is independently guarded.
+function boot(){
+  $('updated').textContent = 'เริ่มโหลด ' + new Date().toLocaleTimeString('th-TH') + '…';
+  guard(renderHist, 'renderHist');
+  refresh();
+  guard(initChart, 'initChart');
+  setInterval(refresh, 2*60*1000);
+}
+if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+else boot();
 </script>
 </body>
 </html>
