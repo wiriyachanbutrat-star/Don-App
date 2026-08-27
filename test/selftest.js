@@ -155,6 +155,21 @@ function check(name, cond, detail) {
   // Counter-trend: main up but HTF down → must not be tradable BUY
   const ct = S.analyze({ assetKey: 'XAU', interval: '1h', candles, htfCandles: dhtf });
   check('strategy: main-up vs HTF-down → vetoed', !(ct.signal.tradable && ct.signal.direction === 'BUY'), JSON.stringify(ct.signal));
+
+  // Buy-the-dip guard: long uptrend history (regime + cascade bullish) but the
+  // last ~15 bars sell off hard, printing LH/LL → must NOT be a tradable BUY.
+  const base = mk(300, 2000, 0.8);
+  const selloff = [];
+  let p = base[base.length - 1].close;
+  for (let i = 0; i < 20; i++) {
+    const close = p - 3.5;
+    selloff.push({ time: `2024-02-01 ${String(i % 24).padStart(2, '0')}:00:00`, open: p, high: p + 1, low: close - 1, close });
+    p = close;
+  }
+  const dipCandles = base.concat(selloff);
+  const dip = S.analyze({ assetKey: 'XAU', interval: '1h', candles: dipCandles, htfCandles: mk(320, 1900, 1.6) });
+  check('strategy: sharp selloff in an uptrend → BUY not tradable', !(dip.signal.tradable && dip.signal.direction === 'BUY'), JSON.stringify(dip.signal));
+  check('strategy: selloff → momentum vote is SELL', dip.indicators.momentum === 'SELL', String(dip.indicators.momentum));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);
