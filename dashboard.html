@@ -325,7 +325,10 @@ function renderIndicators(d){
   const rsi = i.rsi==null ? {t:'—',c:''} : {t:i.rsi.toFixed(1)+(i.rsi>=55?' (ซื้อ)':i.rsi<=45?' (ขาย)':' (กลาง)'),c:i.rsi>=55?'up':i.rsi<=45?'down':''};
   const di = (i.plusDI!=null) ? {t:'+DI '+i.plusDI.toFixed(0)+' / -DI '+i.minusDI.toFixed(0),c:i.plusDI>i.minusDI?'up':'down'} : {t:'—',c:''};
   const pb = i.pullback ? {t:'ราคาย่อเข้าโซน EMA ('+i.pullback+')',c:i.pullback==='BUY'?'up':'down'} : {t:'ราคาไม่ได้อยู่ในโซนย่อ',c:''};
+  const dirTxt = (mv,d) => (mv>=0?'+':'')+mv+'×ATR '+(d==='BUY'?'↗ ขึ้น':d==='SELL'?'↘ ลง':'– sideways');
   const items = [
+    ['ทิศทางกราฟ 6 แท่ง', i.shortMoveAtr!=null?dirTxt(i.shortMoveAtr,i.shortDir):'—', i.shortDir==='BUY'?'up':i.shortDir==='SELL'?'down':''],
+    ['ทิศทางกราฟ 20 แท่ง', i.medMoveAtr!=null?dirTxt(i.medMoveAtr,i.medDir):'—', i.medDir==='BUY'?'up':i.medDir==='SELL'?'down':''],
     ['EMA cascade', emaRel.t, emaRel.c],
     ['EMA200', e200.t, e200.c],
     ['RSI (14)', rsi.t, rsi.c],
