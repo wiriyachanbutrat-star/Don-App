@@ -20,6 +20,18 @@
 คะแนนสุทธิ (net / ±16) ตัดสินทิศทาง+ความมั่นใจ · gate ตัดสินว่าเข้าได้จริงไหม
 **ผลลัพธ์: WAIT บ่อยขึ้นมาก** — ตั้งใจ เพราะทองอินทราเดย์ส่วนใหญ่คือ sideways ที่ระบบเทรนด์ขาดทุน
 
+## Backtest — `/api/backtest` + ปุ่มบน dashboard
+
+รันกลยุทธ์เดียวกันนี้ย้อนหลัง ~4 เดือน (3000 แท่ง) แบบ walk-forward (ไม่มี look-ahead:
+แต่ละแท่งใช้เฉพาะข้อมูลก่อนหน้า, HTF ตัดตามเวลาที่ปิดจริง) แล้วจำลองผลเทรดเป็นหน่วย **R**
+
+จากผลทดสอบทอง 2026 (`node -e` หรือกดปุ่มบน dashboard):
+- **4h: มี edge จริง** — ~+0.23R ต่อไม้, profit factor 1.48, ทั้ง BUY/SELL บวก → **default เป็น 4h**
+- **1h: ราว ๆ เสมอตัว** — BUY บวก แต่ SELL ขาดทุน (shorting ทองขาขึ้น)
+- ADX 25–30 คือช่วงที่ดีสุด — การยก gate ให้สูงกว่านั้นทำให้แย่ลง
+
+*51–65 เทรดใน 1 ช่วงตลาด — เป็นแนวโน้ม ไม่ใช่คำรับประกัน · overfit ได้ ใช้ประกอบการตัดสินใจ*
+
 **จุดเข้า/ออก:** Entry = ราคาปัจจุบัน · SL วางพ้น Swing Low/High (หรือแนวรับ-ต้าน 30 แท่ง)
 แล้วบีบให้อยู่ในช่วง 1–3 เท่า ATR · TP = ระยะ SL × 1.5
 
@@ -43,8 +55,9 @@ npm test                  # ตรวจสูตรอินดิเคเต�
 | `lib/indicators.js` | สูตรอินดิเคเตอร์ล้วน (EMA/RSI/ATR/ADX/MACD/Bollinger/swing/structure) — deterministic, คืน null เมื่อข้อมูลไม่พอ |
 | `lib/strategy.js` | เครื่องมือสัญญาณ: โหวตถ่วงน้ำหนัก → ทิศทาง + gate + จุดเข้า/ออก |
 | `lib/marketData.js` | ดึงราคาจาก Twelve Data + แคช 2 ชั้น + dedupe |
+| `lib/backtest.js` | walk-forward backtest ของกลยุทธ์เดียวกัน คืนสถิติเป็นหน่วย R |
 | `lib/aiCommentary.js` | ตัวเลือก: เรียก Claude อธิบายสัญญาณเป็นภาษาไทย (commentary เท่านั้น ไม่ override) |
-| `server.js` | Express: `/api/signal`, `/api/mtf`, `/api/commentary`, `/api/health` + อีเมลแจ้งเตือน |
+| `server.js` | Express: `/api/signal`, `/api/mtf`, `/api/backtest`, `/api/commentary`, `/api/health` + อีเมล |
 | `dashboard.html` | หน้าเว็บหน้าเดียว (สัญญาณ, ladder, MTF, กราฟ TradingView, สถิติในเครื่อง) |
 | `test/selftest.js` | ชุดทดสอบสูตร (เทียบค่ามาตรฐาน Wilder ฯลฯ) |
 
@@ -52,7 +65,8 @@ npm test                  # ตรวจสูตรอินดิเคเต�
 
 - `GET /api/signal?asset=XAU&interval=1h` — วิเคราะห์เต็มของกรอบเวลาเดียว
 - `GET /api/mtf?asset=XAU` — สรุปหลายกรอบเวลา (5m–1d)
-- `GET /api/commentary?asset=XAU&interval=1h` — คำอธิบายจาก AI (ต้องมี `ANTHROPIC_API_KEY`)
+- `GET /api/backtest?asset=XAU&interval=4h&bars=3000` — ทดสอบกลยุทธ์ย้อนหลัง (แคช 30 นาที)
+- `GET /api/commentary?asset=XAU&interval=4h` — คำอธิบายจาก AI (ต้องมี `ANTHROPIC_API_KEY`)
 - `GET /api/health`
 
 ไม่ใช่คำแนะนำการลงทุน

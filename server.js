@@ -5,9 +5,10 @@ const path = require('path');
 const express = require('express');
 const nodemailer = require('nodemailer');
 
-const { ASSETS, VALID_INTERVALS, getAnalysis } = require('./lib/marketData');
-const { assetConfig } = require('./lib/strategy');
+const { ASSETS, VALID_INTERVALS, getAnalysis, getLongSeries } = require('./lib/marketData');
+const { assetConfig, higherInterval } = require('./lib/strategy');
 const { getCommentary, MODEL: AI_MODEL } = require('./lib/aiCommentary');
+const { runBacktest } = require('./lib/backtest');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -77,6 +78,42 @@ app.get('/api/commentary', async (req, res) => {
   }
 });
 
+// Walk-forward backtest of the live strategy over months of real candles.
+// One Twelve Data call per (interval), cached an hour. Result cached 30 min
+// since the computation is heavy.
+const backtestCache = new Map();
+const BACKTEST_TTL_MS = 30 * 60 * 1000;
+
+app.get('/api/backtest', async (req, res) => {
+  if (!process.env.TWELVE_DATA_API_KEY) {
+    return res.status(500).json({ error: 'ยังไม่ได้ตั้งค่า TWELVE_DATA_API_KEY บนเซิร์ฟเวอร์' });
+  }
+  const asset = pickAsset(req.query.asset);
+  const interval = pickInterval(req.query.interval);
+  const bars = Math.max(800, Math.min(5000, Number(req.query.bars) || 3000));
+  const cacheKey = `${asset}:${interval}:${bars}`;
+  const hit = backtestCache.get(cacheKey);
+  if (hit && Date.now() - hit.time < BACKTEST_TTL_MS) {
+    return res.json({ ...hit.data, cached: true });
+  }
+  try {
+    const htfInterval = higherInterval(interval);
+    const [candles, htfCandles] = await Promise.all([
+      getLongSeries(asset, interval, bars),
+      getLongSeries(asset, htfInterval, bars),
+    ]);
+    const t0 = Date.now();
+    const result = runBacktest({ assetKey: asset, interval, candles, htfCandles });
+    result.asset = asset;
+    result.computeMs = Date.now() - t0;
+    if (!result.error) backtestCache.set(cacheKey, { time: Date.now(), data: result });
+    res.json({ ...result, cached: false });
+  } catch (err) {
+    console.error('/api/backtest', err.message);
+    res.status(502).json({ error: 'ทดสอบย้อนหลังไม่สำเร็จ: ' + err.message });
+  }
+});
+
 // Compact multi-timeframe summary — one row per timeframe. Kept to four
 // timeframes and fetched SEQUENTIALLY (not Promise.all) so a cold load
 // trickles requests instead of firing a burst that trips Twelve Data's
@@ -128,7 +165,9 @@ const EMAIL_USER = process.env.EMAIL_USER;
 const EMAIL_APP_PASSWORD = process.env.EMAIL_APP_PASSWORD;
 const EMAIL_TO = process.env.EMAIL_TO || EMAIL_USER;
 const EMAIL_ASSET = pickAsset(process.env.EMAIL_ASSET);
-const EMAIL_INTERVAL = pickInterval(process.env.EMAIL_INTERVAL);
+// Default 4h, not 1h: the 3000-bar backtest shows 4h has real positive
+// expectancy (~+0.23R/trade, PF 1.48) while 1h is roughly break-even.
+const EMAIL_INTERVAL = VALID_INTERVALS.includes(process.env.EMAIL_INTERVAL) ? process.env.EMAIL_INTERVAL : '4h';
 const EMAIL_CHECK_MS = 15 * 60 * 1000;
 
 const mailer = (EMAIL_USER && EMAIL_APP_PASSWORD)
