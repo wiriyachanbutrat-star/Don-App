@@ -1,43 +1,63 @@
-# Gold Trading System
+# Gold Trading System — XAUUSD Smart Entry
 
-ระบบสัญญาณเทรด **XAU/USD** (และ BTC/USD) เชิงปริมาณล้วน — คำนวณจากราคาจริงทั้งหมด
-ไม่มี AI ไม่มี veto ซ้อนกันหลายชั้น ตรรกะเดียวอ่านตามได้ตรง ๆ
+ระบบสัญญาณเทรด **XAU/USD** (และ BTC/USD) แบบ top-down price action — คำนวณจากราคาจริง
+ไม่มี AI ในเส้นทางตัดสินใจ อินดิเคเตอร์เดียวคือ **EMA50** ที่เหลือเป็น price action ล้วน
 
-## กลยุทธ์ (Intraday trend-pullback)
+## กลยุทธ์
 
-เรียงตามน้ำหนักความสำคัญ:
+| ชั้น | กรอบเวลา | หน้าที่ |
+|---|---|---|
+| **Trend** | H4 | EMA50 + ความชัน → **กำหนดทิศทางอย่างเดียว** (ราคาเหนือ/ใต้ EMA50 + slope) |
+| **Structure** | H1 | ต้องเป็น HH/HL (BUY) หรือ LH/LL (SELL) |
+| **Entry** | M15 | ราคาอยู่ที่แนว Swing S/R + Break of Structure + Retest + Rejection candle |
 
-**กฎเหล็ก: สัญญาณต้องไปทางเดียวกับกราฟ** วัดการเคลื่อนของราคาจริง 2 กรอบ (หน่วยเป็นเท่าของ ATR):
-6 แท่ง (สั้น) และ 20 แท่ง (กลาง — สวิงที่เห็นบนจอ) ถ้าทิศทางสัญญาณสวนกรอบใดกรอบหนึ่งที่ชัดเจน → **WAIT ทันที**
+**Score /9** — เข้าเทรดเฉพาะ **8–9/9**
 
-1. **Regime** — เทรนด์ HTF ต้องเห็นด้วย: ราคา vs EMA50 + ความชัน EMA50 + HTF เคลื่อน 8 แท่งล่าสุดไปทางนั้นจริง
-2. **Trend** — EMA20 > EMA50 > EMA200 (หรือกลับด้าน)
-3. **Price move** — 6 แท่ง + 20 แท่ง (เทียบ ATR) เป็นโหวตหลัก น้ำหนักอย่างละ 2
-4. **Momentum** — MACD histogram + RSI
-5. **Location** — ราคาย่อเข้าโซน EMA *เฉพาะเมื่อ* โครงสร้าง + โมเมนตัมสั้น/กลางยังไม่สวน
-6. **Gates** — ADX ≥ 25 (เดิม 20 — chop 20-25 คือที่ระบบเสียเงิน) · สวน HTF/โครงสร้าง/ราคา 6 แท่ง/ราคา 20 แท่ง = งด · CHoCH สวนทาง = งด · สวน EMA200 ต้องคะแนนสูงกว่า
+| เงื่อนไข | คะแนน |
+|---|---|
+| H4 Trend ตรงกัน | +2 |
+| H1 Structure ตรงกัน | +2 |
+| ราคาอยู่ที่แนว S/R สำคัญ | +2 |
+| Break of Structure (BOS) | +1 |
+| Retest ระดับที่ทะลุ | +1 |
+| Rejection candle (hammer/engulfing) | +1 |
 
-คะแนนสุทธิ (net / ±16) ตัดสินทิศทาง+ความมั่นใจ · gate ตัดสินว่าเข้าได้จริงไหม
-**ผลลัพธ์: WAIT บ่อยขึ้นมาก** — ตั้งใจ เพราะทองอินทราเดย์ส่วนใหญ่คือ sideways ที่ระบบเทรนด์ขาดทุน
+`8–9` STRONG (เข้าได้) · `6–7` WATCH · `0–5` NO_TRADE
+
+**Entry/SL/TP:** Entry = ราคาปัจจุบัน · SL พ้นแนว Swing + บัฟเฟอร์ 0.3×ATR (บีบ 1–3×ATR) ·
+TP = RR 1:1.6 หรือ swing ตรงข้าม (ไม่เกิน 3R)
+
+กรอบเวลาที่เลือกได้บน dashboard = **Entry TF** (M15/M30/H1/H4) — Structure & Trend TF เลื่อนตามอัตโนมัติ
+เช่น เลือก M15 → Structure=H1, Trend=H4 (ตรงตาม spec)
 
 ## Backtest — `/api/backtest` + ปุ่มบน dashboard
 
-รันกลยุทธ์เดียวกันนี้ย้อนหลัง ~4 เดือน (3000 แท่ง) แบบ walk-forward (ไม่มี look-ahead:
-แต่ละแท่งใช้เฉพาะข้อมูลก่อนหน้า, HTF ตัดตามเวลาที่ปิดจริง) แล้วจำลองผลเทรดเป็นหน่วย **R**
+walk-forward, ไม่มี look-ahead (แต่ละแท่งเห็นเฉพาะข้อมูลก่อนหน้า, 2 กรอบ TF บนตัดตามเวลาปิดจริง),
+จำลองผลถึง SL/TP + time-stop 48 แท่ง, คิดเป็นหน่วย **R**
 
-จากผลทดสอบทอง 2026 (`node -e` หรือกดปุ่มบน dashboard):
-- **4h: มี edge จริง** — ~+0.23R ต่อไม้, profit factor 1.48, ทั้ง BUY/SELL บวก → **default เป็น 4h**
-- **1h: ราว ๆ เสมอตัว** — BUY บวก แต่ SELL ขาดทุน (shorting ทองขาขึ้น)
-- ADX 25–30 คือช่วงที่ดีสุด — การยก gate ให้สูงกว่านั้นทำให้แย่ลง
+ผลทดสอบทอง 2026 (5000 แท่ง):
 
-*51–65 เทรดใน 1 ช่วงตลาด — เป็นแนวโน้ม ไม่ใช่คำรับประกัน · overfit ได้ ใช้ประกอบการตัดสินใจ*
+| Entry TF | เทรด | Win | Expectancy | Profit Factor | รวม |
+|---|---|---|---|---|---|
+| **H4** | 81 | 53% | **+0.37R** | **1.82** | **+30R** ✅ |
+| M30 | 51 | 44% | +0.12R | 1.22 | +6R |
+| M15 (spec) | 44 | 40% | +0.02R | 1.04 | เสมอตัว |
+| H1 | 54 | 33% | −0.12R | 0.81 | −6R ❌ |
 
-**จุดเข้า/ออก:** Entry = ราคาปัจจุบัน · SL วางพ้น Swing Low/High (หรือแนวรับ-ต้าน 30 แท่ง)
-แล้วบีบให้อยู่ในช่วง 1–3 เท่า ATR · TP = ระยะ SL × 1.5
+→ **spec H4/H1/M15 = เสมอตัวในช่วงนี้** · engine เดียวกันบน H4 (entry) ทำได้ดีสุด ·
+SELL แย่กว่า BUY เกือบทุก TF (shorting ทองขาขึ้น)
 
-**AI (ตัวเลือก):** ถ้าตั้ง `ANTHROPIC_API_KEY` จะมีปุ่ม "ขอคำวิเคราะห์เชิงลึกจาก AI"
-บน dashboard — Claude อธิบายสัญญาณเป็นภาษาไทย (บริบท, ความเสี่ยง, จุดที่สัญญาณเสีย)
-**ไม่เปลี่ยนคำตัดสิน BUY/SELL/WAIT หรือตัวเลขใด ๆ** เป็นคำอธิบายอย่างเดียว กดครั้งละ 1 call
+*ตัวอย่างเดียว 1 ช่วงตลาด — เป็นแนวโน้ม ไม่ใช่คำรับประกัน · price-action mechanised แบบนี้หยาบกว่าตาคน*
+
+## Pine Script
+
+`XAUUSD-SmartEntry.pine` — indicator v5 สำหรับ TradingView (ใส่บนชาร์ต M15/M30/H1 XAUUSD):
+EMA50, dashboard H4/H1/M15, score /9, label BUY/SELL + เส้น Entry/SL/TP + RR, ไม่ซ้ำในโซนเดิม, alertcondition
+
+## AI (ตัวเลือก)
+
+ถ้าตั้ง `ANTHROPIC_API_KEY` → ปุ่ม "ขอคำวิเคราะห์เชิงลึกจาก AI" บน dashboard — Claude อธิบาย setup
+เป็นภาษาไทย **ไม่เปลี่ยนคำตัดสินหรือตัวเลข** commentary อย่างเดียว
 
 ## รันในเครื่อง
 
@@ -45,28 +65,29 @@
 npm install
 cp .env.example .env      # ใส่ TWELVE_DATA_API_KEY
 npm start                 # http://localhost:3000
-npm test                  # ตรวจสูตรอินดิเคเตอร์ + กลยุทธ์
+npm test
 ```
 
 ## โครงสร้าง
 
 | ไฟล์ | หน้าที่ |
 |---|---|
-| `lib/indicators.js` | สูตรอินดิเคเตอร์ล้วน (EMA/RSI/ATR/ADX/MACD/Bollinger/swing/structure) — deterministic, คืน null เมื่อข้อมูลไม่พอ |
-| `lib/strategy.js` | เครื่องมือสัญญาณ: โหวตถ่วงน้ำหนัก → ทิศทาง + gate + จุดเข้า/ออก |
-| `lib/marketData.js` | ดึงราคาจาก Twelve Data + แคช 2 ชั้น + dedupe |
-| `lib/backtest.js` | walk-forward backtest ของกลยุทธ์เดียวกัน คืนสถิติเป็นหน่วย R |
-| `lib/aiCommentary.js` | ตัวเลือก: เรียก Claude อธิบายสัญญาณเป็นภาษาไทย (commentary เท่านั้น ไม่ override) |
-| `server.js` | Express: `/api/signal`, `/api/mtf`, `/api/backtest`, `/api/commentary`, `/api/health` + อีเมล |
-| `dashboard.html` | หน้าเว็บหน้าเดียว (สัญญาณ, ladder, MTF, กราฟ TradingView, สถิติในเครื่อง) |
-| `test/selftest.js` | ชุดทดสอบสูตร (เทียบค่ามาตรฐาน Wilder ฯลฯ) |
+| `lib/indicators.js` | EMA/RSI/ATR/ADX/MACD/Bollinger + swings/marketStructure/rejection/breakAndRetest |
+| `lib/strategy.js` | XAUUSD Smart Entry: top-down 3 TF, checklist /9, gate, Entry/SL/TP |
+| `lib/marketData.js` | ดึง 3 กรอบเวลาจาก Twelve Data + แคช + dedupe |
+| `lib/backtest.js` | walk-forward backtest คืนสถิติหน่วย R |
+| `lib/aiCommentary.js` | (ตัวเลือก) Claude อธิบาย setup — commentary เท่านั้น |
+| `server.js` | Express: `/api/signal` `/api/mtf` `/api/backtest` `/api/commentary` `/api/health` + email |
+| `dashboard.html` | หน้าเว็บหน้าเดียว |
+| `XAUUSD-SmartEntry.pine` | เวอร์ชัน TradingView |
+| `test/selftest.js` | ชุดทดสอบ |
 
 ## API
 
-- `GET /api/signal?asset=XAU&interval=1h` — วิเคราะห์เต็มของกรอบเวลาเดียว
-- `GET /api/mtf?asset=XAU` — สรุปหลายกรอบเวลา (5m–1d)
-- `GET /api/backtest?asset=XAU&interval=4h&bars=3000` — ทดสอบกลยุทธ์ย้อนหลัง (แคช 30 นาที)
-- `GET /api/commentary?asset=XAU&interval=4h` — คำอธิบายจาก AI (ต้องมี `ANTHROPIC_API_KEY`)
+- `GET /api/signal?asset=XAU&interval=15min` — setup เต็มของ Entry TF เดียว
+- `GET /api/mtf?asset=XAU` — สรุป Entry TF 15m/1h/4h/1d
+- `GET /api/backtest?asset=XAU&interval=4h&bars=5000` — ทดสอบย้อนหลัง (แคช 30 นาที)
+- `GET /api/commentary?asset=XAU&interval=15min` — คำอธิบาย AI (ต้องมี `ANTHROPIC_API_KEY`)
 - `GET /api/health`
 
 ไม่ใช่คำแนะนำการลงทุน

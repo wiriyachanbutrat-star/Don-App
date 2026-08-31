@@ -1,0 +1,182 @@
+//@version=5
+// =============================================================================
+//  XAUUSD Smart Entry v1  —  Top-down price-action model for TradingView
+//  Add this to an M15 (or M30/H1) XAUUSD chart.
+//
+//  Trend (H4)      EMA50 + slope  -> the only thing that sets direction
+//  Structure (H1)  HH/HL for BUY, LH/LL for SELL
+//  Entry (chart)   price at a swing S/R + Break of Structure + retest +
+//                  rejection candle
+//
+//  Score /9 :  H4 trend +2 | H1 structure +2 | at S/R +2 | BOS +1 | retest +1
+//              rejection candle +1
+//              8-9 STRONG (label + Entry/SL/TP)  |  6-7 WATCH  |  0-5 no trade
+//
+//  Mirrors lib/strategy.js from the Gold web app. Not financial advice.
+// =============================================================================
+indicator("XAUUSD Smart Entry v1", overlay = true, max_lines_count = 60, max_labels_count = 60)
+
+// ---- Inputs -----------------------------------------------------------------
+grpTF   = "Timeframes"
+tfTrend = input.timeframe("240", "Trend TF (H4)",     group = grpTF)
+tfStruct= input.timeframe("60",  "Structure TF (H1)", group = grpTF)
+
+grpS    = "Setup"
+wing        = input.int(2,   "Swing pivot strength (bars each side)", minval = 1, maxval = 5, group = grpS)
+atrLen      = input.int(14,  "ATR length",           minval = 5, group = grpS)
+srAtrMult   = input.float(1.0,"'At S/R' distance (xATR)", step = 0.1, group = grpS)
+bosLookback = input.int(12,  "BOS/retest lookback (bars)", minval = 3, group = grpS)
+strongScore = input.int(8,   "Min score to trade",   minval = 6, maxval = 9, group = grpS)
+
+grpR    = "Risk"
+rr         = input.float(1.6, "Reward : Risk", step = 0.1, group = grpR)
+slBufAtr   = input.float(0.3, "SL buffer beyond swing (xATR)", step = 0.1, group = grpR)
+slMinAtr   = input.float(1.0, "SL min (xATR)", step = 0.1, group = grpR)
+slMaxAtr   = input.float(3.0, "SL max (xATR)", step = 0.1, group = grpR)
+
+grpV    = "Display"
+showDash   = input.bool(true, "Show dashboard", group = grpV)
+showLevels = input.bool(true, "Draw Entry/SL/TP on signal", group = grpV)
+
+// ---- Helpers --------------------------------------------------------------
+emaTrendDir(src) =>
+    e  = ta.ema(src, 50)
+    sl = (e - e[8]) / 8.0 / e            // slope, fraction of price per bar
+    dir = src > e and sl >  0.0002 ?  1 : src < e and sl < -0.0002 ? -1 : 0
+    dir
+
+// Market-structure direction from the last two confirmed pivots (1 up / -1 down / 0 range)
+structDir(_wing) =>
+    ph = ta.pivothigh(high, _wing, _wing)
+    pl = ta.pivotlow(low,  _wing, _wing)
+    var float h1 = na, var float h2 = na
+    var float l1 = na, var float l2 = na
+    if not na(ph)
+        h2 := h1, h1 := ph
+    if not na(pl)
+        l2 := l1, l1 := pl
+    d = not na(h1) and not na(h2) and not na(l1) and not na(l2) ? (h1 > h2 and l1 > l2 ? 1 : h1 < h2 and l1 < l2 ? -1 : 0) : 0
+    d
+
+// ---- Trend (H4) & Structure (H1) via security ----------------------------
+trendDir  = request.security(syminfo.tickerid, tfTrend,  emaTrendDir(close), lookahead = barmerge.lookahead_off)
+structHDir = request.security(syminfo.tickerid, tfStruct, structDir(2),       lookahead = barmerge.lookahead_off)
+
+// ---- Chart-TF price action ---------------------------------------------
+atr = ta.atr(atrLen)
+ema50 = ta.ema(close, 50)
+plot(ema50, "EMA50", color.new(color.orange, 0), 2)
+
+ph = ta.pivothigh(high, wing, wing)
+pl = ta.pivotlow(low,  wing, wing)
+var float lastSwingHigh = na
+var float lastSwingLow  = na
+var int   lastSwingHighBar = na
+var int   lastSwingLowBar   = na
+if not na(ph)
+    lastSwingHigh := ph
+    lastSwingHighBar := bar_index - wing
+if not na(pl)
+    lastSwingLow := pl
+    lastSwingLowBar := bar_index - wing
+
+// Break of structure + retest on the chart TF
+var int   bosDir = 0          // 1 up, -1 down
+var float bosLevel = na
+var int   bosBar = na
+if not na(lastSwingHigh) and close > lastSwingHigh and (na(bosBar) or bar_index - lastSwingHighBar <= bosLookback)
+    if bosDir != 1 or close > bosLevel
+        bosDir := 1, bosLevel := lastSwingHigh, bosBar := bar_index
+if not na(lastSwingLow) and close < lastSwingLow and (na(bosBar) or bar_index - lastSwingLowBar <= bosLookback)
+    if bosDir != -1 or close < bosLevel
+        bosDir := -1, bosLevel := lastSwingLow, bosBar := bar_index
+
+bosFresh = not na(bosBar) and (bar_index - bosBar) <= bosLookback
+retestUp   = bosFresh and bosDir == 1  and low  <= bosLevel + atr * 0.5 and close >= bosLevel
+retestDown = bosFresh and bosDir == -1 and high >= bosLevel - atr * 0.5 and close <= bosLevel
+var bool retestedUp = false
+var bool retestedDown = false
+if not bosFresh
+    retestedUp := false
+    retestedDown := false
+retestedUp   := retestedUp or retestUp
+retestedDown := retestedDown or retestDown
+
+// Rejection candles
+rng = high - low
+body = math.abs(close - open)
+lowWick = math.min(open, close) - low
+upWick  = high - math.max(open, close)
+bullPin = rng > 0 and lowWick >= rng * 0.5 and body <= rng * 0.4 and upWick <= rng * 0.25
+bearPin = rng > 0 and upWick  >= rng * 0.5 and body <= rng * 0.4 and lowWick <= rng * 0.25
+bullEng = close > open and close[1] < open[1] and close >= open[1] and open <= close[1]
+bearEng = close < open and close[1] > open[1] and open >= close[1] and close <= open[1]
+bullRej = bullPin or bullEng or bullPin[1] or bullEng[1]
+bearRej = bearPin or bearEng or bearPin[1] or bearEng[1]
+
+// ---- Score ---------------------------------------------------------------
+dir = trendDir == 1 ? 1 : trendDir == -1 ? -1 : 0
+isBuy = dir == 1
+
+sH4    = dir != 0 ? 2 : 0
+sH1    = (isBuy and structHDir == 1) or (not isBuy and structHDir == -1) ? 2 : 0
+srLvl  = isBuy ? lastSwingLow : lastSwingHigh
+atSR   = not na(srLvl) and math.abs(close - srLvl) <= atr * srAtrMult ? 2 : 0
+sBOS   = (isBuy and bosDir == 1 and bosFresh) or (not isBuy and bosDir == -1 and bosFresh) ? 1 : 0
+sRet   = (isBuy and retestedUp) or (not isBuy and retestedDown) ? 1 : 0
+sRej   = (isBuy and bullRej) or (not isBuy and bearRej) ? 1 : 0
+
+score = dir == 0 ? 0 : sH4 + sH1 + atSR + sBOS + sRet + sRej
+tier  = score >= strongScore ? "STRONG" : score >= 6 ? "WATCH" : "NO_TRADE"
+
+// ---- Signal (one per zone, no repeats) ---------------------------------
+var int   lastSigDir = 0
+var float lastSigZone = na
+zone = not na(srLvl) ? math.round(srLvl / atr) : na
+newSetup = dir != 0 and score >= strongScore and (lastSigDir != dir or na(lastSigZone) or lastSigZone != zone) and barstate.isconfirmed
+if newSetup
+    lastSigDir := dir
+    lastSigZone := zone
+
+// ---- Levels -------------------------------------------------------------
+entry = close
+slRef = isBuy ? (na(srLvl) or srLvl >= entry ? lastSwingLow : srLvl) : (na(srLvl) or srLvl <= entry ? lastSwingHigh : srLvl)
+slDist0 = not na(slRef) ? math.abs(entry - slRef) + atr * slBufAtr : atr * 1.5
+slDist  = math.min(math.max(slDist0, atr * slMinAtr), atr * slMaxAtr)
+tpDist  = slDist * rr
+slPrice = isBuy ? entry - slDist : entry + slDist
+tpPrice = isBuy ? entry + tpDist : entry - tpDist
+
+// ---- Plot signals & levels -------------------------------------------
+plotshape(newSetup and isBuy,     "BUY",  shape.labelup,   location.belowbar, color.new(color.green, 0), text = "BUY",  textcolor = color.white, size = size.small)
+plotshape(newSetup and not isBuy, "SELL", shape.labeldown, location.abovebar, color.new(color.red, 0),   text = "SELL", textcolor = color.white, size = size.small)
+
+var line lE = na, var line lS = na, var line lT = na
+if showLevels and newSetup
+    line.delete(lE), line.delete(lS), line.delete(lT)
+    lE := line.new(bar_index, entry,   bar_index + 20, entry,   color = color.yellow, width = 2)
+    lS := line.new(bar_index, slPrice, bar_index + 20, slPrice, color = color.red,    width = 1, style = line.style_dashed)
+    lT := line.new(bar_index, tpPrice, bar_index + 20, tpPrice, color = color.green,  width = 1, style = line.style_dashed)
+    label.new(bar_index, tpPrice, "TP " + str.tostring(tpPrice, "#.##") + "  (RR 1:" + str.tostring(rr, "#.#") + ")", style = label.style_label_left, color = color.new(color.green, 80), textcolor = color.white, size = size.small)
+    label.new(bar_index, slPrice, "SL " + str.tostring(slPrice, "#.##"), style = label.style_label_left, color = color.new(color.red, 80), textcolor = color.white, size = size.small)
+
+alertcondition(newSetup and isBuy,     "Smart Entry BUY",  "XAUUSD Smart Entry: BUY setup")
+alertcondition(newSetup and not isBuy,  "Smart Entry SELL", "XAUUSD Smart Entry: SELL setup")
+
+// ---- Dashboard -------------------------------------------------------
+var table dash = table.new(position.top_right, 2, 9, border_width = 1)
+f_row(_i, _k, _v, _c) =>
+    table.cell(dash, 0, _i, _k, text_color = color.gray,  text_size = size.small, text_halign = text.align_left)
+    table.cell(dash, 1, _i, _v, text_color = _c,          text_size = size.small, text_halign = text.align_right)
+
+if showDash and barstate.islast
+    tcol = tier == "STRONG" ? (isBuy ? color.green : color.red) : tier == "WATCH" ? color.orange : color.gray
+    f_row(0, "Trend "  + tfTrend,  trendDir == 1 ? "UP" : trendDir == -1 ? "DOWN" : "—", trendDir == 1 ? color.green : trendDir == -1 ? color.red : color.gray)
+    f_row(1, "Struct " + tfStruct, structHDir == 1 ? "HH/HL" : structHDir == -1 ? "LH/LL" : "range", structHDir == 1 ? color.green : structHDir == -1 ? color.red : color.gray)
+    f_row(2, "At S/R",   atSR  > 0 ? "yes" : "no", atSR  > 0 ? color.green : color.gray)
+    f_row(3, "BOS",      sBOS  > 0 ? (isBuy ? "up" : "down") : "no", sBOS > 0 ? color.green : color.gray)
+    f_row(4, "Retest",   sRet  > 0 ? "yes" : "no", sRet  > 0 ? color.green : color.gray)
+    f_row(5, "Rejection",sRej  > 0 ? "yes" : "no", sRej  > 0 ? color.green : color.gray)
+    f_row(6, "SCORE",    str.tostring(score) + "/9", tcol)
+    f_row(7, "SETUP",    dir == 0 ? "no trend" : (isBuy ? "BUY " : "SELL ") + tier, tcol)
+    f_row(8, "R:R",      "1:" + str.tostring(rr, "#.#"), color.gray)

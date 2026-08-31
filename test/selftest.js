@@ -116,60 +116,59 @@ function check(name, cond, detail) {
   check('bollinger: zero variance → bands collapse', approx(b.upper, 50) && approx(b.lower, 50));
 }
 
-// ---- strategy end-to-end -------------------------------------
+// ---- price-action primitives --------------------------------
 {
-  // Strong synthetic uptrend on both TFs → expect BUY, tradable.
-  const mk = (nBars, startP, stepP) => {
+  const hammer = { open: 100, high: 100.3, low: 97, close: 100.1 };
+  check('rejection: bullish hammer detected', I.isBullishRejection(null, hammer));
+  const star = { open: 100, high: 103, low: 99.8, close: 100 };
+  check('rejection: bearish shooting star detected', I.isBearishRejection(null, star));
+  const doji = { open: 100, high: 101, low: 99, close: 100 };
+  check('rejection: doji is neither', !I.isBullishRejection(null, doji) && !I.isBearishRejection(null, doji));
+}
+
+// ---- strategy end-to-end (XAUUSD Smart Entry) ---------------
+{
+  const mk = (nBars, startP, stepP, noiseAmp = 0.3) => {
     const arr = [];
     let p = startP;
     for (let i = 0; i < nBars; i++) {
-      const noise = Math.sin(i / 3) * stepP * 0.3;
-      const close = p + noise;
-      arr.push({ time: `2024-01-01 ${String(i % 24).padStart(2, '0')}:00:00`, open: p, high: Math.max(p, close) + stepP * 0.2, low: Math.min(p, close) - stepP * 0.2, close });
+      const close = p + Math.sin(i / 3) * Math.abs(stepP || 1) * noiseAmp;
+      arr.push({ time: `2024-01-01 ${String(i % 24).padStart(2, '0')}:00:00`, open: p,
+        high: Math.max(p, close) + Math.abs(stepP || 1) * 0.2, low: Math.min(p, close) - Math.abs(stepP || 1) * 0.2, close });
       p += stepP;
     }
     return arr;
   };
-  const candles = mk(320, 2000, 0.8);
-  const htf = mk(320, 1900, 1.6);
-  const r = S.analyze({ assetKey: 'XAU', interval: '1h', candles, htfCandles: htf });
-  check('strategy: uptrend → BUY direction', r.signal.direction === 'BUY', JSON.stringify(r.signal));
-  check('strategy: uptrend → tradable', r.signal.tradable === true, r.signal.waitReason || '');
-  check('strategy: BUY levels ordered (sl < entry < tp)', r.levels.sl < r.levels.entry && r.levels.entry < r.levels.tp, JSON.stringify(r.levels));
-  check('strategy: RR honoured', approx(r.levels.tpDistance / r.levels.slDistance, 1.5, 1e-6));
-  check('strategy: confidence 0..100', r.signal.confidence >= 0 && r.signal.confidence <= 100);
-  check('strategy: reasons present', Array.isArray(r.signal.reasons) && r.signal.reasons.length > 0);
+  const call = (interval, e, s, t) => S.analyze({ assetKey: 'XAU', interval, entryCandles: e, structureCandles: s, trendCandles: t });
 
-  // Downtrend mirror
-  const dcandles = mk(320, 2000, -0.8);
-  const dhtf = mk(320, 2100, -1.6);
-  const dr = S.analyze({ assetKey: 'XAU', interval: '1h', candles: dcandles, htfCandles: dhtf });
-  check('strategy: downtrend → SELL', dr.signal.direction === 'SELL', JSON.stringify(dr.signal));
-  check('strategy: SELL levels ordered (tp < entry < sl)', dr.levels.tp < dr.levels.entry && dr.levels.entry < dr.levels.sl, JSON.stringify(dr.levels));
+  // Clean uptrend on all three TFs.
+  const up = call('15min', mk(320, 2000, 0.8), mk(320, 1950, 1.2), mk(320, 1900, 1.6));
+  check('strategy: uptrend → BUY direction', up.signal.direction === 'BUY', JSON.stringify(up.signal.checklist));
+  check('strategy: score in 0..9', up.signal.score >= 0 && up.signal.score <= 9);
+  check('strategy: H4 trend row scored +2', up.signal.checklist[0].got === true);
+  check('strategy: has levels when direction set', up.levels.entry != null && isFinite(up.levels.sl) && isFinite(up.levels.tp));
+  if (up.levels.sl != null) check('strategy: BUY sl < entry < tp', up.levels.sl < up.levels.entry && up.levels.entry < up.levels.tp, JSON.stringify(up.levels));
 
-  // Choppy / flat → expect WAIT (not tradable)
-  const fcandles = mk(320, 2000, 0).map((c, i) => ({ ...c, high: c.close + 3, low: c.close - 3, close: c.close + (i % 2 ? 1 : -1) }));
-  const fr = S.analyze({ assetKey: 'XAU', interval: '1h', candles: fcandles, htfCandles: fcandles });
-  check('strategy: flat market → not tradable', fr.signal.tradable === false, JSON.stringify(fr.signal));
+  // Clean downtrend.
+  const dn = call('15min', mk(320, 2000, -0.8), mk(320, 2050, -1.2), mk(320, 2100, -1.6));
+  check('strategy: downtrend → SELL direction', dn.signal.direction === 'SELL', JSON.stringify(dn.signal.checklist));
+  if (dn.levels.sl != null) check('strategy: SELL tp < entry < sl', dn.levels.tp < dn.levels.entry && dn.levels.entry < dn.levels.sl, JSON.stringify(dn.levels));
 
-  // Counter-trend: main up but HTF down → must not be tradable BUY
-  const ct = S.analyze({ assetKey: 'XAU', interval: '1h', candles, htfCandles: dhtf });
-  check('strategy: main-up vs HTF-down → vetoed', !(ct.signal.tradable && ct.signal.direction === 'BUY'), JSON.stringify(ct.signal));
+  // Flat trend TF → no direction, no trade.
+  const flat = mk(320, 2000, 0);
+  const fr = call('15min', flat, flat, flat);
+  check('strategy: flat trend TF → no direction', fr.signal.direction === null);
+  check('strategy: flat → not tradable', fr.signal.tradable === false);
+  check('strategy: flat → tier NO_TRADE', fr.signal.tier === 'NO_TRADE');
 
-  // Buy-the-dip guard: long uptrend history (regime + cascade bullish) but the
-  // last ~15 bars sell off hard, printing LH/LL → must NOT be a tradable BUY.
-  const base = mk(300, 2000, 0.8);
-  const selloff = [];
-  let p = base[base.length - 1].close;
-  for (let i = 0; i < 20; i++) {
-    const close = p - 3.5;
-    selloff.push({ time: `2024-02-01 ${String(i % 24).padStart(2, '0')}:00:00`, open: p, high: p + 1, low: close - 1, close });
-    p = close;
-  }
-  const dipCandles = base.concat(selloff);
-  const dip = S.analyze({ assetKey: 'XAU', interval: '1h', candles: dipCandles, htfCandles: mk(320, 1900, 1.6) });
-  check('strategy: sharp selloff in an uptrend → BUY not tradable', !(dip.signal.tradable && dip.signal.direction === 'BUY'), JSON.stringify(dip.signal));
-  check('strategy: selloff → momentum vote is SELL', dip.indicators.momentum === 'SELL', String(dip.indicators.momentum));
+  // Trend TF up but structure TF down → H1 Structure row must NOT score,
+  // so the setup can't reach STRONG on trend alone.
+  const conflict = call('15min', mk(320, 2000, 0.8), mk(320, 2100, -1.2), mk(320, 1900, 1.6));
+  const h1row = conflict.signal.checklist.find(c => c.name === 'H1 Structure');
+  check('strategy: conflicting H1 structure → row not scored', h1row && h1row.got === false, JSON.stringify(h1row));
+
+  // maxScore / shape sanity for downstream consumers.
+  check('strategy: signal shape', up.signal.maxScore === 9 && up.signal.maxWeight === 9 && Array.isArray(up.signal.reasons) && up.signal.reasons.length === 6);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

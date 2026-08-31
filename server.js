@@ -6,7 +6,7 @@ const express = require('express');
 const nodemailer = require('nodemailer');
 
 const { ASSETS, VALID_INTERVALS, getAnalysis, getLongSeries } = require('./lib/marketData');
-const { assetConfig, higherInterval } = require('./lib/strategy');
+const { assetConfig, higherInterval, trendInterval } = require('./lib/strategy');
 const { getCommentary, MODEL: AI_MODEL } = require('./lib/aiCommentary');
 const { runBacktest } = require('./lib/backtest');
 
@@ -97,13 +97,13 @@ app.get('/api/backtest', async (req, res) => {
     return res.json({ ...hit.data, cached: true });
   }
   try {
-    const htfInterval = higherInterval(interval);
-    const [candles, htfCandles] = await Promise.all([
+    const [candles, structureCandles, trendCandles] = await Promise.all([
       getLongSeries(asset, interval, bars),
-      getLongSeries(asset, htfInterval, bars),
+      getLongSeries(asset, higherInterval(interval), bars),
+      getLongSeries(asset, trendInterval(interval), bars),
     ]);
     const t0 = Date.now();
-    const result = runBacktest({ assetKey: asset, interval, candles, htfCandles });
+    const result = runBacktest({ assetKey: asset, interval, candles, structureCandles, trendCandles });
     result.asset = asset;
     result.computeMs = Date.now() - t0;
     if (!result.error) backtestCache.set(cacheKey, { time: Date.now(), data: result });
@@ -136,11 +136,14 @@ app.get('/api/mtf', async (req, res) => {
           tradable: d.signal.tradable,
           strong: d.signal.strong,
           developing: d.signal.developing,
+          tier: d.signal.tier,
           confidence: d.signal.confidence,
+          score: d.signal.score,
+          maxScore: d.signal.maxScore,
           net: d.signal.net,
-          totalWeight: d.signal.totalWeight,
           maxWeight: d.signal.maxWeight,
-          adx: d.indicators.adx,
+          trend: d.indicators.trendTF ? d.indicators.trendTF.direction : null,
+          structure: d.indicators.structureTF ? d.indicators.structureTF.direction : null,
           regime: d.regime.direction,
           price: d.price,
           ok: true,
@@ -182,21 +185,23 @@ async function checkAndSendSignalEmail() {
     const d = await getAnalysis(EMAIL_ASSET, EMAIL_INTERVAL);
     const s = d.signal;
     if (!s.tradable || !s.direction) { lastEmailedDirection = null; return; }
-    if (s.direction === lastEmailedDirection) return;
-    lastEmailedDirection = s.direction;
+    // Dedupe on the setup (direction + S/R zone), not just direction, so the
+    // same setup in the same place isn't re-alerted after a WAIT blip.
+    const key = s.setupId || s.direction;
+    if (key === lastEmailedDirection) return;
+    lastEmailedDirection = key;
 
     const L = d.levels;
     await mailer.sendMail({
       from: EMAIL_USER,
       to: EMAIL_TO,
-      subject: `[Gold] ${s.direction} ${d.assetLabel} @ ${d.price.toFixed(2)} (${EMAIL_INTERVAL})`,
+      subject: `[Gold] ${s.direction} ${d.assetLabel} @ ${d.price.toFixed(2)} — Setup ${s.score}/9 (${EMAIL_INTERVAL})`,
       text: [
-        `สัญญาณ: ${s.direction}${s.strong ? ' (ชัดเจน)' : ''}`,
-        `สินทรัพย์: ${d.assetLabel} — กรอบเวลา ${EMAIL_INTERVAL}`,
+        `สัญญาณ: ${s.direction} — Setup ${s.score}/9 (${s.tier})`,
+        `สินทรัพย์: ${d.assetLabel} — Entry ${EMAIL_INTERVAL} / Structure ${d.stack.structure} / Trend ${d.stack.trend}`,
         `ราคาปัจจุบัน: ${d.price.toFixed(2)}`,
-        `คะแนนสุทธิ: ${s.net}/${s.totalWeight} · confidence ${s.confidence}%`,
-        `ADX: ${d.indicators.adx != null ? d.indicators.adx.toFixed(1) : 'N/A'}`,
-        L.entry != null ? `Entry ${L.entry.toFixed(2)} · SL ${L.sl.toFixed(2)} · TP ${L.tp.toFixed(2)} (${L.riskReward}, SL อิง ${L.slBasis})` : '',
+        `เทรนด์ ${d.stack.trend}: ${d.indicators.trendTF.label} · โครงสร้าง ${d.stack.structure}: ${d.indicators.structureTF.label}`,
+        L.entry != null ? `Entry ${L.entry.toFixed(2)} · SL ${L.sl.toFixed(2)} · TP ${L.tp.toFixed(2)} (${L.riskReward}, SL ${L.slBasis})` : '',
         '',
         'เหตุผล:',
         ...s.reasons.map(r => '- ' + r),
@@ -220,5 +225,5 @@ if (mailer) {
 
 app.listen(PORT, () => {
   console.log(`Gold trading system running at http://localhost:${PORT}`);
-  console.log(`Assets: ${Object.keys(ASSETS).join(', ')} · XAU ADX gate: ${assetConfig('XAU').adxGate}`);
+  console.log(`Assets: ${Object.keys(ASSETS).join(', ')} · XAUUSD Smart Entry (H4/H1/M15 price action, score ${assetConfig('XAU').strongScore}/9)`);
 });

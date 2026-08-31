@@ -96,8 +96,8 @@
 
   <div class="panel row">
     <div>
-      <div class="symbol" id="title">XAU/USD — GOLD TRADING SYSTEM</div>
-      <div class="sub">ระบบสัญญาณเชิงปริมาณล้วน · Intraday · ไม่มี AI</div>
+      <div class="symbol" id="title">XAU/USD — SMART ENTRY</div>
+      <div class="sub">Top-down Price Action · EMA50 + Swing / S/R / BOS / Retest / Rejection</div>
       <div class="live"><span class="dot"></span>LIVE · อัปเดตทุก 5 นาที</div>
     </div>
     <div style="display:flex;align-items:center;gap:12px;">
@@ -106,11 +106,11 @@
         <option value="XAU" selected>XAU/USD</option>
         <option value="BTC">BTC/USD</option>
       </select>
-      <select id="intervalSel">
-        <option value="15min">15m</option>
-        <option value="30min">30m</option>
-        <option value="1h">1h</option>
-        <option value="4h" selected>4h</option>
+      <select id="intervalSel" title="กรอบเวลาที่ใช้หาจุดเข้า (Entry TF)">
+        <option value="15min" selected>M15 (spec)</option>
+        <option value="30min">M30</option>
+        <option value="1h">H1</option>
+        <option value="4h">H4</option>
       </select>
     </div>
   </div>
@@ -129,11 +129,11 @@
         <div id="strongFlag" class="flag strong" style="display:none;"></div>
         <div id="devFlag" class="flag dev" style="display:none;"></div>
         <div style="width:100%;margin-top:6px;">
+          <div class="meta"><span>Setup Score</span><b id="scoreVal">—</b></div>
           <div class="meta"><span>Confidence</span><b id="confVal">—</b></div>
-          <div class="meta"><span>คะแนนสุทธิ</span><b id="netVal">—</b></div>
-          <div class="meta"><span>เทรนด์ HTF</span><b id="regimeVal">—</b></div>
-          <div class="meta"><span>โครงสร้าง</span><b id="structVal">—</b></div>
-          <div class="meta"><span>ADX</span><b id="adxVal">—</b></div>
+          <div class="meta"><span id="trendTfLbl">Trend (H4)</span><b id="regimeVal">—</b></div>
+          <div class="meta"><span id="structTfLbl">Structure (H1)</span><b id="structVal">—</b></div>
+          <div class="meta"><span id="entryTfLbl">Entry (M15)</span><b id="entryTfVal">—</b></div>
           <div class="meta"><span>Session</span><b id="sessionVal">—</b></div>
         </div>
       </div>
@@ -157,8 +157,9 @@
           <div><label>SL อิงจาก</label><input id="slBasis" type="text" readonly value="—"></div>
         </div>
         <div class="sub" style="line-height:1.6;">
-          Entry = ราคาปัจจุบัน · SL วางพ้น Swing Low/High (หรือแนวรับ-ต้าน 30 แท่ง) แล้วบีบให้อยู่ในกรอบ 1–3 เท่าของ ATR · TP = ระยะ SL × 1.5 ·
-          ระบบจะไม่ให้เข้าเทรดเว้นแต่ ADX ผ่านเกณฑ์ ทิศทางตรงกับเทรนด์ HTF และคะแนนแข็งแรงพอ
+          <b>XAUUSD Smart Entry</b> — H4 กำหนดเทรนด์ · H1 ยืนยันโครงสร้าง · M15 หาจุดเข้า (แนว S/R + BOS + Retest + Rejection candle) ·
+          Entry = ราคาปัจจุบัน · SL พ้นแนว Swing (บีบ 1–3× ATR) · TP = RR ~1:1.6 หรือ swing ตรงข้าม ·
+          เข้าเทรดเฉพาะ <b>Setup 8–9/9</b> เท่านั้น
         </div>
         <ul class="reasons" id="reasons"></ul>
         <div style="border-top:1px solid var(--hair);padding-top:12px;">
@@ -170,11 +171,11 @@
   </div>
 
   <div class="panel">
-    <h2>Multi-Timeframe</h2>
+    <h2>Multi-Timeframe (แต่ละ Entry TF)</h2>
     <div class="scroll">
       <table>
-        <thead><tr><th>TF</th><th>สัญญาณ</th><th>Confidence</th><th>คะแนน</th><th>ADX</th><th>เทรนด์ HTF</th></tr></thead>
-        <tbody id="mtfBody"><tr><td colspan="6" class="sub">กำลังโหลด…</td></tr></tbody>
+        <thead><tr><th>Entry TF</th><th>สัญญาณ</th><th>Score</th><th>Trend TF</th><th>Structure TF</th></tr></thead>
+        <tbody id="mtfBody"><tr><td colspan="5" class="sub">กำลังโหลด…</td></tr></tbody>
       </table>
     </div>
   </div>
@@ -185,7 +186,7 @@
   </div>
 
   <div class="panel">
-    <h2>อินดิเคเตอร์</h2>
+    <h2>Setup Checklist (9 คะแนน)</h2>
     <div class="grid" id="indGrid"><div class="sub">กำลังโหลด…</div></div>
   </div>
 
@@ -197,7 +198,7 @@
   <div class="panel">
     <h2>ทดสอบย้อนหลัง — Backtest กลยุทธ์บนราคาจริง</h2>
     <div class="sub" style="line-height:1.6;margin-bottom:10px;">
-      รันกลยุทธ์เดียวกันนี้ย้อนหลัง ~4 เดือน (3000 แท่ง) แบบ walk-forward ไม่มี look-ahead —
+      รันกลยุทธ์เดียวกันนี้ย้อนหลัง สูงสุด 5000 แท่ง แบบ walk-forward ไม่มี look-ahead —
       ดูว่ามันเคยกำไรจริงไหม, ฝั่ง BUY/SELL อันไหนเวิร์ก, ADX ช่วงไหนดี ·
       ผลเป็นหน่วย <b>R</b> (เท่าของความเสี่ยงต่อไม้) · <b>expectancy > 0 = มี edge</b>
     </div>
@@ -274,39 +275,48 @@ function riskCalc(levels){
   $('rewardUsd').textContent = '$' + Math.round(levels.tpDistance * unit).toLocaleString();
 }
 
+const dirWord = x => x==='UP'?'↗ ขาขึ้น':x==='DOWN'?'↘ ขาลง':'– ไม่ชัดเจน';
+
 function renderSignal(d){
-  const s = d.signal, L = d.levels, ind = d.indicators;
+  const s = d.signal, L = d.levels, i = d.indicators;
   const tradable = s.tradable && s.direction;
-  const cls = !tradable ? 'wait' : (s.direction==='BUY'?'buy':'sell');
-  const label = !tradable ? 'WAIT' : s.direction;
+  const cls = !s.direction ? 'wait' : (s.direction==='BUY'?'buy':'sell');
+  const label = !s.direction ? 'WAIT' : s.direction;
   setGauge(cls, label, s.confidence);
-  const dl = $('dirLabel'); dl.className = 'dir '+cls; dl.textContent = (s.strong && tradable ? '⭐ ':'') + label;
+  const dl = $('dirLabel'); dl.className = 'dir '+(tradable?cls:'wait');
+  dl.textContent = tradable ? (s.direction==='BUY'?'🟢 BUY':'🔴 SELL') : (s.tier==='WATCH' ? '🟡 WATCH' : '⚪ WAIT');
 
-  $('strongFlag').style.display = (s.strong && tradable) ? 'inline-block' : 'none';
-  $('strongFlag').textContent = 'สัญญาณแข็งแรง (' + Math.abs(s.net) + '/' + s.maxWeight + ' ≥ ' + s.strongThreshold + ')';
-  $('devFlag').style.display = (!tradable && s.developing) ? 'inline-block' : 'none';
-  $('devFlag').textContent = '🟡 กำลังก่อตัว — ใกล้เกณฑ์เข้าเทรด';
+  $('strongFlag').style.display = tradable ? 'inline-block' : 'none';
+  $('strongFlag').textContent = 'STRONG SETUP ' + s.score + '/9 — เข้าได้';
+  $('devFlag').style.display = (!tradable && s.tier==='WATCH') ? 'inline-block' : 'none';
+  $('devFlag').textContent = '🟡 Watch ' + s.score + '/9 — ยังไม่ครบ 8/9';
 
+  $('scoreVal').textContent = s.score + ' / 9  (' + s.tier + ')';
   $('confVal').textContent = s.confidence + '%';
-  $('netVal').textContent = (s.net>=0?'+':'') + s.net + ' / ±' + s.maxWeight + ' (มีเสียง ' + s.totalWeight + ')';
-  $('regimeVal').textContent = d.regime.label + ' (' + d.higherInterval + ')';
-  $('structVal').textContent = structLabel(d.structure);
-  $('adxVal').textContent = ind.adx==null ? '—' : ind.adx.toFixed(1) + (ind.adx>=20?' (เทรนด์)':' (ไซด์เวย์)');
+  $('trendTfLbl').textContent = 'Trend (' + d.stack.trend + ')';
+  $('structTfLbl').textContent = 'Structure (' + d.stack.structure + ')';
+  $('entryTfLbl').textContent = 'Entry (' + d.interval + ')';
+  const tt = i.trendTF||{}, st = i.structureTF||{};
+  $('regimeVal').textContent = dirWord(tt.direction) ;
+  $('regimeVal').style.color = tt.direction==='UP'?'var(--buy)':tt.direction==='DOWN'?'var(--sell)':'';
+  $('structVal').textContent = dirWord(st.direction);
+  $('structVal').style.color = st.direction==='UP'?'var(--buy)':st.direction==='DOWN'?'var(--sell)':'';
+  $('entryTfVal').textContent = (i.bos?('BOS '+(i.bos==='UP'?'↑':'↓')+' '):'') + (i.retest?'+Retest ':'') + (i.rejection?'+Rej ':'') + (i.atSR?'@S/R':'');
   $('sessionVal').textContent = sessionLabel();
 
   const wb = $('waitBanner');
-  if(!tradable && s.waitReason){ wb.style.display='block'; wb.textContent = '⏸ ' + s.waitReason; }
+  if(!tradable && s.waitReason){ wb.style.display='block'; wb.textContent = (s.tier==='WATCH'?'🟡 ':'⏸ ') + s.waitReason; }
   else wb.style.display='none';
 
   if(L.entry!=null){
     $('lEntry').textContent = fmt(L.entry);
-    $('lEntryD').textContent = tradable ? (s.direction + ' @ ราคาปัจจุบัน') : 'ยังไม่เข้า';
+    $('lEntryD').textContent = tradable ? (s.direction + ' @ ราคาปัจจุบัน') : 'ยังไม่เข้า (' + s.score + '/9)';
     $('lSl').textContent = fmt(L.sl);
     $('lSlD').textContent = L.slDistance!=null ? ('-' + fmt(L.slDistance)) : '—';
     $('lTp').textContent = fmt(L.tp);
     $('lTpD').textContent = L.tpDistance!=null ? ('+' + fmt(L.tpDistance)) : '—';
     $('lRR').textContent = L.riskReward || '—';
-    $('slBasis').value = L.slBasis || '—';
+    $('slBasis').value = (L.slBasis||'—') + (L.tpBasis?(' · TP: '+L.tpBasis):'');
     riskCalc(L);
     lastTrade = tradable ? { entry:L.entry, sl:L.sl, tp:L.tp } : null;
   } else {
@@ -316,49 +326,29 @@ function renderSignal(d){
     lastTrade = null;
   }
 
-  $('reasons').innerHTML = s.reasons.map(r=>'<li>'+r+'</li>').join('');
-  if(tradable && s.strong) recordTrade(d);
+  $('reasons').innerHTML = (s.reasons||[]).map(r=>'<li>'+r+'</li>').join('');
+  if(tradable) recordTrade(d);
 }
 
-function structLabel(st){
-  const t = st.trend==='UP'?'ขาขึ้น (HH/HL)':st.trend==='DOWN'?'ขาลง (LH/LL)':'sideways';
-  const ev = st.bos ? ' · BOS '+ (st.bos==='UP'?'ขึ้น':'ลง') : st.choch ? ' · ⚠️ CHoCH '+(st.choch==='UP'?'ขึ้น':'ลง') : '';
-  return t + ev;
-}
-
+// The 6-row checklist IS the analysis now — render it as the "indicators" panel.
 function renderIndicators(d){
-  const i = d.indicators;
-  const emaRel = (i.emaFast!=null && i.emaSlow!=null)
-    ? (i.emaFast>i.emaSlow ? {t:`EMA${i.fastPeriod} > EMA${i.slowPeriod} (bullish)`,c:'up'} : {t:`EMA${i.fastPeriod} < EMA${i.slowPeriod} (bearish)`,c:'down'})
-    : {t:'—',c:''};
-  const e200 = i.ema200==null ? {t:'ข้อมูลไม่พอ',c:''} : (d.price>i.ema200 ? {t:'ราคาเหนือ EMA200',c:'up'} : {t:'ราคาใต้ EMA200',c:'down'});
-  const macd = i.macd ? (i.macd.crossUp ? {t:'Bullish cross',c:'up'} : i.macd.crossDown ? {t:'Bearish cross',c:'down'} : {t:'hist '+i.macd.histogram.toFixed(3)+(i.macd.rising?' ↑':' ↓'),c:i.macd.histogram>0?'up':'down'}) : {t:'—',c:''};
-  const rsi = i.rsi==null ? {t:'—',c:''} : {t:i.rsi.toFixed(1)+(i.rsi>=55?' (ซื้อ)':i.rsi<=45?' (ขาย)':' (กลาง)'),c:i.rsi>=55?'up':i.rsi<=45?'down':''};
-  const di = (i.plusDI!=null) ? {t:'+DI '+i.plusDI.toFixed(0)+' / -DI '+i.minusDI.toFixed(0),c:i.plusDI>i.minusDI?'up':'down'} : {t:'—',c:''};
-  const pb = i.pullback ? {t:'ราคาย่อเข้าโซน EMA ('+i.pullback+')',c:i.pullback==='BUY'?'up':'down'} : {t:'ราคาไม่ได้อยู่ในโซนย่อ',c:''};
-  const dirTxt = (mv,d) => (mv>=0?'+':'')+mv+'×ATR '+(d==='BUY'?'↗ ขึ้น':d==='SELL'?'↘ ลง':'– sideways');
-  const items = [
-    ['ทิศทางกราฟ 6 แท่ง', i.shortMoveAtr!=null?dirTxt(i.shortMoveAtr,i.shortDir):'—', i.shortDir==='BUY'?'up':i.shortDir==='SELL'?'down':''],
-    ['ทิศทางกราฟ 20 แท่ง', i.medMoveAtr!=null?dirTxt(i.medMoveAtr,i.medDir):'—', i.medDir==='BUY'?'up':i.medDir==='SELL'?'down':''],
-    ['EMA cascade', emaRel.t, emaRel.c],
-    ['EMA200', e200.t, e200.c],
-    ['RSI (14)', rsi.t, rsi.c],
-    ['MACD (12,26,9)', macd.t, macd.c],
-    ['ADX / DI (14)', (i.adx==null?'—':i.adx.toFixed(1)) + ' · ' + di.t, di.c],
-    ['ATR (14)', i.atr==null?'—':i.atr.toFixed(2), ''],
-    ['Bollinger bandwidth', i.bollinger ? (i.bollinger.bandwidth*100).toFixed(2)+'%' : '—', ''],
-    ['Pullback location', pb.t, pb.c],
-  ];
-  $('indGrid').innerHTML = items.map(([n,x,c])=>`<div class="cell"><div class="n">${n}</div><div class="x ${c}">${x}</div></div>`).join('');
+  const s = d.signal;
+  if(!s.checklist){ $('indGrid').innerHTML = '<div class="sub">ยังไม่มีทิศทาง (เทรนด์ H4 ไม่ชัด)</div>'; return; }
+  $('indGrid').innerHTML = s.checklist.map(c=>
+    `<div class="cell" style="border-left:3px solid ${c.got?'var(--buy)':'var(--hair)'};">
+      <div class="n">${c.got?'✅':'⬜'} ${c.name} <span style="opacity:.6">(${c.got?'+':''}${c.got?c.points:0}/${c.points})</span></div>
+      <div class="x" style="font-family:var(--fb);font-size:12px;white-space:normal;">${c.note}</div>
+    </div>`).join('');
 }
 
 function renderSR(d){
-  const i = d.indicators, cards = [];
-  if(d.structure.lastHigh) cards.push(['Swing High', d.structure.lastHigh.price, 'down']);
-  cards.push(['แนวต้าน 30 แท่ง', i.resistance, 'down']);
+  const i = d.indicators, st = d.structure, cards = [];
+  if(st.lastHigh) cards.push(['Swing High', st.lastHigh.price, 'down']);
+  if(i.srLevel!=null && d.signal.direction==='SELL') cards.push(['แนวต้าน (setup)', i.srLevel, 'down']);
   cards.push(['ราคาปัจจุบัน', d.price, '']);
-  cards.push(['แนวรับ 30 แท่ง', i.support, 'up']);
-  if(d.structure.lastLow) cards.push(['Swing Low', d.structure.lastLow.price, 'up']);
+  if(i.srLevel!=null && d.signal.direction==='BUY') cards.push(['แนวรับ (setup)', i.srLevel, 'up']);
+  if(i.bosLevel!=null) cards.push(['ระดับที่ทะลุ (BOS)', i.bosLevel, i.bos==='UP'?'up':'down']);
+  if(st.lastLow) cards.push(['Swing Low', st.lastLow.price, 'up']);
   $('srGrid').innerHTML = cards.map(([n,v,c])=>`<div class="cell"><div class="n">${n}</div><div class="x ${c}">${fmt(v)}</div></div>`).join('');
 }
 
@@ -366,10 +356,10 @@ function tag(row){
   if(!row.ok) return '<span class="sub">ผิดพลาด</span>';
   if(row.tradable && row.direction){
     const c = row.direction==='BUY'?'buy':'sell';
-    return `<span class="tag ${c}"><span class="tag-dot"></span>${row.strong?'⭐ ':''}${row.direction}</span>`;
+    return `<span class="tag ${c}"><span class="tag-dot"></span>${row.direction} ${row.score}/9</span>`;
   }
-  if(row.developing && row.direction) return `<span class="tag wait"><span class="tag-dot"></span>${row.direction} กำลังก่อตัว</span>`;
-  return '<span class="tag wait"><span class="tag-dot"></span>WAIT</span>';
+  if(row.tier==='WATCH' && row.direction) return `<span class="tag wait"><span class="tag-dot"></span>${row.direction} watch ${row.score}/9</span>`;
+  return '<span class="tag wait"><span class="tag-dot"></span>WAIT '+(row.score!=null?row.score+'/9':'')+'</span>';
 }
 
 async function loadMtf(){
@@ -377,10 +367,10 @@ async function loadMtf(){
     const j = await api('/api/mtf?asset='+ASSET);
     $('mtfBody').innerHTML = j.rows.map(r=>{
       const lbl = MTF_LABEL[r.interval] || r.interval;
-      if(!r.ok) return `<tr><td>${lbl}</td><td colspan="5" class="sub">ผิดพลาด</td></tr>`;
-      return `<tr><td>${lbl}</td><td>${tag(r)}</td><td>${r.confidence}%</td><td>${(r.net>=0?'+':'')+r.net}/±${r.maxWeight}</td><td>${r.adx==null?'—':r.adx.toFixed(1)}</td><td>${r.regime==='UP'?'↗ ขึ้น':r.regime==='DOWN'?'↘ ลง':'– ไม่ชัด'}</td></tr>`;
+      if(!r.ok) return `<tr><td>${lbl}</td><td colspan="4" class="sub">ผิดพลาด</td></tr>`;
+      return `<tr><td>${lbl}</td><td>${tag(r)}</td><td>${r.score}/9</td><td>${dirWord(r.trend)}</td><td>${dirWord(r.structure)}</td></tr>`;
     }).join('');
-  }catch(e){ $('mtfBody').innerHTML = `<tr><td colspan="6" class="sub">โหลดไม่สำเร็จ: ${e.message}</td></tr>`; }
+  }catch(e){ $('mtfBody').innerHTML = `<tr><td colspan="5" class="sub">โหลดไม่สำเร็จ: ${e.message}</td></tr>`; }
 }
 
 function renderPrice(d){
@@ -573,7 +563,7 @@ $('btBtn').addEventListener('click', async ()=>{
   btn.disabled=true; out.textContent='กำลังรัน backtest บน '+ $('intervalSel').value +'…';
   try{
     const iv=$('intervalSel').value;
-    const j=await api('/api/backtest?asset='+ASSET+'&interval='+iv+'&bars=3000');
+    const j=await api('/api/backtest?asset='+ASSET+'&interval='+iv+'&bars=5000');
     if(j.error){ out.innerHTML='<span style="color:var(--sell)">'+j.error+'</span>'; return; }
     const good = j.expectancyR>0.05, ok = j.expectancyR>0;
     const headColor = good?'var(--buy)':ok?'var(--wait)':'var(--sell)';
@@ -596,8 +586,8 @@ $('btBtn').addEventListener('click', async ()=>{
     html+='<table style="margin-top:14px;"><thead><tr><th>ฝั่ง</th><th>เทรด</th><th>Win rate</th><th>Expectancy</th></tr></thead><tbody>'
       + j.byDirection.map(d=>`<tr><td>${d.direction}</td><td>${d.trades}</td><td>${pct1(d.winRate)}</td><td style="color:${d.expectancyR>0?'var(--buy)':'var(--sell)'}">${rfmt(d.expectancyR)}</td></tr>`).join('')
       + '</tbody></table>';
-    html+='<table style="margin-top:10px;"><thead><tr><th>ADX</th><th>เทรด</th><th>Win rate</th><th>Expectancy</th></tr></thead><tbody>'
-      + j.adxBuckets.map(b=>`<tr><td>${b.range}</td><td>${b.trades}</td><td>${pct1(b.winRate)}</td><td style="color:${b.expectancyR>0?'var(--buy)':'var(--sell)'}">${rfmt(b.expectancyR)}</td></tr>`).join('')
+    html+='<table style="margin-top:10px;"><thead><tr><th>Score</th><th>เทรด</th><th>Win rate</th><th>Expectancy</th></tr></thead><tbody>'
+      + (j.scoreBuckets||[]).map(b=>`<tr><td>${b.range}</td><td>${b.trades}</td><td>${pct1(b.winRate)}</td><td style="color:${b.expectancyR>0?'var(--buy)':'var(--sell)'}">${rfmt(b.expectancyR)}</td></tr>`).join('')
       + '</tbody></table>';
     const allNotes=[...(j.verdict||[]),...(j.tuning||[])];
     if(allNotes.length) html+='<ul class="reasons" style="margin-top:14px;">'+allNotes.map(x=>'<li>'+x+'</li>').join('')+'</ul>';
