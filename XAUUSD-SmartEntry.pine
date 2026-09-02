@@ -8,9 +8,13 @@
 //  Entry (chart)   price at a swing S/R + Break of Structure + retest +
 //                  rejection candle
 //
-//  Score /9 :  H4 trend +2 | H1 structure +2 | at S/R +2 | BOS +1 | retest +1
-//              rejection candle +1
-//              8-9 STRONG (label + Entry/SL/TP)  |  6-7 WATCH  |  0-5 no trade
+//  Score /9 :  H4 trend +2 | H1 structure +2 | at S/R +2 (HTF level / prior-day
+//              H-L-C / round number = full; a lone swing = +1) | BOS +1 |
+//              retest +1 | rejection candle (close in favourable third) +1
+//
+//  Trade filters:  BUY needs 8/9, SELL needs 9/9 (backtest: shorts weaker) AND
+//                  the London+NY session (07-21 UTC) must be open.
+//              8-9 STRONG (label + Entry/SL/TP)  |  6-7 WATCH  |  else no trade
 //
 //  Mirrors lib/strategy.js from the Gold web app. Not financial advice.
 // =============================================================================
@@ -27,6 +31,12 @@ atrLen      = input.int(14,  "ATR length",           minval = 5, group = grpS)
 srAtrMult   = input.float(1.0,"'At S/R' distance (xATR)", step = 0.1, group = grpS)
 bosLookback = input.int(12,  "BOS/retest lookback (bars)", minval = 3, group = grpS)
 strongScore = input.int(8,   "Min score to trade",   minval = 6, maxval = 9, group = grpS)
+
+sellNeeds9 = input.bool(true, "SELL needs a full 9/9 (backtest: shorts weaker)", group = grpS)
+useSession = input.bool(true, "Trade only London+NY session", group = grpS)
+sessStart  = input.int(7,  "Session start (UTC hour)", minval = 0, maxval = 23, group = grpS)
+sessEnd    = input.int(21, "Session end (UTC hour)",   minval = 1, maxval = 24, group = grpS)
+roundStep  = input.float(25, "Round-number step ($)", group = grpS)
 
 grpR    = "Risk"
 rr         = input.float(1.6, "Reward : Risk", step = 0.1, group = grpR)
@@ -102,38 +112,55 @@ if not bosFresh
 retestedUp   := retestedUp or retestUp
 retestedDown := retestedDown or retestDown
 
-// Rejection candles
+// Rejection candles — close in the favourable third
 rng = high - low
 body = math.abs(close - open)
 lowWick = math.min(open, close) - low
 upWick  = high - math.max(open, close)
-bullPin = rng > 0 and lowWick >= rng * 0.5 and body <= rng * 0.4 and upWick <= rng * 0.25
-bearPin = rng > 0 and upWick  >= rng * 0.5 and body <= rng * 0.4 and lowWick <= rng * 0.25
-bullEng = close > open and close[1] < open[1] and close >= open[1] and open <= close[1]
-bearEng = close < open and close[1] > open[1] and open >= close[1] and close <= open[1]
+bullPin = rng > 0 and lowWick >= rng * 0.5 and body <= rng * 0.4 and upWick <= rng * 0.25 and close >= low + rng * 0.66
+bearPin = rng > 0 and upWick  >= rng * 0.5 and body <= rng * 0.4 and lowWick <= rng * 0.25 and close <= high - rng * 0.66
+bullEng = close > open and close[1] < open[1] and close >= open[1] and open <= close[1] and close >= low + rng * 0.6
+bearEng = close < open and close[1] > open[1] and open >= close[1] and close <= open[1] and close <= high - rng * 0.6
 bullRej = bullPin or bullEng or bullPin[1] or bullEng[1]
 bearRej = bearPin or bearEng or bearPin[1] or bearEng[1]
+
+// ---- Prior-day levels & round numbers (extra S/R) --------------------
+pdHigh = request.security(syminfo.tickerid, "D", high[1],  lookahead = barmerge.lookahead_off)
+pdLow  = request.security(syminfo.tickerid, "D", low[1],   lookahead = barmerge.lookahead_off)
+pdClose= request.security(syminfo.tickerid, "D", close[1], lookahead = barmerge.lookahead_off)
+rUp    = roundStep > 0 ? math.ceil(close / roundStep) * roundStep : na
+rDn    = roundStep > 0 ? math.floor(close / roundStep) * roundStep : na
+
+// ---- Session ----------------------------------------------------------
+hUTC = hour(time, "UTC")
+inSess = not useSession or (hUTC >= sessStart and hUTC < sessEnd)
 
 // ---- Score ---------------------------------------------------------------
 dir = trendDir == 1 ? 1 : trendDir == -1 ? -1 : 0
 isBuy = dir == 1
 
+// nearest strong S/R on the correct side: swing, prior-day level, or round #
+f_near(lvl) => not na(lvl) and math.abs(close - lvl) <= atr * srAtrMult
+srSwing = isBuy ? lastSwingLow : lastSwingHigh
+srHtf   = isBuy ? (f_near(pdLow) ? pdLow : f_near(pdClose) ? pdClose : f_near(rDn) ? rDn : na) : (f_near(pdHigh) ? pdHigh : f_near(pdClose) ? pdClose : f_near(rUp) ? rUp : na)
+srLvl   = not na(srHtf) ? srHtf : srSwing
+atStrong = not na(srHtf) or f_near(srSwing)              // HTF level or a swing at price
+atSR   = not na(srHtf) ? 2 : f_near(srSwing) ? 1 : 0     // HTF/round = full, lone swing = partial
 sH4    = dir != 0 ? 2 : 0
 sH1    = (isBuy and structHDir == 1) or (not isBuy and structHDir == -1) ? 2 : 0
-srLvl  = isBuy ? lastSwingLow : lastSwingHigh
-atSR   = not na(srLvl) and math.abs(close - srLvl) <= atr * srAtrMult ? 2 : 0
 sBOS   = (isBuy and bosDir == 1 and bosFresh) or (not isBuy and bosDir == -1 and bosFresh) ? 1 : 0
 sRet   = (isBuy and retestedUp) or (not isBuy and retestedDown) ? 1 : 0
 sRej   = (isBuy and bullRej) or (not isBuy and bearRej) ? 1 : 0
 
 score = dir == 0 ? 0 : sH4 + sH1 + atSR + sBOS + sRet + sRej
-tier  = score >= strongScore ? "STRONG" : score >= 6 ? "WATCH" : "NO_TRADE"
+strongBar = (dir == -1 and sellNeeds9) ? 9 : strongScore
+tier  = (score >= strongBar and inSess) ? "STRONG" : score >= 6 ? "WATCH" : "NO_TRADE"
 
 // ---- Signal (one per zone, no repeats) ---------------------------------
 var int   lastSigDir = 0
 var float lastSigZone = na
 zone = not na(srLvl) ? math.round(srLvl / atr) : na
-newSetup = dir != 0 and score >= strongScore and (lastSigDir != dir or na(lastSigZone) or lastSigZone != zone) and barstate.isconfirmed
+newSetup = dir != 0 and score >= strongBar and inSess and (lastSigDir != dir or na(lastSigZone) or lastSigZone != zone) and barstate.isconfirmed
 if newSetup
     lastSigDir := dir
     lastSigZone := zone
@@ -164,7 +191,7 @@ alertcondition(newSetup and isBuy,     "Smart Entry BUY",  "XAUUSD Smart Entry: 
 alertcondition(newSetup and not isBuy,  "Smart Entry SELL", "XAUUSD Smart Entry: SELL setup")
 
 // ---- Dashboard -------------------------------------------------------
-var table dash = table.new(position.top_right, 2, 9, border_width = 1)
+var table dash = table.new(position.top_right, 2, 10, border_width = 1)
 f_row(_i, _k, _v, _c) =>
     table.cell(dash, 0, _i, _k, text_color = color.gray,  text_size = size.small, text_halign = text.align_left)
     table.cell(dash, 1, _i, _v, text_color = _c,          text_size = size.small, text_halign = text.align_right)
@@ -173,10 +200,11 @@ if showDash and barstate.islast
     tcol = tier == "STRONG" ? (isBuy ? color.green : color.red) : tier == "WATCH" ? color.orange : color.gray
     f_row(0, "Trend "  + tfTrend,  trendDir == 1 ? "UP" : trendDir == -1 ? "DOWN" : "—", trendDir == 1 ? color.green : trendDir == -1 ? color.red : color.gray)
     f_row(1, "Struct " + tfStruct, structHDir == 1 ? "HH/HL" : structHDir == -1 ? "LH/LL" : "range", structHDir == 1 ? color.green : structHDir == -1 ? color.red : color.gray)
-    f_row(2, "At S/R",   atSR  > 0 ? "yes" : "no", atSR  > 0 ? color.green : color.gray)
+    f_row(2, "At S/R",   atSR == 2 ? "strong" : atSR == 1 ? "weak" : "no", atSR == 2 ? color.green : atSR == 1 ? color.orange : color.gray)
     f_row(3, "BOS",      sBOS  > 0 ? (isBuy ? "up" : "down") : "no", sBOS > 0 ? color.green : color.gray)
     f_row(4, "Retest",   sRet  > 0 ? "yes" : "no", sRet  > 0 ? color.green : color.gray)
     f_row(5, "Rejection",sRej  > 0 ? "yes" : "no", sRej  > 0 ? color.green : color.gray)
-    f_row(6, "SCORE",    str.tostring(score) + "/9", tcol)
-    f_row(7, "SETUP",    dir == 0 ? "no trend" : (isBuy ? "BUY " : "SELL ") + tier, tcol)
-    f_row(8, "R:R",      "1:" + str.tostring(rr, "#.#"), color.gray)
+    f_row(6, "Session",  inSess ? "open" : "closed", inSess ? color.green : color.red)
+    f_row(7, "SCORE",    str.tostring(score) + "/" + str.tostring(strongBar), tcol)
+    f_row(8, "SETUP",    dir == 0 ? "no trend" : (isBuy ? "BUY " : "SELL ") + tier, tcol)
+    f_row(9, "R:R",      "1:" + str.tostring(rr, "#.#"), color.gray)

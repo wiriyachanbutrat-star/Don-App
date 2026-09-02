@@ -11,20 +11,23 @@
 | **Structure** | H1 | ต้องเป็น HH/HL (BUY) หรือ LH/LL (SELL) |
 | **Entry** | M15 | ราคาอยู่ที่แนว Swing S/R + Break of Structure + Retest + Rejection candle |
 
-**Score /9** — เข้าเทรดเฉพาะ **8–9/9**
+**Score /9**
 
 | เงื่อนไข | คะแนน |
 |---|---|
 | H4 Trend ตรงกัน | +2 |
 | H1 Structure ตรงกัน | +2 |
-| ราคาอยู่ที่แนว S/R สำคัญ | +2 |
+| ราคาอยู่ที่แนว S/R | **+2** ถ้าเป็นโซนที่โดนทดสอบ ≥2 ครั้ง / ระดับ HTF (วานนี้ H-L-C) / เลขกลม · **+1** ถ้าเป็น swing เดี่ยว |
 | Break of Structure (BOS) | +1 |
 | Retest ระดับที่ทะลุ | +1 |
-| Rejection candle (hammer/engulfing) | +1 |
+| Rejection candle (ปิดในโซน 1/3 ที่ถูกทาง) | +1 |
 
-`8–9` STRONG (เข้าได้) · `6–7` WATCH · `0–5` NO_TRADE
+**Filter เข้าเทรด:**
+- **BUY ต้อง 8/9 · SELL ต้อง 9/9** (backtest: ฝั่ง SELL ทำผลงานแย่กว่าเกือบทุก TF)
+- **ต้องอยู่ในเวลา London+NY (07–21 UTC)** เท่านั้น — Asian session ทองไซด์เวย์
+- `8–9` (ผ่าน filter) = STRONG เข้าได้ · `6–7` = WATCH · ต่ำกว่า = NO_TRADE
 
-**Entry/SL/TP:** Entry = ราคาปัจจุบัน · SL พ้นแนว Swing + บัฟเฟอร์ 0.3×ATR (บีบ 1–3×ATR) ·
+**Entry/SL/TP:** Entry = ราคาปัจจุบัน · SL พ้นแนว + บัฟเฟอร์ 0.3×ATR (บีบ 1–3×ATR) ·
 TP = RR 1:1.6 หรือ swing ตรงข้าม (ไม่เกิน 3R)
 
 กรอบเวลาที่เลือกได้บน dashboard = **Entry TF** (M15/M30/H1/H4) — Structure & Trend TF เลื่อนตามอัตโนมัติ
@@ -35,24 +38,25 @@ TP = RR 1:1.6 หรือ swing ตรงข้าม (ไม่เกิน 3R
 walk-forward, ไม่มี look-ahead (แต่ละแท่งเห็นเฉพาะข้อมูลก่อนหน้า, 2 กรอบ TF บนตัดตามเวลาปิดจริง),
 จำลองผลถึง SL/TP + time-stop 48 แท่ง, คิดเป็นหน่วย **R**
 
-ผลทดสอบทอง 2026 (5000 แท่ง):
+ผลทดสอบทอง (5000 แท่ง, ~ก.ค.–ก.ย. 2026) — **หลังใส่ session filter + S/R zones + BUY-bias + rejection ที่เข้มขึ้น**:
 
-| Entry TF | เทรด | Win | Expectancy | Profit Factor | รวม |
-|---|---|---|---|---|---|
-| **H4** | 81 | 53% | **+0.37R** | **1.82** | **+30R** ✅ |
-| M30 | 51 | 44% | +0.12R | 1.22 | +6R |
-| M15 (spec) | 44 | 40% | +0.02R | 1.04 | เสมอตัว |
-| H1 | 54 | 33% | −0.12R | 0.81 | −6R ❌ |
+| Entry TF | เทรด | Win | Expectancy | Profit Factor | รวม | Max DD |
+|---|---|---|---|---|---|---|
+| **H4** | 129 | 49% | +0.29R | 1.58 | **+37R** ✅ | 6.4R |
+| **M15 (spec)** | 31 | 50% | **+0.29R** | **1.60** | +8.9R | **3.3R** |
+| M30 | 37 | 47% | +0.21R | 1.41 | +7.9R | 5.2R |
+| H1 | 37 | 26% | −0.22R | 0.67 | −8.3R ❌ | 11.3R |
 
-→ **spec H4/H1/M15 = เสมอตัวในช่วงนี้** · engine เดียวกันบน H4 (entry) ทำได้ดีสุด ·
-SELL แย่กว่า BUY เกือบทุก TF (shorting ทองขาขึ้น)
+**M15 spec: จากเสมอตัว (+0.02R) → +0.29R/ไม้, PF 1.6, drawdown ครึ่งเดียว** — ปรับปรุงชัดวัดได้
+H1 ยังเป็น TF ที่แย่สุด (หลีกเลี่ยง) · session filter ยกคุณภาพต่อไม้ทุก TF
 
-*ตัวอย่างเดียว 1 ช่วงตลาด — เป็นแนวโน้ม ไม่ใช่คำรับประกัน · price-action mechanised แบบนี้หยาบกว่าตาคน*
+*ตัวอย่างเดียว 1 ช่วงตลาด (~2 เดือน) — เป็นแนวโน้ม ไม่ใช่คำรับประกัน*
 
 ## Pine Script
 
 `XAUUSD-SmartEntry.pine` — indicator v5 สำหรับ TradingView (ใส่บนชาร์ต M15/M30/H1 XAUUSD):
-EMA50, dashboard H4/H1/M15, score /9, label BUY/SELL + เส้น Entry/SL/TP + RR, ไม่ซ้ำในโซนเดิม, alertcondition
+EMA50, dashboard H4/H1/M15 + session + score, prior-day H-L-C + round numbers เป็น S/R,
+SELL ต้อง 9/9, session filter, label BUY/SELL + เส้น Entry/SL/TP + RR, ไม่ซ้ำในโซนเดิม, alertcondition
 
 ## AI (ตัวเลือก)
 

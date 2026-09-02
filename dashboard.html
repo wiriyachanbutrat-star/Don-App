@@ -157,9 +157,9 @@
           <div><label>SL อิงจาก</label><input id="slBasis" type="text" readonly value="—"></div>
         </div>
         <div class="sub" style="line-height:1.6;">
-          <b>XAUUSD Smart Entry</b> — H4 กำหนดเทรนด์ · H1 ยืนยันโครงสร้าง · M15 หาจุดเข้า (แนว S/R + BOS + Retest + Rejection candle) ·
-          Entry = ราคาปัจจุบัน · SL พ้นแนว Swing (บีบ 1–3× ATR) · TP = RR ~1:1.6 หรือ swing ตรงข้าม ·
-          เข้าเทรดเฉพาะ <b>Setup 8–9/9</b> เท่านั้น
+          <b>XAUUSD Smart Entry</b> — H4 เทรนด์ · H1 โครงสร้าง · M15 จุดเข้า (โซน S/R + วานนี้ H/L + เลขกลม + BOS + Retest + Rejection) ·
+          Entry = ราคาปัจจุบัน · SL พ้นแนว (บีบ 1–3× ATR) · TP = RR ~1:1.6 หรือ swing ตรงข้าม ·
+          เข้าเฉพาะ <b>BUY 8/9 · SELL 9/9</b> และ <b>ในเวลา London+NY (07–21 UTC)</b> เท่านั้น
         </div>
         <ul class="reasons" id="reasons"></ul>
         <div style="border-top:1px solid var(--hair);padding-top:12px;">
@@ -289,9 +289,9 @@ function renderSignal(d){
   $('strongFlag').style.display = tradable ? 'inline-block' : 'none';
   $('strongFlag').textContent = 'STRONG SETUP ' + s.score + '/9 — เข้าได้';
   $('devFlag').style.display = (!tradable && s.tier==='WATCH') ? 'inline-block' : 'none';
-  $('devFlag').textContent = '🟡 Watch ' + s.score + '/9 — ยังไม่ครบ 8/9';
+  $('devFlag').textContent = '🟡 Watch ' + s.score + '/9 — ต้อง ' + (s.strongBar||8) + '/9';
 
-  $('scoreVal').textContent = s.score + ' / 9  (' + s.tier + ')';
+  $('scoreVal').textContent = s.score + ' / 9  (' + s.tier + (s.direction==='SELL'?' · SELL ต้อง 9':'') + ')';
   $('confVal').textContent = s.confidence + '%';
   $('trendTfLbl').textContent = 'Trend (' + d.stack.trend + ')';
   $('structTfLbl').textContent = 'Structure (' + d.stack.structure + ')';
@@ -301,8 +301,10 @@ function renderSignal(d){
   $('regimeVal').style.color = tt.direction==='UP'?'var(--buy)':tt.direction==='DOWN'?'var(--sell)':'';
   $('structVal').textContent = dirWord(st.direction);
   $('structVal').style.color = st.direction==='UP'?'var(--buy)':st.direction==='DOWN'?'var(--sell)':'';
-  $('entryTfVal').textContent = (i.bos?('BOS '+(i.bos==='UP'?'↑':'↓')+' '):'') + (i.retest?'+Retest ':'') + (i.rejection?'+Rej ':'') + (i.atSR?'@S/R':'');
-  $('sessionVal').textContent = sessionLabel();
+  $('entryTfVal').textContent = (i.bos?('BOS '+(i.bos==='UP'?'↑':'↓')+' '):'') + (i.retest?'+RT ':'') + (i.rejection?'+Rej ':'') + (i.srZone?('@S/R×'+i.srZone.touches):'');
+  const sess = s.session||{};
+  $('sessionVal').textContent = sessionLabel() + (sess.windowUTC ? (sess.ok ? ' ✅' : ' ⛔ นอกเวลา') : '');
+  $('sessionVal').style.color = (sess.windowUTC && !sess.ok) ? 'var(--sell)' : '';
 
   const wb = $('waitBanner');
   if(!tradable && s.waitReason){ wb.style.display='block'; wb.textContent = (s.tier==='WATCH'?'🟡 ':'⏸ ') + s.waitReason; }
@@ -330,23 +332,38 @@ function renderSignal(d){
   if(tradable) recordTrade(d);
 }
 
-// The 6-row checklist IS the analysis now — render it as the "indicators" panel.
+// The 6-row checklist + session IS the analysis now.
 function renderIndicators(d){
   const s = d.signal;
   if(!s.checklist){ $('indGrid').innerHTML = '<div class="sub">ยังไม่มีทิศทาง (เทรนด์ H4 ไม่ชัด)</div>'; return; }
-  $('indGrid').innerHTML = s.checklist.map(c=>
-    `<div class="cell" style="border-left:3px solid ${c.got?'var(--buy)':'var(--hair)'};">
-      <div class="n">${c.got?'✅':'⬜'} ${c.name} <span style="opacity:.6">(${c.got?'+':''}${c.got?c.points:0}/${c.points})</span></div>
+  const rows = s.checklist.map(c=>{
+    const ic = c.partial ? '🟡' : c.got ? '✅' : '⬜';
+    const col = c.partial ? 'var(--wait)' : c.got ? 'var(--buy)' : 'var(--hair)';
+    return `<div class="cell" style="border-left:3px solid ${col};">
+      <div class="n">${ic} ${c.name} <span style="opacity:.6">(+${c.earned}/${c.points})</span></div>
       <div class="x" style="font-family:var(--fb);font-size:12px;white-space:normal;">${c.note}</div>
-    </div>`).join('');
+    </div>`;
+  });
+  const sess = s.session||{};
+  if(sess.windowUTC){
+    rows.push(`<div class="cell" style="border-left:3px solid ${sess.ok?'var(--buy)':'var(--sell)'};">
+      <div class="n">${sess.ok?'✅':'⛔'} Session (gate)</div>
+      <div class="x" style="font-family:var(--fb);font-size:12px;white-space:normal;">${sess.ok?'อยู่ในเวลาเทรด London+NY':'นอกเวลา — งดเข้าแม้ setup ครบ'} · ${sess.windowUTC[0]}:00–${sess.windowUTC[1]}:00 UTC (ตอนนี้ ${sess.hourUTC!=null?sess.hourUTC+':00':'?'})</div>
+    </div>`);
+  }
+  $('indGrid').innerHTML = rows.join('');
 }
 
 function renderSR(d){
   const i = d.indicators, st = d.structure, cards = [];
+  if(i.priorDay){
+    cards.push(['วานนี้ High', i.priorDay.high, 'down']);
+    cards.push(['วานนี้ Close', i.priorDay.close, '']);
+    cards.push(['วานนี้ Low', i.priorDay.low, 'up']);
+  }
   if(st.lastHigh) cards.push(['Swing High', st.lastHigh.price, 'down']);
-  if(i.srLevel!=null && d.signal.direction==='SELL') cards.push(['แนวต้าน (setup)', i.srLevel, 'down']);
   cards.push(['ราคาปัจจุบัน', d.price, '']);
-  if(i.srLevel!=null && d.signal.direction==='BUY') cards.push(['แนวรับ (setup)', i.srLevel, 'up']);
+  if(i.srZone) cards.push(['โซน S/R ('+ (i.srZone.htf?'HTF':'×'+i.srZone.touches) +')', i.srZone.mid, d.signal.direction==='BUY'?'up':'down']);
   if(i.bosLevel!=null) cards.push(['ระดับที่ทะลุ (BOS)', i.bosLevel, i.bos==='UP'?'up':'down']);
   if(st.lastLow) cards.push(['Swing Low', st.lastLow.price, 'up']);
   $('srGrid').innerHTML = cards.map(([n,v,c])=>`<div class="cell"><div class="n">${n}</div><div class="x ${c}">${fmt(v)}</div></div>`).join('');

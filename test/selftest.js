@@ -168,7 +168,28 @@ function check(name, cond, detail) {
   check('strategy: conflicting H1 structure → row not scored', h1row && h1row.got === false, JSON.stringify(h1row));
 
   // maxScore / shape sanity for downstream consumers.
-  check('strategy: signal shape', up.signal.maxScore === 9 && up.signal.maxWeight === 9 && Array.isArray(up.signal.reasons) && up.signal.reasons.length === 6);
+  check('strategy: signal shape', up.signal.maxScore === 9 && up.signal.checklist.length === 6 && Array.isArray(up.signal.reasons) && up.signal.reasons.length >= 6);
+  check('strategy: session field present', up.signal.session && typeof up.signal.session.ok === 'boolean');
+
+  // Session gate: same clean uptrend but the last bar lands at 03:00 UTC
+  // (Asian) → a full setup must be held to WATCH, not STRONG.
+  const asianCandles = mk(320, 2000, 0.8).map((c, i) => ({ ...c, time: '2024-01-01 03:00:00' }));
+  const asia = S.analyze({ assetKey: 'XAU', interval: '15min', entryCandles: asianCandles, structureCandles: mk(320, 1950, 1.2), trendCandles: mk(320, 1900, 1.6) });
+  check('strategy: out-of-session → not tradable', asia.signal.tradable === false, asia.signal.waitReason || '');
+
+  // Prior-day levels helper
+  const twoDays = [];
+  for (let d = 1; d <= 2; d++) for (let h = 0; h < 24; h++)
+    twoDays.push({ time: `2024-01-0${d} ${String(h).padStart(2, '0')}:00:00`, open: 100 + d, high: 105 + d, low: 95 + d, close: 100 + d + h * 0.1 });
+  const pd = I.priorDayLevels(twoDays);
+  check('priorDayLevels: prev day high/low', pd && pd.high === 106 && pd.low === 96, JSON.stringify(pd));
+
+  // srZones: repeated pivots at ~the same price merge into one high-touch zone
+  const zc = [];
+  const zpath = [100, 103, 106, 103, 100, 103, 106.1, 103, 100.1, 103, 106, 103, 100, 103];
+  zpath.forEach((v, i) => zc.push({ time: String(i), open: v, high: v + 0.3, low: v - 0.3, close: v }));
+  const zones = I.srZones(zc, 2, 1.0);
+  check('srZones: clusters repeated levels', zones.some(z => z.touches >= 2), JSON.stringify(zones));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);
