@@ -3,3 +3,4 @@ node_modules/
 server.log
 
 gold-run.log
+gold-run.err.log

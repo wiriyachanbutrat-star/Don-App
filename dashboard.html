@@ -97,7 +97,7 @@
   <div class="panel row">
     <div>
       <div class="symbol" id="title">XAU/USD — SMART ENTRY</div>
-      <div class="sub">Top-down Price Action · EMA50 + Swing / S/R / BOS / Retest / Rejection</div>
+      <div class="sub">Top-down Price Action · Breakout → Pullback → Action Zone → QM → Entry</div>
       <div class="live"><span class="dot"></span>LIVE · อัปเดตทุก 5 นาที</div>
     </div>
     <div style="display:flex;align-items:center;gap:12px;">
@@ -171,6 +171,11 @@
   </div>
 
   <div class="panel">
+    <h2>ค่าหลัก — Breakout · Pullback · Action Zone · QM</h2>
+    <div class="grid" id="playbookGrid" style="grid-template-columns:repeat(2,1fr);"><div class="sub">กำลังโหลด…</div></div>
+  </div>
+
+  <div class="panel">
     <h2>Multi-Timeframe (แต่ละ Entry TF)</h2>
     <div class="scroll">
       <table>
@@ -186,7 +191,7 @@
   </div>
 
   <div class="panel">
-    <h2>Setup Checklist (9 คะแนน)</h2>
+    <h2>Setup Checklist (9 คะแนน — เน้น Breakout / Pullback / Action Zone / QM)</h2>
     <div class="grid" id="indGrid"><div class="sub">กำลังโหลด…</div></div>
   </div>
 
@@ -301,7 +306,7 @@ function renderSignal(d){
   $('regimeVal').style.color = tt.direction==='UP'?'var(--buy)':tt.direction==='DOWN'?'var(--sell)':'';
   $('structVal').textContent = dirWord(st.direction);
   $('structVal').style.color = st.direction==='UP'?'var(--buy)':st.direction==='DOWN'?'var(--sell)':'';
-  $('entryTfVal').textContent = (i.bos?('BOS '+(i.bos==='UP'?'↑':'↓')+' '):'') + (i.retest?'+RT ':'') + (i.rejection?'+Rej ':'') + (i.srZone?('@S/R×'+i.srZone.touches):'');
+  $('entryTfVal').textContent = (i.bos?('Breakout '+(i.bos==='UP'?'↑':'↓')+' '):'') + (i.retest?'+Pullback ':'') + (i.qm&&i.qm.confirmed?'+QM ':'') + (i.rejection?'+Rej ':'') + (i.srZone?('@Zone×'+i.srZone.touches):'');
   const sess = s.session||{};
   $('sessionVal').textContent = sessionLabel() + (sess.windowUTC ? (sess.ok ? ' ✅' : ' ⛔ นอกเวลา') : '');
   $('sessionVal').style.color = (sess.windowUTC && !sess.ok) ? 'var(--sell)' : '';
@@ -352,6 +357,41 @@ function renderIndicators(d){
     </div>`);
   }
   $('indGrid').innerHTML = rows.join('');
+}
+
+function renderPlaybook(d){
+  const p = d.playbook, grid = $('playbookGrid');
+  if(!p){ grid.innerHTML = '<div class="sub">ยังไม่มีทิศทาง (เทรนด์ H4 ไม่ชัด)</div>'; return; }
+  const dirW = x => x==='UP'?'ขาขึ้น':x==='DOWN'?'ขาลง':'—';
+  const card = (name, ok, big, sub) => {
+    const col = ok===true?'var(--buy)':ok==='pend'?'var(--wait)':'var(--hair)';
+    const ic = ok===true?'✅':ok==='pend'?'🟡':'⬜';
+    return `<div class="cell" style="border-left:3px solid ${col};">
+      <div class="n">${ic} ${name}</div>
+      <div class="x" style="font-family:var(--fm);font-size:16px;">${big}</div>
+      <div class="n" style="white-space:normal;margin-top:2px;">${sub||''}</div>
+    </div>`;
+  };
+  const b = p.breakout, pb = p.pullback, az = p.actionZone, qm = p.qm;
+  const cards = [
+    card('BREAKOUT',
+      b.confirmed?true:(b.level!=null?'pend':false),
+      b.level!=null?fmt(b.level):'—',
+      b.confirmed?('ทะลุแล้ว '+dirW(b.dir)+' · '+(b.barsSince!=null?b.barsSince+' แท่งก่อน':'')):'ยังไม่ทะลุระดับนี้'),
+    card('PULLBACK',
+      pb.active?true:(pb.toLevel!=null?'pend':false),
+      pb.toLevel!=null?fmt(pb.toLevel):'—',
+      pb.active?('ย่อกลับมาทดสอบแล้ว · ระยะ '+(pb.distance!=null?fmt(pb.distance):'?')):'รอราคาย่อกลับมาที่ระดับที่ทะลุ'),
+    card('ACTION ZONE',
+      az?(az.inside?true:'pend'):false,
+      az?(fmt(az.lo)+' – '+fmt(az.hi)):'—',
+      az?((az.htf?'ระดับ HTF/เลขกลม':'ทดสอบ '+az.touches+' ครั้ง')+(az.inside?' · ราคาอยู่ในโซน':' · ราคายังไม่ถึงโซน')):'ยังไม่พบโซน S/R'),
+    card('QM PATTERN',
+      qm?(qm.confirmed?true:'pend'):false,
+      qm?fmt(qm.entry):'—',
+      qm?((qm.pattern==='BULLISH_QM'?'QM ฝั่งซื้อ':'QM ฝั่งขาย')+' · ไหล่ '+fmt(qm.leftShoulder)+' / หัว '+fmt(qm.head)+(qm.confirmed?' · ทะลุแล้ว':' · ยังไม่ทะลุ '+fmt(qm.broken))):'ยังไม่พบรูปแบบ QM'),
+  ];
+  grid.innerHTML = cards.join('');
 }
 
 function renderSR(d){
@@ -536,6 +576,7 @@ async function load(){
   last = d;
   guard(()=>renderPrice(d), 'renderPrice');
   guard(()=>renderSignal(d), 'renderSignal');
+  guard(()=>renderPlaybook(d), 'renderPlaybook');
   guard(()=>renderIndicators(d), 'renderIndicators');
   guard(()=>renderSR(d), 'renderSR');
   guard(()=>checkHist(d), 'checkHist');

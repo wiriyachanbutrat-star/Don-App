@@ -168,7 +168,9 @@ function check(name, cond, detail) {
   check('strategy: conflicting H1 structure → row not scored', h1row && h1row.got === false, JSON.stringify(h1row));
 
   // maxScore / shape sanity for downstream consumers.
-  check('strategy: signal shape', up.signal.maxScore === 9 && up.signal.checklist.length === 6 && Array.isArray(up.signal.reasons) && up.signal.reasons.length >= 6);
+  check('strategy: signal shape', up.signal.maxScore === 9 && up.signal.checklist.length === 7 && Array.isArray(up.signal.reasons) && up.signal.reasons.length >= 7);
+  check('strategy: checklist names', ['H4 Trend','H1 Structure','Action Zone','Breakout','Pullback','QM Pattern','Price Action'].every((nm,ix)=>up.signal.checklist[ix].name===nm), JSON.stringify(up.signal.checklist.map(c=>c.name)));
+  check('strategy: playbook block present', up.playbook && 'breakout' in up.playbook && 'pullback' in up.playbook && 'actionZone' in up.playbook && 'qm' in up.playbook);
   check('strategy: session field present', up.signal.session && typeof up.signal.session.ok === 'boolean');
 
   // Session gate: same clean uptrend but the last bar lands at 03:00 UTC
@@ -190,6 +192,13 @@ function check(name, cond, detail) {
   zpath.forEach((v, i) => zc.push({ time: String(i), open: v, high: v + 0.3, low: v - 0.3, close: v }));
   const zones = I.srZones(zc, 2, 1.0);
   check('srZones: clusters repeated levels', zones.some(z => z.touches >= 2), JSON.stringify(zones));
+
+  // quasimodo: LS low → high → lower low (head) → break the high → return
+  const qc = [];
+  const qpath = [105, 103, 100, 102, 106, 110, 108, 103, 98, 95, 99, 104, 109, 113, 112, 111];
+  qpath.forEach((v, i) => qc.push({ time: String(i), open: v, high: v + 0.4, low: v - 0.4, close: v }));
+  const qm = I.quasimodo(qc, 2);
+  check('quasimodo: bullish QM detected', qm.bull && qm.bull.head < qm.bull.leftShoulder, JSON.stringify(qm));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

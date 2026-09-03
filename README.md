@@ -9,17 +9,18 @@
 |---|---|---|
 | **Trend** | H4 | EMA50 + ความชัน → **กำหนดทิศทางอย่างเดียว** (ราคาเหนือ/ใต้ EMA50 + slope) |
 | **Structure** | H1 | ต้องเป็น HH/HL (BUY) หรือ LH/LL (SELL) |
-| **Entry** | M15 | ราคาอยู่ที่แนว Swing S/R + Break of Structure + Retest + Rejection candle |
+| **Entry** | M15 | Breakout (BOS) → Pullback (retest) → Action Zone (S/R) → QM → Rejection candle |
 
 **Score /9**
 
 | เงื่อนไข | คะแนน |
 |---|---|
-| H4 Trend ตรงกัน | +2 |
-| H1 Structure ตรงกัน | +2 |
-| ราคาอยู่ที่แนว S/R | **+2** ถ้าเป็นโซนที่โดนทดสอบ ≥2 ครั้ง / ระดับ HTF (วานนี้ H-L-C) / เลขกลม · **+1** ถ้าเป็น swing เดี่ยว |
-| Break of Structure (BOS) | +1 |
-| Retest ระดับที่ทะลุ | +1 |
+| H4 Trend ตรงกัน (บริบท) | +2 |
+| H1 Structure ตรงกัน (บริบท) | +1 |
+| **ACTION ZONE** — ราคาอยู่ที่แนว S/R | **+2** ถ้าเป็นโซนที่โดนทดสอบ ≥2 ครั้ง / ระดับ HTF (วานนี้ H-L-C) / เลขกลม · **+1** ถ้าเป็น swing เดี่ยว |
+| **BREAKOUT** — Break of Structure (BOS) | +1 |
+| **PULLBACK** — ย่อกลับมาทดสอบระดับที่ทะลุ | +1 |
+| **QM (Quasimodo)** — รูปแบบ over/under ตามทิศทาง + ทะลุแล้ว | +1 |
 | Rejection candle (ปิดในโซน 1/3 ที่ถูกทาง) | +1 |
 
 **Filter เข้าเทรด:**
