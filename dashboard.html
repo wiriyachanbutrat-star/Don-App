@@ -86,7 +86,7 @@
   .tier.strong{color:var(--buy);} .tier.forming{color:var(--amber);} .tier.wait{color:var(--faint);}
   .meter{height:9px;border-radius:6px;background:var(--sunk);border:1px solid var(--border);margin:12px 0 4px;position:relative;overflow:hidden;}
   .meter i{position:absolute;left:0;top:0;bottom:0;border-radius:6px;background:linear-gradient(90deg,var(--amber),var(--buy));transition:width .7s ease-out;}
-  .meter u{position:absolute;left:80%;top:-3px;bottom:-3px;width:2px;background:var(--gold);}
+  .meter u{position:absolute;left:72%;top:-3px;bottom:-3px;width:2px;background:var(--gold);}
   .meterlbl{display:flex;justify-content:space-between;font-family:var(--fm);font-size:10px;color:var(--faint);}
   .comp{display:flex;flex-direction:column;gap:9px;margin-top:14px;}
   .comp .r{display:flex;align-items:flex-start;gap:9px;}
@@ -208,10 +208,10 @@
         </div>
         <div class="tier wait" id="tierLbl">—</div>
         <div class="meter"><i id="meterFill" style="width:0%"></i><u></u></div>
-        <div class="meterlbl"><span>0</span><span id="meterMark">80 = STRONG ZONE</span><span>100</span></div>
+        <div class="meterlbl"><span>0</span><span id="meterMark">72 = STRONG ZONE</span><span>100</span></div>
         <div class="comp" id="compList"></div>
         <div class="gate" id="gateRow"></div>
-        <div class="strongbox" id="strongBox" style="display:none;">≥ 80 คะแนน = STRONG ZONE</div>
+        <div class="strongbox" id="strongBox" style="display:none;">≥ 72 คะแนน = STRONG ZONE</div>
       </div>
 
       <!-- TRADE PLAN -->
@@ -410,8 +410,8 @@ function renderStatus(d){
     cls='sell'; word='เข้าขาย'; txt = `STRONG SELL ZONE ${inst.score}/100`;
   } else {
     cls='wait'; word='รอ';
-    if(inst.state==='ACCUMULATION') txt = `โซนสะสม ${inst.score}/100 — ยังไม่ถึง 80`;
-    else if(inst.state==='DISTRIBUTION') txt = `โซนกระจาย ${inst.score}/100 — ยังไม่ถึง 80`;
+    if(inst.state==='ACCUMULATION') txt = `โซนสะสม ${inst.score}/100 — ยังไม่ถึง 72`;
+    else if(inst.state==='DISTRIBUTION') txt = `โซนกระจาย ${inst.score}/100 — ยังไม่ถึง 72`;
     else txt = 'เทรนด์ H4 ยังไม่ชัด';
   }
   el.className = 'statusbadge ' + cls;
@@ -426,8 +426,8 @@ function renderScore(inst){
   const live = inst.state === 'ACCUMULATION' || inst.state === 'DISTRIBUTION';
   const w = W(inst);
   $('scoreHead').textContent = live ? w.scoreHead : 'Institutional Score';
-  $('meterMark').textContent = live ? ('80 = ' + w.strong) : '80 = STRONG ZONE';
-  $('strongBox').textContent = '≥ 80 คะแนน = ' + (live ? w.strong : 'STRONG ZONE');
+  $('meterMark').textContent = live ? ('72 = ' + w.strong) : '72 = STRONG ZONE';
+  $('strongBox').textContent = '≥ 72 คะแนน = ' + (live ? w.strong : 'STRONG ZONE');
   $('scoreNum').textContent = live ? inst.score : 0;
   const col = inst.tier==='STRONG_ZONE' ? w.accent : inst.tier==='FORMING' ? 'var(--amber)' : 'var(--faint)';
   $('scoreNum').style.color = col;
@@ -484,7 +484,7 @@ function renderPlan(d){
   } else if(inst.ready){
     bn.innerHTML = `<div class="banner ${w.cls}">✅ ${w.strong} — เงื่อนไขครบ ${inst.score}/100 · ${w.verb}ได้ตามแผน</div>`;
   } else {
-    bn.innerHTML = `<div class="banner">🟡 ${inst.tier==='FORMING'?w.zoneWord+'กำลังก่อตัว':'รอเงื่อนไข'} ${inst.score}/100 — ยังไม่ถึง 80 · รอ ${(inst.checklist||[]).filter(c=>!c.got).map(c=>c.name.split(' ')[1]||c.name.split(' ')[0]).slice(0,3).join(', ')}</div>`;
+    bn.innerHTML = `<div class="banner">🟡 ${inst.tier==='FORMING'?w.zoneWord+'กำลังก่อตัว':'รอเงื่อนไข'} ${inst.score}/100 — ยังไม่ถึง 72 · รอ ${(inst.checklist||[]).filter(c=>!c.got).map(c=>c.name.split(' ')[1]||c.name.split(' ')[0]).slice(0,3).join(', ')}</div>`;
   }
   const show = live && L.entry != null;
   const R = L.slDistance;

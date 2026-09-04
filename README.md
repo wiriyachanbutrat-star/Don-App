@@ -31,25 +31,26 @@
 **Entry/SL/TP:** Entry = ราคาปัจจุบัน · SL พ้นแนว + บัฟเฟอร์ 0.3×ATR (บีบ 1–3×ATR) ·
 TP = RR 1:1.6 หรือ swing ตรงข้าม (ไม่เกิน 3R)
 
-## Dashboard — Institutional Accumulation Model (BUY-only)
+## Dashboard — Institutional Accumulation / Distribution Model
 
-หน้าแรก (`/`) แสดงโมเดล **"ธนาคารสะสมทอง (เข้าซื้อ)"** — คิดจาก payload เดิมของ `/api/signal`
-(field `institutional`, คำนวณใน `lib/strategy.js` → `institutionalBuy()`). BUY อย่างเดียว —
-ถ้า H4 เป็นขาลง หน้าจะขึ้น "ยังไม่มีโซนสะสม"
+หน้าแรก (`/`) แสดงโมเดล **"ธนาคารสะสม/กระจายทอง"** — คิดจาก payload เดิมของ `/api/signal`
+(field `institutional`, คำนวณใน `lib/strategy.js` → `institutionalModel(side, …)`).
+2 ทิศทาง: H4 ขาขึ้น → โหมด **เข้าซื้อ** (ACCUMULATION) · H4 ขาลง → โหมด **เข้าขาย** (DISTRIBUTION) ·
+ไม่ชัด → "ยังไม่มีโซน" (NO_TREND) · ป้ายสถานะ: เข้าซื้อ / เข้าขาย / รอ
 
-**Institutional Buy Score /100** — Workflow: HTF Trend → Liquidity → Sweep Low → QM/Demand → MSS/BOS → Retest → ENTRY
+**Institutional Score /100** — Workflow: HTF Trend → Liquidity → Sweep → QM/Zone → MSS/BOS → Retest → ENTRY
 
-| องค์ประกอบ | คะแนน | มาจาก |
+| องค์ประกอบ | คะแนน | ซื้อ / ขาย |
 |---|---|---|
-| HTF Trend (gate) | +15 | trend TF ขาขึ้น (EMA) |
-| Liquidity Sweep | +20 | ราคากวาดใต้ swing low / prior-day low แล้วปิดกลับเหนือระดับ |
-| QM / Demand Zone | +20 | Quasimodo ฝั่งซื้อ (ทะลุแล้ว) หรือราคาอยู่ในโซน S/R |
-| Market Structure Shift | +20 | BOS ขาขึ้นบน entry TF + โครงสร้าง TF ถัดไปเป็น HH/HL |
-| Displacement / Volume | +15 | แท่งเขียวช่วง > 1.3×ATR + วอลุ่ม > 1.5× ค่าเฉลี่ย |
-| Pullback / Retest | +10 | ย่อกลับมาทดสอบระดับที่ทะลุแล้วยืนได้ |
+| HTF Trend (gate) | +15 | trend TF ขาขึ้น / ขาลง |
+| Liquidity Sweep | +20 | กวาดใต้ Low แล้ว reclaim / กวาดเหนือ High แล้ว reject |
+| QM / Demand·Supply Zone | +20 | Quasimodo ตามทิศทาง (ทะลุแล้ว) หรือราคาอยู่ในโซน |
+| Market Structure Shift | +20 | BOS + โครงสร้าง TF ถัดไปตามทิศทาง |
+| Displacement / Volume | +15 | แท่งเขียว/แดง > 1.3×ATR + วอลุ่ม > 1.5× ค่าเฉลี่ย |
+| Pullback / Retest | +10 | ย่อ/เด้งกลับมาทดสอบระดับที่ทะลุแล้วยืนได้ |
 
-`≥ 80` = STRONG BUY ZONE · `55–79` = กำลังก่อตัว · `< 55` = รอ ·
-Trade plan: ENTRY/SL จาก `levels`, TP1 = +3R, TP2 = +5R
+`≥ 72` = STRONG ZONE · `45–71` = กำลังก่อตัว · `< 45` = รอ ·
+Trade plan: ENTRY/SL จาก `levels`, TP1 = ±3R, TP2 = ±5R (ตามทิศทาง)
 
 กรอบเวลาที่เลือกได้บน dashboard = **Entry TF** (M15/M30/H1/H4) — Structure & Trend TF เลื่อนตามอัตโนมัติ
 เช่น เลือก M15 → Structure=H1, Trend=H4 (ตรงตาม spec)
