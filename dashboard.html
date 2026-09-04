@@ -187,7 +187,7 @@
 
   <!-- ===== WORKFLOW ===== -->
   <div class="panel">
-    <h2>แนวทางการหาจุดเข้าซื้อ — Workflow</h2>
+    <h2 id="flowHead">แนวทางการหาจุดเข้าเทรด — Workflow</h2>
     <div class="flow" id="flow"></div>
   </div>
 
@@ -202,16 +202,16 @@
     <div class="colR">
       <!-- SCORE -->
       <div class="panel">
-        <h2>Institutional Buy Score</h2>
+        <h2 id="scoreHead">Institutional Buy Score</h2>
         <div class="scorehead">
           <span class="scorenum" id="scoreNum">—</span><span class="scoremax">/ 100</span>
         </div>
         <div class="tier wait" id="tierLbl">—</div>
         <div class="meter"><i id="meterFill" style="width:0%"></i><u></u></div>
-        <div class="meterlbl"><span>0</span><span>80 = STRONG BUY ZONE</span><span>100</span></div>
+        <div class="meterlbl"><span>0</span><span id="meterMark">80 = STRONG ZONE</span><span>100</span></div>
         <div class="comp" id="compList"></div>
         <div class="gate" id="gateRow"></div>
-        <div class="strongbox" id="strongBox" style="display:none;">≥ 80 คะแนน = STRONG BUY ZONE</div>
+        <div class="strongbox" id="strongBox" style="display:none;">≥ 80 คะแนน = STRONG ZONE</div>
       </div>
 
       <!-- TRADE PLAN -->
@@ -220,7 +220,7 @@
         <div id="planBanner"></div>
         <div class="plan" id="plan" style="margin-top:10px;">
           <div class="pr entry"><span class="k">ENTRY</span><span class="v" id="pEntry">—</span></div>
-          <div class="pr sl"><span class="k">SL (ใต้ Swing Low / โซน)</span><span class="v" id="pSl">—</span></div>
+          <div class="pr sl"><span class="k" id="pSlK">SL (ใต้ Swing Low / โซน)</span><span class="v" id="pSl">—</span></div>
           <div class="pr tp1"><span class="k">TP1 · RR 1:3</span><span class="v" id="pTp1">—</span></div>
           <div class="pr tp2"><span class="k">TP2 · RR 1:5</span><span class="v" id="pTp2">—</span></div>
         </div>
@@ -237,7 +237,7 @@
       <!-- CONCEPT -->
       <div class="panel">
         <h2>ภาพรวมแนวคิด</h2>
-        <svg viewBox="0 0 340 150" style="width:100%;height:auto;">
+        <svg id="conceptBuy" viewBox="0 0 340 150" style="width:100%;height:auto;">
           <rect x="120" y="86" width="150" height="30" rx="4" fill="var(--amber-d)" stroke="var(--amber)" stroke-width="1"/>
           <text x="195" y="105" text-anchor="middle" font-size="10" fill="var(--amber)" font-family="Space Grotesk">QM / DEMAND</text>
           <polyline points="8,20 40,44 66,34 96,74 120,64 138,104 150,120 168,100 182,110 210,66 246,50 270,58 300,26 332,12"
@@ -248,11 +248,22 @@
           <text x="286" y="52" font-size="9" fill="var(--buy)" font-family="Space Grotesk">RETEST</text>
           <text x="300" y="20" font-size="9" fill="var(--buy)" font-family="Space Grotesk">BREAKOUT ↗</text>
         </svg>
+        <svg id="conceptSell" viewBox="0 0 340 150" style="width:100%;height:auto;display:none;">
+          <rect x="120" y="34" width="150" height="30" rx="4" fill="var(--sell-d)" stroke="var(--sell)" stroke-width="1"/>
+          <text x="195" y="53" text-anchor="middle" font-size="10" fill="var(--sell)" font-family="Space Grotesk">QM / SUPPLY</text>
+          <polyline points="8,130 40,106 66,116 96,76 120,86 138,46 150,30 168,50 182,40 210,84 246,100 270,92 300,124 332,138"
+            fill="none" stroke="var(--ink)" stroke-width="2" stroke-linejoin="round"/>
+          <circle cx="150" cy="30" r="3.5" fill="var(--cyan)"/>
+          <text x="150" y="18" text-anchor="middle" font-size="9" fill="var(--cyan)" font-family="Space Grotesk">SWEEP HIGH</text>
+          <circle cx="270" cy="92" r="3.5" fill="var(--sell)"/>
+          <text x="286" y="88" font-size="9" fill="var(--sell)" font-family="Space Grotesk">RETEST</text>
+          <text x="296" y="140" font-size="9" fill="var(--sell)" font-family="Space Grotesk">BREAKDOWN ↘</text>
+        </svg>
       </div>
 
       <!-- TARGETS -->
       <div class="panel">
-        <h2>แนวต้าน / เป้าหมาย (Liquidity ฝั่งซื้อ)</h2>
+        <h2 id="tgtHead">แนวต้าน / เป้าหมาย (Liquidity ฝั่งซื้อ)</h2>
         <div class="tgt" id="tgtList"><div class="sub">กำลังโหลด…</div></div>
       </div>
     </div>
@@ -261,7 +272,7 @@
   <!-- ===== FOOTER GRID ===== -->
   <div class="fgrid">
     <div class="panel">
-      <h2>เงื่อนไขเข้าสถานะซื้อ — Checklist</h2>
+      <h2 id="ckHead">เงื่อนไขเข้าสถานะซื้อ — Checklist</h2>
       <ul class="cklist" id="ckList"><li class="sub">กำลังโหลด…</li></ul>
     </div>
     <div class="panel">
@@ -350,39 +361,57 @@ async function api(path){
   return j;
 }
 
+/* ---------- direction word-pack ---------- */
+function W(inst){
+  const buy = inst.side === 'BUY';
+  return {
+    buy,
+    verb: buy ? 'เข้าซื้อ' : 'เข้าขาย',
+    scoreHead: buy ? 'Institutional Buy Score' : 'Institutional Sell Score',
+    zoneWord: buy ? 'โซนสะสม' : 'โซนกระจาย',
+    strong: buy ? 'STRONG BUY ZONE' : 'STRONG SELL ZONE',
+    sweepStep: buy ? 'Sweep Low' : 'Sweep High',
+    zoneStep: buy ? 'QM / Demand' : 'QM / Supply',
+    tgtHead: buy ? 'แนวต้าน / เป้าหมาย (Liquidity ฝั่งซื้อ)' : 'แนวรับ / เป้าหมาย (Liquidity ฝั่งขาย)',
+    ckHead: buy ? 'เงื่อนไขเข้าสถานะซื้อ — Checklist' : 'เงื่อนไขเข้าสถานะขาย — Checklist',
+    slK: buy ? 'SL (ใต้ Swing Low / โซน)' : 'SL (เหนือ Swing High / โซน)',
+    accent: buy ? 'var(--buy)' : 'var(--sell)',
+    cls: buy ? 'buy' : 'sell',
+  };
+}
+
 /* ---------- workflow ---------- */
 function renderFlow(inst){
   const c = k => (inst.components||[]).find(x=>x.key===k) || { earned:0, max:1 };
   const st = (e,full) => e>=full ? 'done' : e>0 ? 'active' : 'todo';
-  const acc = inst.state === 'ACCUMULATION';
+  const live = inst.state === 'ACCUMULATION' || inst.state === 'DISTRIBUTION';
+  const w = W(inst);
   const steps = [
-    { nm:'HTF Trend', ic:'📈', s: acc ? st(c('htf').earned,15) : 'todo' },
+    { nm:'HTF Trend', ic:'📈', s: live ? st(c('htf').earned,15) : 'todo' },
     { nm:'Liquidity', ic:'💧', s: (inst.targets && inst.targets.length) ? 'done' : 'todo' },
-    { nm:'Sweep Low', ic:'🪝', s: acc ? st(c('sweep').earned,20) : 'todo' },
-    { nm:'QM / Demand', ic:'🎯', s: acc ? st(c('demand').earned,12) : 'todo' },
-    { nm:'MSS / BOS', ic:'🔀', s: acc ? st(c('mss').earned,12) : 'todo' },
-    { nm:'Retest', ic:'↩️', s: acc ? st(c('pullback').earned,10) : 'todo' },
-    { nm:'ENTRY', ic:'🛒', s: inst.ready ? 'done' : 'todo' },
+    { nm:w.sweepStep, ic:'🪝', s: live ? st(c('sweep').earned,20) : 'todo' },
+    { nm:w.zoneStep, ic:'🎯', s: live ? st(c('demand').earned,12) : 'todo' },
+    { nm:'MSS / BOS', ic:'🔀', s: live ? st(c('mss').earned,12) : 'todo' },
+    { nm:'Retest', ic:'↩️', s: live ? st(c('pullback').earned,10) : 'todo' },
+    { nm:'ENTRY', ic: w.buy ? '🛒' : '📉', s: inst.ready ? 'done' : 'todo' },
   ];
   $('flow').innerHTML = steps.map(s =>
     `<div class="step ${s.s}"><div class="ic">${s.ic}</div><div class="nm">${s.nm}</div></div>`).join('');
 }
 
-/* ---------- top status: เข้าซื้อ / ขาย / รอ ---------- */
+/* ---------- top status: เข้าซื้อ / เข้าขาย / รอ ---------- */
 function renderStatus(d){
-  const s = d.signal, inst = d.institutional;
+  const inst = d.institutional;
   const el = $('statusBadge'), note = $('sbNote');
   let cls, word, txt;
-  if(inst.ready || (s.direction==='BUY' && s.tradable)){
-    cls='buy'; word='เข้าซื้อ';
-    txt = inst.ready ? `STRONG BUY ZONE ${inst.score}/100` : `ระบบยืนยัน BUY ${s.score}/9`;
-  } else if(s.direction==='SELL' && s.tradable){
-    cls='sell'; word='ขาย';
-    txt = `ระบบยืนยัน SELL ${s.score}/9 — โมเดลสะสมไม่ทำงาน`;
+  if(inst.ready && inst.side === 'BUY'){
+    cls='buy'; word='เข้าซื้อ'; txt = `STRONG BUY ZONE ${inst.score}/100`;
+  } else if(inst.ready && inst.side === 'SELL'){
+    cls='sell'; word='เข้าขาย'; txt = `STRONG SELL ZONE ${inst.score}/100`;
   } else {
     cls='wait'; word='รอ';
     if(inst.state==='ACCUMULATION') txt = `โซนสะสม ${inst.score}/100 — ยังไม่ถึง 80`;
-    else if(inst.state==='DISTRIBUTION') txt = 'เทรนด์ขาลง — ยังไม่มีโซนสะสม';
+    else if(inst.state==='DISTRIBUTION') txt = `โซนกระจาย ${inst.score}/100 — ยังไม่ถึง 80`;
     else txt = 'เทรนด์ H4 ยังไม่ชัด';
   }
   el.className = 'statusbadge ' + cls;
@@ -391,37 +420,46 @@ function renderStatus(d){
 }
 
 /* ---------- score card ---------- */
-const HEADLINE = [
-  { key:'sweep',    nm:'Liquidity Sweep',       pts:20 },
-  { key:'demand',   nm:'QM / Demand Zone',      pts:20 },
-  { key:'mss',      nm:'Market Structure Shift',pts:20 },
-  { key:'disp',     nm:'Displacement / Volume', pts:15 },
-  { key:'pullback', nm:'Pullback / Retest',     pts:10 },
-];
+const HL_ORDER = ['sweep','demand','mss','disp','pullback'];
+const HL_PTS = { sweep:20, demand:20, mss:20, disp:15, pullback:10 };
 function renderScore(inst){
-  const acc = inst.state === 'ACCUMULATION';
-  $('scoreNum').textContent = acc ? inst.score : 0;
-  $('scoreNum').style.color = inst.tier==='STRONG_BUY_ZONE' ? 'var(--buy)' : inst.tier==='FORMING' ? 'var(--amber)' : 'var(--faint)';
+  const live = inst.state === 'ACCUMULATION' || inst.state === 'DISTRIBUTION';
+  const w = W(inst);
+  $('scoreHead').textContent = live ? w.scoreHead : 'Institutional Score';
+  $('meterMark').textContent = live ? ('80 = ' + w.strong) : '80 = STRONG ZONE';
+  $('strongBox').textContent = '≥ 80 คะแนน = ' + (live ? w.strong : 'STRONG ZONE');
+  $('scoreNum').textContent = live ? inst.score : 0;
+  const col = inst.tier==='STRONG_ZONE' ? w.accent : inst.tier==='FORMING' ? 'var(--amber)' : 'var(--faint)';
+  $('scoreNum').style.color = col;
   const tl = $('tierLbl');
-  const tierTxt = inst.tier==='STRONG_BUY_ZONE' ? 'STRONG BUY ZONE' : inst.tier==='FORMING' ? 'กำลังก่อตัว' : (acc ? 'รอเงื่อนไข' : 'ยังไม่มีโซนสะสม');
-  tl.textContent = tierTxt;
-  tl.className = 'tier ' + (inst.tier==='STRONG_BUY_ZONE' ? 'strong' : inst.tier==='FORMING' ? 'forming' : 'wait');
-  $('meterFill').style.width = Math.max(0,Math.min(100, acc ? inst.score : 0)) + '%';
+  tl.textContent = inst.tier==='STRONG_ZONE' ? w.strong : inst.tier==='FORMING' ? 'กำลังก่อตัว' : (live ? 'รอเงื่อนไข' : 'ยังไม่มีโซน');
+  tl.className = 'tier ' + (inst.tier==='STRONG_ZONE' ? (w.buy?'strong':'wait') : inst.tier==='FORMING' ? 'forming' : 'wait');
+  tl.style.color = inst.tier==='STRONG_ZONE' ? w.accent : '';
+  $('meterFill').style.width = Math.max(0,Math.min(100, live ? inst.score : 0)) + '%';
+  $('meterFill').style.background = w.buy
+    ? 'linear-gradient(90deg,var(--amber),var(--buy))'
+    : 'linear-gradient(90deg,var(--amber),var(--sell))';
   $('strongBox').style.display = inst.ready ? 'block' : 'none';
 
   const comp = k => (inst.components||[]).find(x=>x.key===k);
-  $('compList').innerHTML = HEADLINE.map(h=>{
-    const c = comp(h.key) || { earned:0, max:h.pts, note:'—', got:false, partial:false };
+  $('compList').innerHTML = HL_ORDER.map(k=>{
+    const c = comp(k) || { earned:0, max:HL_PTS[k], note:'—', got:false, partial:false, name:k };
     const cls = c.got ? 'on' : c.partial ? 'part' : '';
     return `<div class="r ${cls}"><span class="bul"></span>
-      <div class="txt"><div class="nm">${h.nm}</div><div class="nt">${c.note}</div></div>
-      <span class="pts">+${c.earned}/${h.pts}</span></div>`;
+      <div class="txt"><div class="nm">${c.name || k}</div><div class="nt">${c.note}</div></div>
+      <span class="pts">+${c.earned}/${HL_PTS[k]}</span></div>`;
   }).join('');
 
   const htf = comp('htf') || { earned:0 };
   const r = inst.rsi;
   $('gateRow').innerHTML = `<span>HTF Trend gate: +${htf.earned}/15</span>`
     + `<span>RSI ${r!=null?r.toFixed(1):'—'} ${inst.rsiRising===true?'↑':inst.rsiRising===false?'↓':''} ${inst.rsiOk?'✅':''}</span>`;
+
+  $('tgtHead').textContent = live ? w.tgtHead : 'แนวรับ / แนวต้าน';
+  $('ckHead').textContent = live ? w.ckHead : 'เงื่อนไขเข้าเทรด — Checklist';
+  $('pSlK').textContent = w.slK;
+  $('conceptBuy').style.display = w.buy ? 'block' : 'none';
+  $('conceptSell').style.display = w.buy ? 'none' : 'block';
 }
 
 /* ---------- trade plan ---------- */
@@ -431,30 +469,33 @@ function riskCalc(){
   const lot = Math.max(Number($('lot').value)||0.01, 0.01);
   const contract = Math.max(Number($('contract').value)||1, 1);
   const unit = lot * contract;
-  if(L.slDistance==null || !inst || inst.state!=='ACCUMULATION'){ $('riskUsd').textContent='—'; $('rewardUsd').textContent='—'; return; }
+  const live = inst && (inst.state==='ACCUMULATION' || inst.state==='DISTRIBUTION');
+  if(L.slDistance==null || !live){ $('riskUsd').textContent='—'; $('rewardUsd').textContent='—'; return; }
   $('riskUsd').textContent   = '$' + Math.round(L.slDistance * unit).toLocaleString();
   $('rewardUsd').textContent = '$' + Math.round(L.slDistance * 5 * unit).toLocaleString();
 }
 function renderPlan(d){
   const inst = d.institutional, L = d.levels;
-  const acc = inst.state === 'ACCUMULATION';
+  const live = inst.state === 'ACCUMULATION' || inst.state === 'DISTRIBUTION';
+  const w = W(inst);
   const bn = $('planBanner');
-  if(!acc){
-    bn.innerHTML = `<div class="banner">${inst.note || 'ยังไม่มีโซนสะสม'}</div>`;
+  if(!live){
+    bn.innerHTML = `<div class="banner">${inst.note || 'ยังไม่มีโซน — เทรนด์ H4 ยังไม่ชัด'}</div>`;
   } else if(inst.ready){
-    bn.innerHTML = `<div class="banner buy">✅ STRONG BUY ZONE — เงื่อนไขครบ ${inst.score}/100 · เข้าได้ตามแผน</div>`;
+    bn.innerHTML = `<div class="banner ${w.cls}">✅ ${w.strong} — เงื่อนไขครบ ${inst.score}/100 · ${w.verb}ได้ตามแผน</div>`;
   } else {
-    bn.innerHTML = `<div class="banner">🟡 ${inst.tier==='FORMING'?'โซนกำลังก่อตัว':'รอเงื่อนไข'} ${inst.score}/100 — ยังไม่ถึง 80 · รอ ${(inst.checklist||[]).filter(c=>!c.got).map(c=>c.name.split(' ')[0]).slice(0,3).join(', ')}</div>`;
+    bn.innerHTML = `<div class="banner">🟡 ${inst.tier==='FORMING'?w.zoneWord+'กำลังก่อตัว':'รอเงื่อนไข'} ${inst.score}/100 — ยังไม่ถึง 80 · รอ ${(inst.checklist||[]).filter(c=>!c.got).map(c=>c.name.split(' ')[1]||c.name.split(' ')[0]).slice(0,3).join(', ')}</div>`;
   }
-  const show = acc && L.entry != null;
+  const show = live && L.entry != null;
   const R = L.slDistance;
-  const tp1 = show ? L.entry + R*3 : null;
-  const tp2 = show ? L.entry + R*5 : null;
+  const sgn = w.buy ? 1 : -1;
+  const tp1 = show ? L.entry + sgn*R*3 : null;
+  const tp2 = show ? L.entry + sgn*R*5 : null;
   $('pEntry').textContent = show ? fmt(L.entry) : '—';
   $('pSl').textContent    = show ? fmt(L.sl) + (R?`  (-$${fmt(R)})`:'') : '—';
   $('pTp1').textContent   = tp1!=null ? fmt(tp1) : '—';
   $('pTp2').textContent   = tp2!=null ? fmt(tp2) : '—';
-  lastTrade = (show && inst.ready) ? { entry:L.entry, sl:L.sl, tp1, tp2 } : null;
+  lastTrade = (show && inst.ready) ? { side:inst.side, entry:L.entry, sl:L.sl, tp1, tp2 } : null;
   riskCalc();
   if(show && inst.ready) recordTrade(d, tp1);
 }
@@ -464,7 +505,7 @@ function renderTargets(d){
   const t = d.institutional.targets || [];
   $('tgtList').innerHTML = t.length
     ? t.map(x=>`<div class="r"><span class="k">${x.name}</span><span class="v">${fmt(x.price)}</span></div>`).join('')
-    : '<div class="sub faint">รอราคาตั้งโครงสร้าง (swing high / previous high)</div>';
+    : '<div class="sub faint">รอราคาตั้งโครงสร้าง (swing / previous H-L)</div>';
 }
 
 /* ---------- checklist ---------- */
@@ -472,17 +513,29 @@ function renderChecklist(d){
   const ck = d.institutional.checklist || [];
   $('ckList').innerHTML = ck.length
     ? ck.map(c=>`<li class="${c.got?'ok':''}"><span class="bx">${c.got?'✓':''}</span><span>${c.name}</span></li>`).join('')
-    : '<li class="sub faint">ยังไม่มีโซนสะสม — เทรนด์ยังไม่เป็นขาขึ้น</li>';
+    : '<li class="sub faint">ยังไม่มีโซน — เทรนด์ H4 ยังไม่ชัด</li>';
+}
+
+/* ---------- brand ---------- */
+function renderBrand(d){
+  const side = d.institutional.side;
+  const asset = ASSET==='BTC' ? 'บิตคอยน์' : 'ทอง';
+  const t = side==='SELL'
+    ? `ระบบหาจุดที่ “รายใหญ่เข้าขาย${asset} (เข้าขาย)”`
+    : `ระบบหาจุดที่ “ธนาคารสะสม${asset} (เข้าซื้อ)”`;
+  $('brandTitle').textContent = t;
+  $('brandSub').textContent = META[ASSET].tv.split(':')[1].replace('USD','USD') + ' — Institutional ' + (side==='SELL'?'Distribution':'Accumulation') + ' Model';
 }
 
 /* ---------- chart chips ---------- */
 function renderChips(d){
   const i = d.indicators, inst = d.institutional, pb = d.playbook || {};
   const az = pb.actionZone;
+  const zoneW = inst.side==='SELL' ? 'Supply' : 'Demand';
   const chips = [];
   chips.push(`<span class="chip">RSI <b style="color:var(--purple)">${i.rsi!=null?i.rsi.toFixed(1):'—'}</b></span>`);
   chips.push(`<span class="chip">EMA50 <b>${fmt(i.ema50)}</b></span>`);
-  if(az) chips.push(`<span class="chip">Demand <b style="color:var(--amber)">${fmt(az.lo)}–${fmt(az.hi)}</b></span>`);
+  if(az) chips.push(`<span class="chip">${zoneW} <b style="color:var(--amber)">${fmt(az.lo)}–${fmt(az.hi)}</b></span>`);
   if(inst.sweepLevel!=null) chips.push(`<span class="chip">Sweep <b style="color:var(--cyan)">${fmt(inst.sweepLevel)}</b></span>`);
   if(pb.breakout && pb.breakout.level!=null) chips.push(`<span class="chip">BOS <b>${fmt(pb.breakout.level)}</b> ${pb.breakout.confirmed?'✅':'…'}</span>`);
   chips.push(`<span class="chip">Trend ${d.stack.trend} <b style="color:${i.trendTF&&i.trendTF.direction==='UP'?'var(--buy)':i.trendTF&&i.trendTF.direction==='DOWN'?'var(--sell)':'var(--faint)'}">${i.trendTF?i.trendTF.direction:'—'}</b></span>`);
@@ -542,7 +595,9 @@ function drawLines(){
     });
   }
   if(!lastTrade) return;
-  [['Entry',lastTrade.entry,'#26d07c'],['SL',lastTrade.sl,'#f4506b'],['TP1',lastTrade.tp1,'#26d07c'],['TP2',lastTrade.tp2,'#22c55e']].forEach(([txt,price,col])=>{
+  const eCol = lastTrade.side==='SELL' ? '#f4506b' : '#26d07c';
+  const sCol = lastTrade.side==='SELL' ? '#26d07c' : '#f4506b';
+  [['Entry',lastTrade.entry,eCol],['SL',lastTrade.sl,sCol],['TP1',lastTrade.tp1,eCol],['TP2',lastTrade.tp2,eCol]].forEach(([txt,price,col])=>{
     if(price==null||!isFinite(price)) return;
     try{
       const id = chart.createShape({time:now,price}, { shape:'horizontal_line', text:txt+' '+Number(price).toFixed(2),
@@ -558,12 +613,12 @@ const hKey = () => 'goldAccumHist_' + ASSET;
 const loadHist = () => { try{ return JSON.parse(localStorage.getItem(hKey())) || []; }catch(e){ return []; } };
 const saveHist = l => { try{ localStorage.setItem(hKey(), JSON.stringify(l.slice(-60))); }catch(e){} };
 function recordTrade(d, tp1){
-  const L = d.levels;
+  const L = d.levels, side = d.institutional.side || 'BUY';
   if(!L.entry || !isFinite(L.sl) || tp1==null) return;
   const list = loadHist();
   const pend = list.find(r=>r.status==='pending');
   if(pend) return;
-  list.push({ time:Date.now(), interval:d.interval, entry:L.entry, sl:L.sl, tp:tp1, status:'pending' });
+  list.push({ time:Date.now(), interval:d.interval, side, entry:L.entry, sl:L.sl, tp:tp1, status:'pending' });
   saveHist(list); renderHist();
 }
 function checkHist(d){
@@ -571,14 +626,19 @@ function checkHist(d){
   const candles = d.recentCandles || []; let changed=false;
   list.forEach(rec=>{
     if(rec.status!=='pending') return;
-    let hit=null;
+    let hit=null; const sell = rec.side==='SELL';
     for(const c of candles){
       const ts = Date.parse(String(c.time).replace(' ','T')+'Z');
       if(!isFinite(ts) || ts/1000 < rec.time/1000) continue;
-      if(c.low<=rec.sl) hit='loss'; else if(c.high>=rec.tp) hit='win';
+      const slHit = sell ? c.high>=rec.sl : c.low<=rec.sl;
+      const tpHit = sell ? c.low<=rec.tp : c.high>=rec.tp;
+      if(slHit) hit='loss'; else if(tpHit) hit='win';
       if(hit) break;
     }
-    if(!hit){ if(d.price>=rec.tp) hit='win'; else if(d.price<=rec.sl) hit='loss'; }
+    if(!hit){
+      if(sell){ if(d.price<=rec.tp) hit='win'; else if(d.price>=rec.sl) hit='loss'; }
+      else    { if(d.price>=rec.tp) hit='win'; else if(d.price<=rec.sl) hit='loss'; }
+    }
     if(hit){ rec.status=hit; changed=true; }
   });
   if(changed) saveHist(list);
@@ -595,7 +655,7 @@ function renderHist(){
     const dt = new Date(r.time).toLocaleString('th-TH',{hour:'2-digit',minute:'2-digit',day:'2-digit',month:'2-digit'});
     const s = r.status==='win'?'✓ ชนะ':r.status==='loss'?'✕ แพ้':'… รอผล';
     const col = r.status==='win'?'var(--buy)':r.status==='loss'?'var(--sell)':'var(--dim)';
-    return `<li>${dt} · ${r.interval} · BUY @ ${fmt(r.entry)} → <b style="color:${col}">${s}</b></li>`;
+    return `<li>${dt} · ${r.interval} · ${r.side||'BUY'} @ ${fmt(r.entry)} → <b style="color:${col}">${s}</b></li>`;
   }).join('');
 }
 
@@ -608,6 +668,7 @@ async function load(){
   try{ d = await api('/api/signal?asset='+ASSET+'&interval='+interval); }
   catch(e){ $('planBanner').innerHTML = '<div class="banner">โหลดข้อมูลไม่สำเร็จ: '+e.message+' — จะลองใหม่อัตโนมัติ</div>'; return; }
   last = d;
+  guard(()=>renderBrand(d),'brand');
   guard(()=>renderPrice(d),'price');
   guard(()=>renderStatus(d),'status');
   guard(()=>renderFlow(d.institutional),'flow');
