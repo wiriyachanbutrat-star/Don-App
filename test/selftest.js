@@ -171,6 +171,10 @@ function check(name, cond, detail) {
   check('strategy: signal shape', up.signal.maxScore === 9 && up.signal.checklist.length === 7 && Array.isArray(up.signal.reasons) && up.signal.reasons.length >= 7);
   check('strategy: checklist names', ['H4 Trend','H1 Structure','Action Zone','Breakout','Pullback','QM Pattern','Price Action'].every((nm,ix)=>up.signal.checklist[ix].name===nm), JSON.stringify(up.signal.checklist.map(c=>c.name)));
   check('strategy: playbook block present', up.playbook && 'breakout' in up.playbook && 'pullback' in up.playbook && 'actionZone' in up.playbook && 'qm' in up.playbook);
+  check('strategy: institutional block (BUY) present', up.institutional && up.institutional.state === 'ACCUMULATION' && up.institutional.maxScore === 100 && Array.isArray(up.institutional.components) && up.institutional.components.length === 6 && Array.isArray(up.institutional.checklist) && up.institutional.checklist.length === 6, JSON.stringify(up.institutional && up.institutional.tier));
+  check('strategy: institutional score 0..100', up.institutional.score >= 0 && up.institutional.score <= 100);
+  check('strategy: institutional non-BUY → not accumulation', dn.institutional && dn.institutional.state === 'DISTRIBUTION' && dn.institutional.ready === false);
+  check('strategy: institutional flat → NO_TREND', fr.institutional && fr.institutional.state === 'NO_TREND');
   check('strategy: session field present', up.signal.session && typeof up.signal.session.ok === 'boolean');
 
   // Session gate: same clean uptrend but the last bar lands at 03:00 UTC
