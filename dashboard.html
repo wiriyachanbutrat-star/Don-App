@@ -44,6 +44,16 @@
   .ctrls{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end;}
   .price{font-family:var(--fm);font-size:22px;font-weight:600;text-align:right;}
   .price .chg{font-size:13px;margin-left:7px;}
+  .statusbadge{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+    border-radius:11px;padding:8px 18px;border:1px solid var(--border);background:var(--sunk);min-width:130px;}
+  .statusbadge .sb-word{font-family:var(--fd);font-size:22px;font-weight:800;letter-spacing:.04em;line-height:1;}
+  .statusbadge .sb-note{font-size:10px;color:var(--faint);white-space:nowrap;}
+  .statusbadge.buy{border-color:var(--buy);background:var(--buy-d);}
+  .statusbadge.buy .sb-word{color:var(--buy);}
+  .statusbadge.sell{border-color:var(--sell);background:var(--sell-d);}
+  .statusbadge.sell .sb-word{color:var(--sell);}
+  .statusbadge.wait{border-color:var(--amber);background:var(--amber-d);}
+  .statusbadge.wait .sb-word{color:var(--amber);}
   .live{display:inline-flex;align-items:center;gap:6px;color:var(--buy);font-family:var(--fm);font-size:10px;}
   .dot{width:7px;height:7px;border-radius:50%;background:var(--buy);box-shadow:0 0 8px var(--buy);animation:pulse 1.7s infinite;}
   @keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
@@ -154,6 +164,10 @@
       <div class="t3 live"><span class="dot"></span>LIVE · อัปเดตทุก 5 นาที · ไม่ใช่คำแนะนำการลงทุน</div>
     </div>
     <div class="ctrls">
+      <div id="statusBadge" class="statusbadge wait">
+        <span class="sb-word">—</span>
+        <span class="sb-note" id="sbNote">กำลังโหลด…</span>
+      </div>
       <div>
         <div class="price"><span id="priceVal">—</span><span class="chg" id="priceChg"></span></div>
         <div class="sub faint" style="text-align:right;" id="updated">—</div>
@@ -352,6 +366,28 @@ function renderFlow(inst){
   ];
   $('flow').innerHTML = steps.map(s =>
     `<div class="step ${s.s}"><div class="ic">${s.ic}</div><div class="nm">${s.nm}</div></div>`).join('');
+}
+
+/* ---------- top status: เข้าซื้อ / ขาย / รอ ---------- */
+function renderStatus(d){
+  const s = d.signal, inst = d.institutional;
+  const el = $('statusBadge'), note = $('sbNote');
+  let cls, word, txt;
+  if(inst.ready || (s.direction==='BUY' && s.tradable)){
+    cls='buy'; word='เข้าซื้อ';
+    txt = inst.ready ? `STRONG BUY ZONE ${inst.score}/100` : `ระบบยืนยัน BUY ${s.score}/9`;
+  } else if(s.direction==='SELL' && s.tradable){
+    cls='sell'; word='ขาย';
+    txt = `ระบบยืนยัน SELL ${s.score}/9 — โมเดลสะสมไม่ทำงาน`;
+  } else {
+    cls='wait'; word='รอ';
+    if(inst.state==='ACCUMULATION') txt = `โซนสะสม ${inst.score}/100 — ยังไม่ถึง 80`;
+    else if(inst.state==='DISTRIBUTION') txt = 'เทรนด์ขาลง — ยังไม่มีโซนสะสม';
+    else txt = 'เทรนด์ H4 ยังไม่ชัด';
+  }
+  el.className = 'statusbadge ' + cls;
+  el.querySelector('.sb-word').textContent = word;
+  note.textContent = txt;
 }
 
 /* ---------- score card ---------- */
@@ -573,6 +609,7 @@ async function load(){
   catch(e){ $('planBanner').innerHTML = '<div class="banner">โหลดข้อมูลไม่สำเร็จ: '+e.message+' — จะลองใหม่อัตโนมัติ</div>'; return; }
   last = d;
   guard(()=>renderPrice(d),'price');
+  guard(()=>renderStatus(d),'status');
   guard(()=>renderFlow(d.institutional),'flow');
   guard(()=>renderScore(d.institutional),'score');
   guard(()=>renderPlan(d),'plan');
