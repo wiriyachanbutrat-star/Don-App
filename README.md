@@ -42,15 +42,17 @@ TP = RR 1:1.6 หรือ swing ตรงข้าม (ไม่เกิน 3R
 
 | องค์ประกอบ | คะแนน | ซื้อ / ขาย |
 |---|---|---|
-| HTF Trend (gate) | +15 | trend TF ขาขึ้น / ขาลง |
+| Trend & MA Stack (gate) | +15 | trend TF + การเรียงตัว EMA 9/21/50/200 บน entry TF (ราคา>9>21>50>200 = เต็ม) |
 | Liquidity Sweep | +20 | กวาดใต้ Low แล้ว reclaim / กวาดเหนือ High แล้ว reject |
 | QM / Demand·Supply Zone | +20 | Quasimodo ตามทิศทาง (ทะลุแล้ว) หรือราคาอยู่ในโซน |
 | Market Structure Shift | +20 | BOS + โครงสร้าง TF ถัดไปตามทิศทาง |
-| Displacement / Volume | +15 | แท่งเขียว/แดง > 1.3×ATR + วอลุ่ม > 1.5× ค่าเฉลี่ย |
-| Pullback / Retest | +10 | ย่อ/เด้งกลับมาทดสอบระดับที่ทะลุแล้วยืนได้ |
+| Momentum & Displacement | +15 | แท่งเขียว/แดง > 1.3×ATR (+5) · วอลุ่ม (+3) · MACD histogram/cross ตามทาง (+4) · RSI >50/<50 (+3) |
+| Pullback / Retest | +10 | ย่อ/เด้งมาทดสอบระดับที่ทะลุ หรือย่อเข้า EMA21/50 ในเทรนด์ที่ MA เรียงตัว |
 
 `≥ 72` = STRONG ZONE · `45–71` = กำลังก่อตัว · `< 45` = รอ ·
-Trade plan: ENTRY/SL จาก `levels`, TP1 = ±3R, TP2 = ±5R (ตามทิศทาง)
+`institutional.entryPlan` = จุดเข้าที่ใกล้ + confluent ที่สุด (โซน/EMA21/EMA50/BOS/QM) + ธง `armed`
+(MA + MACD + RSI ต้องหันทางเทรดครบ) · Trade plan: ENTRY/SL จาก `levels`, TP1 = ±3R, TP2 = ±5R ·
+เข้าโซน STRONG → dashboard เรียก AI (`/api/commentary`) อ่านเกม + ชี้จังหวะเข้าอัตโนมัติ 1 ครั้ง/แท่ง
 
 กรอบเวลาที่เลือกได้บน dashboard = **Entry TF** (M15/M30/H1/H4) — Structure & Trend TF เลื่อนตามอัตโนมัติ
 เช่น เลือก M15 → Structure=H1, Trend=H4 (ตรงตาม spec)

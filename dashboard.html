@@ -102,6 +102,26 @@
   .gate{margin-top:12px;padding-top:10px;border-top:1px solid var(--hair);font-size:11px;color:var(--faint);display:flex;justify-content:space-between;}
   .strongbox{margin-top:12px;text-align:center;font-family:var(--fd);font-weight:700;font-size:13px;letter-spacing:.05em;color:var(--gold);border:1px dashed var(--gold-d);border-radius:9px;padding:8px;}
 
+  /* ---- MA & momentum ---- */
+  .malbl{font-family:var(--fd);font-size:12px;font-weight:600;margin-bottom:10px;}
+  .marow{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;}
+  .marow .m{background:var(--sunk);border:1px solid var(--border);border-radius:8px;padding:6px 4px;text-align:center;}
+  .marow .m .k{font-size:9px;color:var(--dim);letter-spacing:.04em;} .marow .m .v{font-family:var(--fm);font-size:11px;font-weight:600;margin-top:1px;}
+  .marow .m.above{border-color:var(--buy);} .marow .m.below{border-color:var(--sell);}
+  .momrow{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;}
+  .momrow .mm{flex:1;min-width:120px;background:var(--sunk);border:1px solid var(--border);border-radius:8px;padding:8px 10px;}
+  .momrow .mm .k{font-size:10px;color:var(--dim);} .momrow .mm .v{font-family:var(--fm);font-size:13px;font-weight:600;margin-top:2px;}
+
+  /* ---- entry plan ---- */
+  .entryplan{margin-top:10px;border:1px solid var(--gold-d);border-radius:10px;padding:10px 12px;background:rgba(245,185,66,0.06);}
+  .entryplan.armed{border-color:var(--buy);background:var(--buy-d);}
+  .ep-top{display:flex;justify-content:space-between;align-items:baseline;}
+  .ep-tag{font-family:var(--fd);font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--gold);}
+  .entryplan.armed .ep-tag{color:var(--buy);}
+  .ep-px{font-family:var(--fm);font-size:20px;font-weight:700;}
+  .ep-basis{font-size:11px;color:var(--dim);margin-top:2px;}
+  .ep-trig{font-size:11px;color:var(--faint);margin-top:6px;line-height:1.45;border-top:1px solid var(--hair);padding-top:6px;}
+
   /* ---- trade plan ---- */
   .plan{display:flex;flex-direction:column;gap:1px;background:var(--border);border-radius:10px;overflow:hidden;}
   .plan .pr{display:flex;justify-content:space-between;align-items:center;background:var(--sunk);padding:9px 12px;font-size:13px;}
@@ -214,12 +234,25 @@
         <div class="strongbox" id="strongBox" style="display:none;">≥ 72 คะแนน = STRONG ZONE</div>
       </div>
 
+      <!-- MA & MOMENTUM -->
+      <div class="panel">
+        <h2>เส้นค่าเฉลี่ย & โมเมนตัม</h2>
+        <div class="malbl" id="maStackLbl">—</div>
+        <div class="marow" id="maRow"></div>
+        <div class="momrow" id="momRow"></div>
+      </div>
+
       <!-- TRADE PLAN -->
       <div class="panel">
         <h2>ตัวอย่างแผนการเทรด</h2>
         <div id="planBanner"></div>
+        <div class="entryplan" id="entryPlan" style="display:none;">
+          <div class="ep-top"><span class="ep-tag" id="epTag">จุดเข้าแม่นยำ</span><span class="ep-px" id="epPx">—</span></div>
+          <div class="ep-basis" id="epBasis">—</div>
+          <div class="ep-trig" id="epTrig">—</div>
+        </div>
         <div class="plan" id="plan" style="margin-top:10px;">
-          <div class="pr entry"><span class="k">ENTRY</span><span class="v" id="pEntry">—</span></div>
+          <div class="pr entry"><span class="k">ENTRY (อ้างอิง)</span><span class="v" id="pEntry">—</span></div>
           <div class="pr sl"><span class="k" id="pSlK">SL (ใต้ Swing Low / โซน)</span><span class="v" id="pSl">—</span></div>
           <div class="pr tp1"><span class="k">TP1 · RR 1:3</span><span class="v" id="pTp1">—</span></div>
           <div class="pr tp2"><span class="k">TP2 · RR 1:5</span><span class="v" id="pTp2">—</span></div>
@@ -278,12 +311,13 @@
     <div class="panel">
       <h2>เครื่องมือที่แนะนำ</h2>
       <ul class="toollist">
-        <li>📈 <span>EMA 50 / EMA 200 (หาเทรนด์หลัก)</span></li>
+        <li>📈 <span>EMA 9 / 21 / 50 / 200 — การเรียงตัว MA (MA stack)</span></li>
+        <li>📐 <span>RSI 14 + MACD — ยืนยันโมเมนตัม</span></li>
         <li>🏗️ <span>Market Structure — MSS / BOS / CHoCH</span></li>
         <li>💧 <span>Liquidity — Swing High / Low, Equal H/L</span></li>
-        <li>🎯 <span>QM (Quasimodo) / Demand Zone</span></li>
-        <li>📊 <span>Volume (หาแท่ง Displacement / POC)</span></li>
-        <li>📐 <span>RSI 14 / 21 — วัดแรงซื้อ</span></li>
+        <li>🎯 <span>QM (Quasimodo) / Demand · Supply Zone</span></li>
+        <li>📊 <span>Volume — แท่ง Displacement / POC</span></li>
+        <li>🧠 <span>AI อ่านเกม — เรียกอัตโนมัติเมื่อเข้าโซน STRONG</span></li>
       </ul>
     </div>
     <div class="panel">
@@ -310,8 +344,9 @@
 
   <!-- ===== SECONDARY ===== -->
   <div class="panel" style="border-top:2px solid var(--border);">
-    <h2>คำวิเคราะห์เชิงลึกจาก AI</h2>
-    <button id="aiBtn" style="border-color:var(--gold);color:var(--gold);">🧠 ขอคำวิเคราะห์ (มีค่าใช้จ่ายต่อครั้ง)</button>
+    <h2>AI อ่านเกมเจ้ามือ + จุดเข้าแม่นยำ</h2>
+    <div class="sub" style="margin-bottom:8px;">Claude อ่าน 6 องค์ประกอบ + MA stack + RSI + MACD + entry plan แล้วสรุปจังหวะเข้า/invalidation · เรียก<b>อัตโนมัติ</b>เมื่อเข้าโซน STRONG (1 ครั้ง/แท่ง) · กดปุ่มเพื่อเรียกเองได้ · ไม่เปลี่ยนคะแนน/ทิศทาง</div>
+    <button id="aiBtn" style="border-color:var(--gold);color:var(--gold);">🧠 ขอคำวิเคราะห์ตอนนี้ (มีค่าใช้จ่ายต่อครั้ง)</button>
     <div id="aiOut" class="sub" style="margin-top:10px;line-height:1.75;"></div>
   </div>
 
@@ -451,15 +486,54 @@ function renderScore(inst){
   }).join('');
 
   const htf = comp('htf') || { earned:0 };
-  const r = inst.rsi;
-  $('gateRow').innerHTML = `<span>HTF Trend gate: +${htf.earned}/15</span>`
-    + `<span>RSI ${r!=null?r.toFixed(1):'—'} ${inst.rsiRising===true?'↑':inst.rsiRising===false?'↓':''} ${inst.rsiOk?'✅':''}</span>`;
+  const ms = inst.maStack || {};
+  $('gateRow').innerHTML = `<span>Trend & MA gate: +${htf.earned}/15</span>`
+    + `<span>MA ${ms.dir||'—'} ${ms.aligned??''}/4 ${inst.rsiOk?'· RSI ✅':''}</span>`;
 
   $('tgtHead').textContent = live ? w.tgtHead : 'แนวรับ / แนวต้าน';
   $('ckHead').textContent = live ? w.ckHead : 'เงื่อนไขเข้าเทรด — Checklist';
   $('pSlK').textContent = w.slK;
   $('conceptBuy').style.display = w.buy ? 'block' : 'none';
   $('conceptSell').style.display = w.buy ? 'none' : 'block';
+}
+
+/* ---------- MA & momentum ---------- */
+function renderMomentum(d){
+  const i = d.indicators, inst = d.institutional;
+  const ms = inst.maStack || i.maStack || {};
+  const macd = i.macd || inst.macd;
+  const p = d.price;
+  const lbl = $('maStackLbl');
+  lbl.textContent = ms.label || 'MA ยังไม่พร้อม';
+  lbl.style.color = ms.dir==='UP' ? 'var(--buy)' : ms.dir==='DOWN' ? 'var(--sell)' : 'var(--dim)';
+  const emas = [['EMA9',i.ema9],['EMA21',i.ema21],['EMA50',i.ema50],['EMA200',i.ema200]];
+  $('maRow').innerHTML = emas.map(([k,v])=>{
+    const cls = v==null ? '' : p>v ? 'above' : 'below';
+    return `<div class="m ${cls}"><div class="k">${k}</div><div class="v">${fmt(v)}</div></div>`;
+  }).join('');
+  const r = inst.rsi!=null?inst.rsi:i.rsi;
+  const rArrow = inst.rsiRising===true?'↑':inst.rsiRising===false?'↓':'';
+  const rCol = r==null?'':r>=55?'var(--buy)':r<=45?'var(--sell)':'var(--dim)';
+  let mh='—', mCol='var(--dim)';
+  if(macd && isFinite(macd.histogram)){
+    mh = (macd.histogram>=0?'+':'') + macd.histogram.toFixed(3) + (macd.crossUp?' ▲cross':macd.crossDown?' ▼cross':macd.rising?' ↑':' ↓');
+    mCol = macd.histogram>=0 ? 'var(--buy)' : 'var(--sell)';
+  }
+  $('momRow').innerHTML =
+    `<div class="mm"><div class="k">RSI (14)</div><div class="v" style="color:${rCol}">${r!=null?r.toFixed(1):'—'} ${rArrow}</div></div>`
+   +`<div class="mm"><div class="k">MACD histogram</div><div class="v" style="color:${mCol}">${mh}</div></div>`;
+}
+
+/* ---------- entry plan ---------- */
+function renderEntryPlan(d){
+  const ep = d.institutional.entryPlan, box = $('entryPlan');
+  if(!ep || ep.price==null){ box.style.display='none'; return; }
+  box.style.display='block';
+  box.className = 'entryplan' + (ep.armed?' armed':'');
+  $('epTag').textContent = ep.armed ? '🎯 จุดเข้าพร้อมยิง (ARMED)' : '🎯 จุดเข้าแม่นยำ (รอทริกเกอร์)';
+  $('epPx').textContent = fmt(ep.price);
+  $('epBasis').textContent = 'อิง ' + ep.basis + (ep.confluence && ep.confluence.length>1 ? ' · confluence: ' + ep.confluence.join(' + ') : '');
+  $('epTrig').textContent = 'ทริกเกอร์: ' + ep.trigger;
 }
 
 /* ---------- trade plan ---------- */
@@ -572,9 +646,12 @@ function initChart(){
       autosize:true, symbol:META[ASSET].tv, interval:tvInt, timezone:'Etc/UTC', theme:'dark', style:'1',
       locale:'th', toolbar_bg:'#070b14', enable_publishing:false, container_id:'tv',
       studies:[
+        { id:'MAExp@tv-basicstudies', inputs:{ length:9 } },
+        { id:'MAExp@tv-basicstudies', inputs:{ length:21 } },
         { id:'MAExp@tv-basicstudies', inputs:{ length:50 } },
         { id:'MAExp@tv-basicstudies', inputs:{ length:200 } },
         { id:'RSI@tv-basicstudies', inputs:{ length:14 } },
+        { id:'MACD@tv-basicstudies' },
       ],
     });
     tvWidget.onChartReady(()=>{ tvReady=true; drawLines(); });
@@ -593,6 +670,12 @@ function drawLines(){
         overrides:{linecolor:col,linewidth:1,linestyle:1,showLabel:true,textcolor:col,fontsize:10},disableSelection:true,disableSave:true,lock:true});
         if(id) tvShapes.push(id); }catch(e){}
     });
+  }
+  const ep = last && last.institutional ? last.institutional.entryPlan : null;
+  if(ep && ep.price!=null){
+    try{ const id=chart.createShape({time:now,price:ep.price},{shape:'horizontal_line',text:(ep.armed?'ENTRY ▶ ':'ENTRY ~ ')+Number(ep.price).toFixed(2),
+      overrides:{linecolor:'#f5b942',linewidth:ep.armed?2:1,linestyle:ep.armed?0:2,showLabel:true,textcolor:'#f5b942',fontsize:11},disableSelection:true,disableSave:true,lock:true});
+      if(id) tvShapes.push(id); }catch(e){}
   }
   if(!lastTrade) return;
   const eCol = lastTrade.side==='SELL' ? '#f4506b' : '#26d07c';
@@ -673,12 +756,26 @@ async function load(){
   guard(()=>renderStatus(d),'status');
   guard(()=>renderFlow(d.institutional),'flow');
   guard(()=>renderScore(d.institutional),'score');
+  guard(()=>renderMomentum(d),'momentum');
+  guard(()=>renderEntryPlan(d),'entryplan');
   guard(()=>renderPlan(d),'plan');
   guard(()=>renderTargets(d),'targets');
   guard(()=>renderChecklist(d),'checklist');
   guard(()=>renderChips(d),'chips');
   guard(()=>checkHist(d),'hist');
   guard(drawLines,'drawLines');
+  guard(()=>maybeAutoAI(d),'autoAI');
+}
+
+// Auto-pull AI analysis once per candle when a STRONG zone is live.
+let aiAutoKey = null;
+function maybeAutoAI(d){
+  const I = d.institutional;
+  if(I.tier !== 'STRONG_ZONE') return;
+  const key = ASSET + '|' + d.interval + '|' + d.candleTime + '|' + I.side;
+  if(key === aiAutoKey) return;
+  aiAutoKey = key;
+  runAI(true);
 }
 function refresh(){ load().catch(e=>console.error(e)); }
 
@@ -732,17 +829,21 @@ $('btBtn').addEventListener('click', async ()=>{
 });
 
 /* ---------- AI ---------- */
-$('aiBtn').addEventListener('click', async ()=>{
+let aiBusy = false;
+async function runAI(auto){
+  if(aiBusy) return;
   const btn=$('aiBtn'), out=$('aiOut');
-  btn.disabled=true; out.textContent='กำลังให้ AI วิเคราะห์…';
+  aiBusy=true; btn.disabled=true;
+  out.textContent = auto ? '🧠 AI กำลังอ่านเกม (STRONG ZONE — เรียกอัตโนมัติ)…' : 'กำลังให้ AI วิเคราะห์…';
   try{
     const iv=$('intervalSel').value;
     const j=await api('/api/commentary?asset='+ASSET+'&interval='+iv);
-    out.innerHTML = '<div class="faint" style="margin-bottom:6px;">🧠 '+j.model+(j.cached?' · ผลเดิม':'')+' · อธิบายประกอบ ไม่เปลี่ยนคะแนนด้านบน</div>'
+    out.innerHTML = '<div class="faint" style="margin-bottom:6px;">🧠 '+j.model+(j.cached?' · ผลเดิม':'')+(auto?' · เรียกอัตโนมัติเมื่อเข้าโซน STRONG':'')+' · วิเคราะห์ประกอบ ไม่เปลี่ยนคะแนน/ทิศทางด้านบน</div>'
       + j.commentary.replace(/\*\*(.+?)\*\*/g,'$1').replace(/^#+\s*/gm,'').split(/\n\s*\n/).map(p=>'<p style="margin-bottom:8px;">'+p.replace(/\n/g,'<br>')+'</p>').join('');
   }catch(e){ out.innerHTML='<span style="color:var(--sell)">'+e.message+'</span>'; }
-  finally{ btn.disabled=false; }
-});
+  finally{ aiBusy=false; btn.disabled=false; }
+}
+$('aiBtn').addEventListener('click', ()=>runAI(false));
 
 /* ---------- boot ---------- */
 function boot(){
