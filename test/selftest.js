@@ -173,7 +173,8 @@ function check(name, cond, detail) {
   check('strategy: playbook block present', up.playbook && 'breakout' in up.playbook && 'pullback' in up.playbook && 'actionZone' in up.playbook && 'qm' in up.playbook);
   check('strategy: institutional (BUY) → ACCUMULATION', up.institutional && up.institutional.state === 'ACCUMULATION' && up.institutional.side === 'BUY' && up.institutional.maxScore === 100 && up.institutional.components.length === 6 && up.institutional.checklist.length === 7, JSON.stringify(up.institutional && up.institutional.tier));
   check('strategy: institutional score 0..100', up.institutional.score >= 0 && up.institutional.score <= 100);
-  check('strategy: institutional has MA stack + MACD + entryPlan', up.institutional.maStack && ['UP','DOWN','MIXED','NA'].includes(up.institutional.maStack.dir) && 'macd' in up.institutional && 'entryPlan' in up.institutional);
+  check('strategy: institutional has MA stack + MACD + POC + entryPlan', up.institutional.maStack && ['UP','DOWN','MIXED','NA'].includes(up.institutional.maStack.dir) && 'macd' in up.institutional && 'poc' in up.institutional && 'entryPlan' in up.institutional);
+  check('strategy: indicators expose POC', 'poc' in up.indicators && 'volumeProfile' in up.indicators);
   check('strategy: indicators expose EMA 9/21/50/200', up.indicators.ema9 != null && up.indicators.ema21 != null && up.indicators.ema50 != null && up.indicators.ema200 != null);
   check('strategy: institutional (SELL) → DISTRIBUTION', dn.institutional && dn.institutional.state === 'DISTRIBUTION' && dn.institutional.side === 'SELL' && dn.institutional.components.length === 6 && dn.institutional.checklist.some(c => /Sweep High/.test(c.name)), JSON.stringify(dn.institutional && dn.institutional.checklist.map(c => c.name)));
   check('strategy: institutional SELL targets below price', (dn.institutional.targets || []).every(t => t.price < dn.price));
@@ -206,6 +207,17 @@ function check(name, cond, detail) {
   qpath.forEach((v, i) => qc.push({ time: String(i), open: v, high: v + 0.4, low: v - 0.4, close: v }));
   const qm = I.quasimodo(qc, 2);
   check('quasimodo: bullish QM detected', qm.bull && qm.bull.head < qm.bull.leftShoulder, JSON.stringify(qm));
+
+  // volumeProfile: POC sits inside the range, VAL <= POC <= VAH
+  const vpc = [];
+  for (let i = 0; i < 60; i++) {
+    const base = 100 + (i > 20 && i < 40 ? 0 : (i % 2 ? 4 : -4)); // most bars cluster near 100
+    vpc.push({ time: String(i), open: base, high: base + 1.5, low: base - 1.5, close: base, volume: (i > 20 && i < 40) ? 500 : 100 });
+  }
+  const vp = I.volumeProfile(vpc, 20);
+  check('volumeProfile: POC in range & value area ordered',
+    vp && vp.val <= vp.poc && vp.poc <= vp.vah && vp.poc >= vp.lo && vp.poc <= vp.hi && vp.source === 'volume', JSON.stringify(vp));
+  check('volumeProfile: null on too little data', I.volumeProfile([{ time: '0', open: 1, high: 1, low: 1, close: 1 }], 20) === null);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

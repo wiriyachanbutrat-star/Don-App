@@ -519,9 +519,12 @@ function renderMomentum(d){
     mh = (macd.histogram>=0?'+':'') + macd.histogram.toFixed(3) + (macd.crossUp?' ▲cross':macd.crossDown?' ▼cross':macd.rising?' ↑':' ↓');
     mCol = macd.histogram>=0 ? 'var(--buy)' : 'var(--sell)';
   }
+  const va = inst.valueArea, poc = inst.poc!=null?inst.poc:i.poc;
+  const pocCol = poc==null ? 'var(--dim)' : Math.abs(p-poc) <= (i.atr||1)*0.7 ? 'var(--gold)' : 'var(--dim)';
   $('momRow').innerHTML =
     `<div class="mm"><div class="k">RSI (14)</div><div class="v" style="color:${rCol}">${r!=null?r.toFixed(1):'—'} ${rArrow}</div></div>`
-   +`<div class="mm"><div class="k">MACD histogram</div><div class="v" style="color:${mCol}">${mh}</div></div>`;
+   +`<div class="mm"><div class="k">MACD histogram</div><div class="v" style="color:${mCol}">${mh}</div></div>`
+   +`<div class="mm"><div class="k">POC · Value Area${va&&va.source==='time'?' (จากเวลา)':''}</div><div class="v" style="color:${pocCol}">${fmt(poc)}${va?` <span style="color:var(--faint);font-size:11px">(${fmt(va.val)}–${fmt(va.vah)})</span>`:''}</div></div>`;
 }
 
 /* ---------- entry plan ---------- */
@@ -611,6 +614,7 @@ function renderChips(d){
   chips.push(`<span class="chip">EMA50 <b>${fmt(i.ema50)}</b></span>`);
   if(az) chips.push(`<span class="chip">${zoneW} <b style="color:var(--amber)">${fmt(az.lo)}–${fmt(az.hi)}</b></span>`);
   if(inst.sweepLevel!=null) chips.push(`<span class="chip">Sweep <b style="color:var(--cyan)">${fmt(inst.sweepLevel)}</b></span>`);
+  if(inst.poc!=null) chips.push(`<span class="chip">POC <b style="color:var(--gold)">${fmt(inst.poc)}</b></span>`);
   if(pb.breakout && pb.breakout.level!=null) chips.push(`<span class="chip">BOS <b>${fmt(pb.breakout.level)}</b> ${pb.breakout.confirmed?'✅':'…'}</span>`);
   chips.push(`<span class="chip">Trend ${d.stack.trend} <b style="color:${i.trendTF&&i.trendTF.direction==='UP'?'var(--buy)':i.trendTF&&i.trendTF.direction==='DOWN'?'var(--sell)':'var(--faint)'}">${i.trendTF?i.trendTF.direction:'—'}</b></span>`);
   $('chartnote').innerHTML = chips.join('');
@@ -671,7 +675,17 @@ function drawLines(){
         if(id) tvShapes.push(id); }catch(e){}
     });
   }
-  const ep = last && last.institutional ? last.institutional.entryPlan : null;
+  const inst = last && last.institutional ? last.institutional : null;
+  if(inst && inst.poc!=null){
+    try{ const id=chart.createShape({time:now,price:inst.poc},{shape:'horizontal_line',text:'POC '+Number(inst.poc).toFixed(2),
+      overrides:{linecolor:'#f5b942',linewidth:1,linestyle:0,showLabel:true,textcolor:'#f5b942',fontsize:10},disableSelection:true,disableSave:true,lock:true});
+      if(id) tvShapes.push(id); }catch(e){}
+    const va = inst.valueArea;
+    if(va) [va.vah, va.val].forEach(pp=>{ try{ const id=chart.createShape({time:now,price:pp},{shape:'horizontal_line',text:'',
+      overrides:{linecolor:'#f5b942',linewidth:1,linestyle:1,showLabel:false},disableSelection:true,disableSave:true,lock:true});
+      if(id) tvShapes.push(id); }catch(e){} });
+  }
+  const ep = inst ? inst.entryPlan : null;
   if(ep && ep.price!=null){
     try{ const id=chart.createShape({time:now,price:ep.price},{shape:'horizontal_line',text:(ep.armed?'ENTRY ▶ ':'ENTRY ~ ')+Number(ep.price).toFixed(2),
       overrides:{linecolor:'#f5b942',linewidth:ep.armed?2:1,linestyle:ep.armed?0:2,showLabel:true,textcolor:'#f5b942',fontsize:11},disableSelection:true,disableSave:true,lock:true});
