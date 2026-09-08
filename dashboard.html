@@ -197,10 +197,10 @@
         <option value="BTC">BTC/USD</option>
       </select>
       <select id="intervalSel" title="กรอบเวลาหาจุดเข้า">
-        <option value="15min">M15</option>
-        <option value="30min">M30</option>
-        <option value="1h" selected>H1</option>
-        <option value="4h">H4</option>
+        <option value="15min">M15 ⚠️</option>
+        <option value="30min">M30 ⚠️</option>
+        <option value="1h">H1 ⚠️</option>
+        <option value="4h" selected>H4 ✅</option>
       </select>
     </div>
   </div>
@@ -254,9 +254,9 @@
         <div class="plan" id="plan" style="margin-top:10px;">
           <div class="pr entry"><span class="k">ENTRY (อ้างอิง)</span><span class="v" id="pEntry">—</span></div>
           <div class="pr sl"><span class="k" id="pSlK">SL (ใต้ Swing Low / โซน)</span><span class="v" id="pSl">—</span></div>
-          <div class="pr tp1"><span class="k">TP1 · +0.5R <b style="color:var(--gold)">← ปิด 60–70% (ชนะ ~70%)</b></span><span class="v" id="pTp1">—</span></div>
-          <div class="pr tp2"><span class="k">TP2 · +2R (ย้าย SL มา BE)</span><span class="v" id="pTp2">—</span></div>
-          <div class="pr tp2"><span class="k">TP3 · +4R (runner)</span><span class="v" id="pTp3">—</span></div>
+          <div class="pr tp1"><span class="k">TP1 <b style="color:var(--gold)">← ปิดครึ่ง แล้วเลื่อน SL มา BE</b></span><span class="v" id="pTp1">—</span></div>
+          <div class="pr tp2"><span class="k">TP2 (~2.5R)</span><span class="v" id="pTp2">—</span></div>
+          <div class="pr tp2"><span class="k">TP3 · runner (~4.5R)</span><span class="v" id="pTp3">—</span></div>
         </div>
         <div class="rr2">
           <div class="pill"><div class="k">ความเสี่ยง / ไม้</div><div class="v" id="riskUsd">—</div></div>
@@ -352,10 +352,11 @@
   </div>
 
   <details class="sec">
-    <summary>▶ ทดสอบย้อนหลัง — Win rate ของโมเดลบนราคาจริง</summary>
-    <div class="sub" style="margin-bottom:10px;">รันโมเดล Institutional (เข้าเมื่อ score ≥ 64 · ปิด TP1 ที่ +0.5R · SL โครงสร้าง) ย้อนหลังสูงสุด 5000 แท่ง แบบ walk-forward ไม่มี look-ahead ·
-      เป้าหมาย <b>win rate ≥ 70%</b> — sweep 5000 แท่ง: H1 ~70% (+8.5R), H4 ~72% (+18.7R)</div>
-    <button id="btBtn" style="border-color:var(--buy);color:var(--buy);">▶ รัน Backtest</button>
+    <summary>▶ ทดสอบย้อนหลัง — ผลจริงของโมเดล Trigger</summary>
+    <div class="sub" style="margin-bottom:10px;">รันโมเดล Trigger ย้อนหลังสูงสุด 5000 แท่ง walk-forward ไม่มี look-ahead คิดสเปรดแล้ว ·
+      <b style="color:var(--buy)">H4: ชนะ ~56% · +0.48R/ไม้ · PF 2.4 · max drawdown &lt; 4R</b> (34 เดือน) ·
+      <b style="color:var(--sell)">H1 และต่ำกว่า: ติดลบ</b> — ใช้ H4</div>
+    <button id="btBtn" style="border-color:var(--buy);color:var(--buy);">▶ รัน Backtest (H4)</button>
     <div id="btOut" class="sub" style="margin-top:12px;"></div>
   </details>
 
@@ -430,7 +431,8 @@ function renderFlow(inst){
     { nm:w.zoneStep, ic:'🎯', s: live ? st(c('demand').earned,12) : 'todo' },
     { nm:'MSS / BOS', ic:'🔀', s: live ? st(c('mss').earned,12) : 'todo' },
     { nm:'Retest', ic:'↩️', s: live ? st(c('pullback').earned,10) : 'todo' },
-    { nm:'ENTRY', ic: w.buy ? '🛒' : '📉', s: inst.ready ? 'done' : 'todo' },
+    { nm:'Trigger', ic:'🎯', s: (inst.entrySignal&&inst.entrySignal.fire) ? 'done' : inst.ready ? 'active' : 'todo' },
+    { nm:'ENTRY', ic: w.buy ? '🛒' : '📉', s: (inst.entrySignal&&inst.entrySignal.fire) ? 'done' : 'todo' },
   ];
   $('flow').innerHTML = steps.map(s =>
     `<div class="step ${s.s}"><div class="ic">${s.ic}</div><div class="nm">${s.nm}</div></div>`).join('');
@@ -438,17 +440,19 @@ function renderFlow(inst){
 
 /* ---------- top status: เข้าซื้อ / เข้าขาย / รอ ---------- */
 function renderStatus(d){
-  const inst = d.institutional;
+  const inst = d.institutional, es = inst.entrySignal || {};
   const el = $('statusBadge'), note = $('sbNote');
   let cls, word, txt;
-  if(inst.ready && inst.side === 'BUY'){
-    cls='buy'; word='เข้าซื้อ'; txt = `STRONG BUY ZONE ${inst.score}/100`;
-  } else if(inst.ready && inst.side === 'SELL'){
-    cls='sell'; word='เข้าขาย'; txt = `STRONG SELL ZONE ${inst.score}/100`;
+  if(es.fire && inst.side === 'BUY'){
+    cls='buy'; word='เข้าซื้อ'; txt = `ทริกเกอร์ยิงแล้ว · RR≈1:${es.rr1||'?'} · SL ${fmt(es.sl)}`;
+  } else if(es.fire && inst.side === 'SELL'){
+    cls='sell'; word='เข้าขาย'; txt = `ทริกเกอร์ยิงแล้ว · RR≈1:${es.rr1||'?'} · SL ${fmt(es.sl)}`;
+  } else if(inst.ready){
+    cls='wait'; word='พร้อม';
+    txt = `${W(inst).zoneWord} ${inst.score}/100 — รอทริกเกอร์: ${(es.blockers||['—']).slice(0,2).join(' · ')}`;
   } else {
     cls='wait'; word='รอ';
-    if(inst.state==='ACCUMULATION') txt = `โซนสะสม ${inst.score}/100 — ยังไม่ถึง 64`;
-    else if(inst.state==='DISTRIBUTION') txt = `โซนกระจาย ${inst.score}/100 — ยังไม่ถึง 64`;
+    if(inst.state==='ACCUMULATION'||inst.state==='DISTRIBUTION') txt = `${W(inst).zoneWord} ${inst.score}/100 — ยังไม่ถึง 64`;
     else txt = 'เทรนด์ H4 ยังไม่ชัด';
   }
   el.className = 'statusbadge ' + cls;
@@ -529,58 +533,68 @@ function renderMomentum(d){
    +`<div class="mm"><div class="k">POC · Value Area${va&&va.source==='time'?' (จากเวลา)':''}</div><div class="v" style="color:${pocCol}">${fmt(poc)}${va?` <span style="color:var(--faint);font-size:11px">(${fmt(va.val)}–${fmt(va.vah)})</span>`:''}</div></div>`;
 }
 
-/* ---------- entry plan ---------- */
+/* ---------- entry plan (trigger) ---------- */
 function renderEntryPlan(d){
-  const ep = d.institutional.entryPlan, box = $('entryPlan');
-  if(!ep || ep.price==null){ box.style.display='none'; return; }
-  box.style.display='block';
-  box.className = 'entryplan' + (ep.armed?' armed':'');
-  $('epTag').textContent = ep.armed ? '🎯 จุดเข้าพร้อมยิง (ARMED)' : '🎯 จุดเข้าแม่นยำ (รอทริกเกอร์)';
-  $('epPx').textContent = fmt(ep.price);
-  $('epBasis').textContent = 'อิง ' + ep.basis + (ep.confluence && ep.confluence.length>1 ? ' · confluence: ' + ep.confluence.join(' + ') : '');
-  $('epTrig').textContent = 'ทริกเกอร์: ' + ep.trigger;
+  const inst = d.institutional, es = inst.entrySignal || {}, box = $('entryPlan');
+  const ep = inst.entryPlan;
+  if(es.fire){
+    box.style.display='block'; box.className='entryplan armed';
+    $('epTag').textContent = '🎯 ทริกเกอร์ยิงแล้ว — เข้าได้';
+    $('epPx').textContent = fmt(es.entry);
+    $('epBasis').textContent = (es.have||[]).join(' · ');
+    $('epTrig').textContent = es.trigger || '';
+    return;
+  }
+  if(!inst.ready || !ep || ep.price==null){ box.style.display='none'; return; }
+  box.style.display='block'; box.className='entryplan';
+  $('epTag').textContent = '⏳ เซ็ตอัพพร้อม — รอทริกเกอร์';
+  $('epPx').textContent = '~' + fmt(ep.price);
+  $('epBasis').textContent = 'จุดเข้าคาดหมาย อิง ' + ep.basis;
+  $('epTrig').textContent = 'ยังขาด: ' + (es.blockers||['—']).join(' · ');
 }
 
 /* ---------- trade plan ---------- */
+function planLevels(d){
+  const inst = d.institutional, es = inst.entrySignal || {}, L = d.levels, w = W(inst);
+  if(es.fire) return { entry:es.entry, sl:es.sl, tp1:es.tp1, tp2:es.tp2, tp3:es.tp3, risk:es.risk, live:true, fired:true };
+  if((inst.state==='ACCUMULATION'||inst.state==='DISTRIBUTION') && L.entry!=null){
+    const R=L.slDistance, s=w.buy?1:-1;
+    return { entry:L.entry, sl:L.sl, tp1:L.entry+s*R*1.4, tp2:L.entry+s*R*2.5, tp3:L.entry+s*R*4.5, risk:R, live:true, fired:false };
+  }
+  return { live:false };
+}
 function riskCalc(){
   if(!last) return;
-  const L = last.levels, inst = last.institutional;
+  const p = planLevels(last);
   const lot = Math.max(Number($('lot').value)||0.01, 0.01);
   const contract = Math.max(Number($('contract').value)||1, 1);
   const unit = lot * contract;
-  const live = inst && (inst.state==='ACCUMULATION' || inst.state==='DISTRIBUTION');
-  const tp1R = (inst && inst.plan && inst.plan.tp1R) || 0.5;
-  if(L.slDistance==null || !live){ $('riskUsd').textContent='—'; $('rewardUsd').textContent='—'; return; }
-  $('riskUsd').textContent   = '$' + Math.round(L.slDistance * unit).toLocaleString();
-  $('rewardUsd').textContent = '$' + Math.round(L.slDistance * tp1R * unit).toLocaleString();
+  if(!p.live || p.risk==null){ $('riskUsd').textContent='—'; $('rewardUsd').textContent='—'; return; }
+  $('riskUsd').textContent   = '$' + Math.round(p.risk * unit).toLocaleString();
+  $('rewardUsd').textContent = '$' + Math.round(Math.abs(p.tp1-p.entry) * unit).toLocaleString();
 }
 function renderPlan(d){
-  const inst = d.institutional, L = d.levels;
-  const live = inst.state === 'ACCUMULATION' || inst.state === 'DISTRIBUTION';
-  const w = W(inst);
+  const inst = d.institutional, es = inst.entrySignal || {}, w = W(inst);
   const bn = $('planBanner');
-  if(!live){
+  if(inst.state!=='ACCUMULATION' && inst.state!=='DISTRIBUTION'){
     bn.innerHTML = `<div class="banner">${inst.note || 'ยังไม่มีโซน — เทรนด์ H4 ยังไม่ชัด'}</div>`;
+  } else if(es.fire){
+    bn.innerHTML = `<div class="banner ${w.cls}">✅ ทริกเกอร์ยิงแล้ว — ${w.verb} · ปิดครึ่งที่ TP1 (~1.4R) แล้วเลื่อน SL มา BE · ปล่อย runner ไป TP2/TP3</div>`;
   } else if(inst.ready){
-    bn.innerHTML = `<div class="banner ${w.cls}">✅ ${w.strong} — score ${inst.score}/100 · ${w.verb}ตามแผน · ปิด TP1 (+0.5R) ให้เร็ว (backtest ชนะ ~70%)</div>`;
+    bn.innerHTML = `<div class="banner">⏳ เซ็ตอัพพร้อม (${inst.score}/100) — <b>ยังไม่เข้า</b> รอทริกเกอร์: ${(es.blockers||['—']).slice(0,3).join(' · ')}</div>`;
   } else {
-    bn.innerHTML = `<div class="banner">🟡 ${inst.tier==='FORMING'?w.zoneWord+'กำลังก่อตัว':'รอเงื่อนไข'} ${inst.score}/100 — ยังไม่ถึง 64 · รอ ${(inst.checklist||[]).filter(c=>!c.got).map(c=>c.name.split(' ')[1]||c.name.split(' ')[0]).slice(0,3).join(', ')}</div>`;
+    bn.innerHTML = `<div class="banner">🟡 ${inst.tier==='FORMING'?w.zoneWord+'กำลังก่อตัว':'รอเงื่อนไข'} ${inst.score}/100 — ยังไม่ถึง 64</div>`;
   }
-  const P = inst.plan || { tp1R:0.5, tp2R:2, tp3R:4 };
-  const show = live && L.entry != null;
-  const R = L.slDistance;
-  const sgn = w.buy ? 1 : -1;
-  const tp1 = show ? L.entry + sgn*R*P.tp1R : null;
-  const tp2 = show ? L.entry + sgn*R*P.tp2R : null;
-  const tp3 = show ? L.entry + sgn*R*P.tp3R : null;
-  $('pEntry').textContent = show ? fmt(L.entry) : '—';
-  $('pSl').textContent    = show ? fmt(L.sl) + (R?`  (-$${fmt(R)})`:'') : '—';
-  $('pTp1').textContent   = tp1!=null ? fmt(tp1) : '—';
-  $('pTp2').textContent   = tp2!=null ? fmt(tp2) : '—';
-  $('pTp3').textContent   = tp3!=null ? fmt(tp3) : '—';
-  lastTrade = (show && inst.ready) ? { side:inst.side, entry:L.entry, sl:L.sl, tp1, tp2, tp3 } : null;
+  const p = planLevels(d);
+  const show = p.live;
+  $('pEntry').textContent = show ? fmt(p.entry) : '—';
+  $('pSl').textContent    = show ? fmt(p.sl) + (p.risk?`  (-$${fmt(p.risk)})`:'') : '—';
+  $('pTp1').textContent   = show ? fmt(p.tp1) : '—';
+  $('pTp2').textContent   = show ? fmt(p.tp2) : '—';
+  $('pTp3').textContent   = show ? fmt(p.tp3) : '—';
+  lastTrade = (show && p.fired) ? { side:inst.side, entry:p.entry, sl:p.sl, tp1:p.tp1, tp2:p.tp2, tp3:p.tp3 } : null;
   riskCalc();
-  if(show && inst.ready) recordTrade(d, tp1);
+  if(show && p.fired) recordTrade(d, p.tp1, p.sl);
 }
 
 /* ---------- targets ---------- */
@@ -617,6 +631,7 @@ function renderChips(d){
   const zoneW = inst.side==='SELL' ? 'Supply' : 'Demand';
   const chips = [];
   chips.push(`<span class="chip">RSI <b style="color:var(--purple)">${i.rsi!=null?i.rsi.toFixed(1):'—'}</b></span>`);
+  if(inst.adx) chips.push(`<span class="chip">ADX <b style="color:${inst.adx.adx>=20?'var(--buy)':'var(--faint)'}">${inst.adx.adx}</b></span>`);
   chips.push(`<span class="chip">EMA50 <b>${fmt(i.ema50)}</b></span>`);
   if(az) chips.push(`<span class="chip">${zoneW} <b style="color:var(--amber)">${fmt(az.lo)}–${fmt(az.hi)}</b></span>`);
   if(inst.sweepLevel!=null) chips.push(`<span class="chip">Sweep <b style="color:var(--cyan)">${fmt(inst.sweepLevel)}</b></span>`);
@@ -715,13 +730,13 @@ function drawLines(){
 const hKey = () => 'goldAccumHist_' + ASSET;
 const loadHist = () => { try{ return JSON.parse(localStorage.getItem(hKey())) || []; }catch(e){ return []; } };
 const saveHist = l => { try{ localStorage.setItem(hKey(), JSON.stringify(l.slice(-60))); }catch(e){} };
-function recordTrade(d, tp1){
-  const L = d.levels, side = d.institutional.side || 'BUY';
-  if(!L.entry || !isFinite(L.sl) || tp1==null) return;
+function recordTrade(d, tp1, sl){
+  const es = d.institutional.entrySignal || {}, side = d.institutional.side || 'BUY';
+  const entry = es.entry;
+  if(!entry || !isFinite(sl) || tp1==null) return;
   const list = loadHist();
-  const pend = list.find(r=>r.status==='pending');
-  if(pend) return;
-  list.push({ time:Date.now(), interval:d.interval, side, entry:L.entry, sl:L.sl, tp:tp1, status:'pending' });
+  if(list.find(r=>r.status==='pending')) return;
+  list.push({ time:Date.now(), interval:d.interval, side, entry, sl, tp:tp1, status:'pending' });
   saveHist(list); renderHist();
 }
 function checkHist(d){
@@ -787,11 +802,11 @@ async function load(){
   guard(()=>maybeAutoAI(d),'autoAI');
 }
 
-// Auto-pull AI analysis once per candle when a STRONG zone is live.
+// Auto-pull AI analysis once per candle when the entry trigger fires.
 let aiAutoKey = null;
 function maybeAutoAI(d){
   const I = d.institutional;
-  if(I.tier !== 'STRONG_ZONE') return;
+  if(!(I.entrySignal && I.entrySignal.fire)) return;
   const key = ASSET + '|' + d.interval + '|' + d.candleTime + '|' + I.side;
   if(key === aiAutoKey) return;
   aiAutoKey = key;
@@ -817,33 +832,36 @@ const pct1 = v => v==null ? '—' : (v*100).toFixed(1)+'%';
 const rfmt = v => v==null ? '—' : (v>=0?'+':'')+v.toFixed(2)+'R';
 $('btBtn').addEventListener('click', async ()=>{
   const btn=$('btBtn'), out=$('btOut');
-  btn.disabled=true; out.textContent='กำลังรัน backtest (โมเดล Institutional · TP1 0.5R) บน '+$('intervalSel').value+'…';
+  btn.disabled=true; out.textContent='กำลังรัน backtest (โมเดล Trigger) บน '+$('intervalSel').value+'…';
   try{
     const iv=$('intervalSel').value;
-    const j=await api('/api/backtest?mode=institutional&asset='+ASSET+'&interval='+iv+'&bars=5000');
+    const j=await api('/api/backtest?mode=trigger&asset='+ASSET+'&interval='+iv+'&bars=5000');
     if(j.error){ out.innerHTML='<span style="color:var(--sell)">'+j.error+'</span>'; return; }
-    const wr=j.winRate!=null?j.winRate:0;
-    const col=wr>=0.70&&j.totalR>0?'var(--buy)':wr>=0.6?'var(--amber)':'var(--sell)';
+    const wr=j.winRate!=null?j.winRate:0, pf=j.profitFactor||0;
+    const edge = j.expectancyR>0.1 && pf>=1.3;
+    const col=edge?'var(--buy)':j.expectancyR>0?'var(--amber)':'var(--sell)';
     const cells=[
       ['ช่วงที่ทดสอบ',(j.period.from||'').slice(0,10)+' → '+(j.period.to||'').slice(0,10)],
       ['จำนวนเทรด',j.totalTrades+' (ชนะ '+j.wins+' / แพ้ '+j.losses+(j.scratches?' / เสมอ '+j.scratches:'')+')'],
       ['Win rate',pct1(j.winRate)],
-      ['Expectancy/ไม้',rfmt(j.expectancyR)],
+      ['กำไรเฉลี่ย / ไม้',rfmt(j.expectancyR)],
       ['กำไรรวม (R)',rfmt(j.totalR)],
-      ['Profit factor',j.profitFactor==null?'—':j.profitFactor.toFixed(2)],
+      ['Profit factor',pf?pf.toFixed(2):'—'],
       ['Max drawdown',j.maxDrawdownR==null?'—':('-'+j.maxDrawdownR.toFixed(2)+'R')],
       ['แพ้ติดกันมากสุด',j.maxConsecutiveLosses+' ไม้'],
+      ['RR เฉลี่ย (ถึง TP1)','1 : '+(j.avgRR1||'?')],
+      ['ถือเฉลี่ย',(j.avgBarsHeld||'?')+' แท่ง'],
     ];
-    let html='<div style="font-family:var(--fd);font-size:22px;font-weight:800;color:'+col+';margin-bottom:4px;">'
-      +'Win rate '+pct1(j.winRate)+(wr>=0.70?' ✅':'')+'  ·  '+rfmt(j.expectancyR)+' / ไม้</div>'
-      +'<div class="sub" style="margin-bottom:8px;">เข้าเมื่อ score ≥ 64 · ปิดที่ TP1 = +0.5R · SL ที่โครงสร้าง'
-      + (iv==='15min'||iv==='30min'?' · <b style="color:var(--amber)">ข้อมูล '+iv+' สั้น (~1–3 เดือน) — เชื่อถือได้น้อย, เน้น H1/H4</b>':'')+'</div>';
+    let html='<div style="font-family:var(--fd);font-size:20px;font-weight:800;color:'+col+';margin-bottom:4px;">'
+      +(edge?'✅ มี edge เป็นบวก':j.expectancyR>0?'⚠️ บวกบาง ๆ':'❌ ติดลบในช่วงนี้')
+      +'  ·  ชนะ '+pct1(j.winRate)+'  ·  '+rfmt(j.expectancyR)+'/ไม้  ·  PF '+(pf?pf.toFixed(2):'—')+'</div>'
+      +'<div class="sub" style="margin-bottom:8px;">โมเดล Trigger: แท่ง rejection + ที่ระดับ + ADX≥20/MA + ในเวลาเทรด + MACD หันทาง · SL พ้นโครงสร้าง · ปิดครึ่งที่ TP1 เลื่อน SL มา BE'
+      + ((iv==='15min'||iv==='30min'||iv==='1h')?' · <b style="color:var(--sell)">⚠️ '+iv+' — backtest ติดลบ/สั้น แนะนำ H4</b>':'')+'</div>';
+    html+='<div class="sub faint" style="margin-bottom:10px;">ℹ️ win rate ~50–56% เป็นเรื่องปกติของระบบที่กำไรระยะยาว — กุญแจคือ <b>ไม้ชนะใหญ่กว่าไม้แพ้</b> (PF &gt; 1.3) ไม่ใช่ชนะบ่อย</div>';
     html+='<div class="grid3">'+cells.map(([n,v])=>`<div class="cell"><div class="n">${n}</div><div class="x">${v}</div></div>`).join('')+'</div>';
-    html+='<div class="scroll"><table style="margin-top:12px;"><thead><tr><th>ฝั่ง</th><th>เทรด</th><th>Win</th><th>Expectancy</th></tr></thead><tbody>'
-      +j.byDirection.map(x=>`<tr><td>${x.direction}</td><td>${x.trades}</td><td>${pct1(x.winRate)}</td><td style="color:${x.expectancyR>0?'var(--buy)':'var(--sell)'}">${rfmt(x.expectancyR)}</td></tr>`).join('')
+    html+='<div class="scroll"><table style="margin-top:12px;"><thead><tr><th>ฝั่ง</th><th>เทรด</th><th>Win</th></tr></thead><tbody>'
+      +j.byDirection.map(x=>`<tr><td>${x.direction}</td><td>${x.trades}</td><td>${pct1(x.winRate)}</td></tr>`).join('')
       +'</tbody></table></div>';
-    const notes=[...(j.verdict||[]),...(j.tuning||[])];
-    if(notes.length) html+='<ul class="toollist" style="margin-top:12px;">'+notes.map(x=>'<li>• '+x+'</li>').join('')+'</ul>';
     html+='<div class="sub faint" style="margin-top:8px;">* '+j.totalTrades+' เทรดใน 1 ช่วงตลาด — เป็นแนวโน้ม ไม่ใช่คำรับประกัน · '+(j.cached?'ผลจากแคช':'สด '+j.computeMs+'ms')+'</div>';
     out.innerHTML=html;
   }catch(e){ out.innerHTML='<span style="color:var(--sell)">'+e.message+'</span>'; }

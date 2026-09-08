@@ -54,19 +54,26 @@ TP = RR 1:1.6 หรือ swing ตรงข้าม (ไม่เกิน 3R
 (MA + MACD + RSI ต้องหันทางเทรดครบ) · Volume Profile POC + Value Area (`institutional.poc`, `.valueArea`)
 เข้าโซน STRONG → dashboard เรียก AI (`/api/commentary`) อ่านเกม + ชี้จังหวะเข้าอัตโนมัติ 1 ครั้ง/แท่ง
 
-**Trade plan (จูนให้ win rate ≥ 70%):** SL ที่โครงสร้าง · **TP1 = +0.5R** (ปิด 60–70% ที่นี่) ·
-TP2 = +2R (ย้าย SL มา BE) · TP3 = +4R (runner) · `institutional.plan`
+**Entry trigger (`institutional.entrySignal`)** — ระบบ *ไม่* บอกให้เข้าแค่เพราะ score สูง
+ต้องครบทุกข้อ: setup score ≥ 55 · อยู่ในเวลาเทรด (London+NY) · ADX ≥ 20 + MA ≥ 2/4 (ไม่ไซด์เวย์) ·
+ราคาอยู่ที่ระดับสำคัญ (โซน/POC/EMA/BOS) · แท่ง rejection ปิดยืนยัน · MACD histogram หันทางเทรด ·
+RSI ไม่ล้าเกิน. `entrySignal.fire` = true → เข้าได้ · ไม่ครบ → `entrySignal.blockers` บอกว่าขาดอะไร
 
-**Backtest โมเดล Institutional** — `GET /api/backtest?mode=institutional&interval=4h` หรือปุ่มบน dashboard ·
-`runInstitutionalBacktest()` เข้าเมื่อ score ≥ 64, ปิด TP1 0.5R, walk-forward ไม่มี look-ahead ·
-sweep 5000 แท่ง (พารามิเตอร์ที่เลือกเป็น local optimum ของ minScore):
+**Trade plan (เมื่อ trigger ยิง):** SL พ้นโครงสร้าง (ขอบโซน/swing − 0.4×ATR) · **TP1** = target โครงสร้างที่ 1.2–2.5R
+(ปิดครึ่ง แล้วเลื่อน SL มา BE) · TP2 ≈ 2.5R · TP3 ≈ 4.5R runner
 
-| Entry TF | ช่วง | เทรด | Win rate | Expectancy | รวม (R) | PF | Max DD |
+**Backtest โมเดล Trigger** — `GET /api/backtest?mode=trigger&interval=4h` หรือปุ่มบน dashboard ·
+`runTriggerBacktest()` เข้าเฉพาะเมื่อ `entrySignal.fire`, คิดสเปรด, ปิดครึ่งที่ TP1 + BE runner:
+
+| Entry TF | ช่วง | เทรด | Win rate | กำไร/ไม้ | รวม (R) | PF | Max DD |
 |---|---|---|---|---|---|---|---|
-| **H4** | ~2.8 ปี | 261 | **71.5%** | +0.072R | +18.7R | 1.25 | 8R |
-| **H1** | ~7 เดือน | 160 | **70.3%** | +0.053R | +8.5R | 1.18 | 5.9R |
+| **H4** ✅ | ~2.8 ปี, 32 mo | 59 | **54%** | **+0.44R** | +26R | **2.1** | **3R** |
+| H1 ❌ | ~7 เดือน | 27 | 27% | −0.34R | −9R | 0.47 | 11R |
+| M15/M30 ❌ | ~1–3 เดือน | — | ~30–42% | ติดลบ | — | — | — |
 
-M15/M30 ข้อมูลย้อนหลังสั้น (~1–3 เดือน) — expectancy ติดลบ, ใช้ H1/H4
+**สรุป: มี edge จริงบน H4 เท่านั้น** — win rate ~54% (ไม่ใช่ 70% — mechanical gold system
+ที่กำไรระยะยาวมัก 45–55%) แต่ **ไม้ชนะใหญ่กว่าไม้แพ้ 2 เท่า** (PF 2.1) และ drawdown เล็ก (< 4R)
+H1 ลงมาไม่มี edge — สัญญาณเยอะแต่แพ้บ่อย · เดิม (score ≥ 64, TP 0.5R) ก็ยังมีอยู่ที่ `mode=institutional`
 
 กรอบเวลาที่เลือกได้บน dashboard = **Entry TF** (M15/M30/H1/H4) — Structure & Trend TF เลื่อนตามอัตโนมัติ
 เช่น เลือก M15 → Structure=H1, Trend=H4 (ตรงตาม spec)
