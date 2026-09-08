@@ -86,7 +86,7 @@
   .tier.strong{color:var(--buy);} .tier.forming{color:var(--amber);} .tier.wait{color:var(--faint);}
   .meter{height:9px;border-radius:6px;background:var(--sunk);border:1px solid var(--border);margin:12px 0 4px;position:relative;overflow:hidden;}
   .meter i{position:absolute;left:0;top:0;bottom:0;border-radius:6px;background:linear-gradient(90deg,var(--amber),var(--buy));transition:width .7s ease-out;}
-  .meter u{position:absolute;left:72%;top:-3px;bottom:-3px;width:2px;background:var(--gold);}
+  .meter u{position:absolute;left:64%;top:-3px;bottom:-3px;width:2px;background:var(--gold);}
   .meterlbl{display:flex;justify-content:space-between;font-family:var(--fm);font-size:10px;color:var(--faint);}
   .comp{display:flex;flex-direction:column;gap:9px;margin-top:14px;}
   .comp .r{display:flex;align-items:flex-start;gap:9px;}
@@ -228,10 +228,10 @@
         </div>
         <div class="tier wait" id="tierLbl">—</div>
         <div class="meter"><i id="meterFill" style="width:0%"></i><u></u></div>
-        <div class="meterlbl"><span>0</span><span id="meterMark">72 = STRONG ZONE</span><span>100</span></div>
+        <div class="meterlbl"><span>0</span><span id="meterMark">64 = STRONG ZONE</span><span>100</span></div>
         <div class="comp" id="compList"></div>
         <div class="gate" id="gateRow"></div>
-        <div class="strongbox" id="strongBox" style="display:none;">≥ 72 คะแนน = STRONG ZONE</div>
+        <div class="strongbox" id="strongBox" style="display:none;">≥ 64 คะแนน = STRONG ZONE</div>
       </div>
 
       <!-- MA & MOMENTUM -->
@@ -254,12 +254,13 @@
         <div class="plan" id="plan" style="margin-top:10px;">
           <div class="pr entry"><span class="k">ENTRY (อ้างอิง)</span><span class="v" id="pEntry">—</span></div>
           <div class="pr sl"><span class="k" id="pSlK">SL (ใต้ Swing Low / โซน)</span><span class="v" id="pSl">—</span></div>
-          <div class="pr tp1"><span class="k">TP1 · RR 1:3</span><span class="v" id="pTp1">—</span></div>
-          <div class="pr tp2"><span class="k">TP2 · RR 1:5</span><span class="v" id="pTp2">—</span></div>
+          <div class="pr tp1"><span class="k">TP1 · +0.5R <b style="color:var(--gold)">← ปิด 60–70% (ชนะ ~70%)</b></span><span class="v" id="pTp1">—</span></div>
+          <div class="pr tp2"><span class="k">TP2 · +2R (ย้าย SL มา BE)</span><span class="v" id="pTp2">—</span></div>
+          <div class="pr tp2"><span class="k">TP3 · +4R (runner)</span><span class="v" id="pTp3">—</span></div>
         </div>
         <div class="rr2">
           <div class="pill"><div class="k">ความเสี่ยง / ไม้</div><div class="v" id="riskUsd">—</div></div>
-          <div class="pill"><div class="k">เป้าหมาย TP2</div><div class="v" id="rewardUsd">—</div></div>
+          <div class="pill"><div class="k">กำไรที่ TP1</div><div class="v" id="rewardUsd">—</div></div>
         </div>
         <div class="calc">
           <div><label for="lot">Lot</label><input id="lot" type="number" step="0.01" min="0.01" value="0.01"></div>
@@ -351,8 +352,9 @@
   </div>
 
   <details class="sec">
-    <summary>▶ ทดสอบย้อนหลัง — Backtest กลยุทธ์บนราคาจริง</summary>
-    <div class="sub" style="margin-bottom:10px;">รันกลยุทธ์เดียวกันย้อนหลังสูงสุด 5000 แท่ง แบบ walk-forward · ผลเป็นหน่วย <b>R</b> · <b>expectancy &gt; 0 = มี edge</b></div>
+    <summary>▶ ทดสอบย้อนหลัง — Win rate ของโมเดลบนราคาจริง</summary>
+    <div class="sub" style="margin-bottom:10px;">รันโมเดล Institutional (เข้าเมื่อ score ≥ 64 · ปิด TP1 ที่ +0.5R · SL โครงสร้าง) ย้อนหลังสูงสุด 5000 แท่ง แบบ walk-forward ไม่มี look-ahead ·
+      เป้าหมาย <b>win rate ≥ 70%</b> — sweep 5000 แท่ง: H1 ~70% (+8.5R), H4 ~72% (+18.7R)</div>
     <button id="btBtn" style="border-color:var(--buy);color:var(--buy);">▶ รัน Backtest</button>
     <div id="btOut" class="sub" style="margin-top:12px;"></div>
   </details>
@@ -445,8 +447,8 @@ function renderStatus(d){
     cls='sell'; word='เข้าขาย'; txt = `STRONG SELL ZONE ${inst.score}/100`;
   } else {
     cls='wait'; word='รอ';
-    if(inst.state==='ACCUMULATION') txt = `โซนสะสม ${inst.score}/100 — ยังไม่ถึง 72`;
-    else if(inst.state==='DISTRIBUTION') txt = `โซนกระจาย ${inst.score}/100 — ยังไม่ถึง 72`;
+    if(inst.state==='ACCUMULATION') txt = `โซนสะสม ${inst.score}/100 — ยังไม่ถึง 64`;
+    else if(inst.state==='DISTRIBUTION') txt = `โซนกระจาย ${inst.score}/100 — ยังไม่ถึง 64`;
     else txt = 'เทรนด์ H4 ยังไม่ชัด';
   }
   el.className = 'statusbadge ' + cls;
@@ -461,8 +463,8 @@ function renderScore(inst){
   const live = inst.state === 'ACCUMULATION' || inst.state === 'DISTRIBUTION';
   const w = W(inst);
   $('scoreHead').textContent = live ? w.scoreHead : 'Institutional Score';
-  $('meterMark').textContent = live ? ('72 = ' + w.strong) : '72 = STRONG ZONE';
-  $('strongBox').textContent = '≥ 72 คะแนน = ' + (live ? w.strong : 'STRONG ZONE');
+  $('meterMark').textContent = live ? ('64 = ' + w.strong) : '64 = STRONG ZONE';
+  $('strongBox').textContent = '≥ 64 คะแนน = ' + (live ? w.strong : 'STRONG ZONE');
   $('scoreNum').textContent = live ? inst.score : 0;
   const col = inst.tier==='STRONG_ZONE' ? w.accent : inst.tier==='FORMING' ? 'var(--amber)' : 'var(--faint)';
   $('scoreNum').style.color = col;
@@ -547,9 +549,10 @@ function riskCalc(){
   const contract = Math.max(Number($('contract').value)||1, 1);
   const unit = lot * contract;
   const live = inst && (inst.state==='ACCUMULATION' || inst.state==='DISTRIBUTION');
+  const tp1R = (inst && inst.plan && inst.plan.tp1R) || 0.5;
   if(L.slDistance==null || !live){ $('riskUsd').textContent='—'; $('rewardUsd').textContent='—'; return; }
   $('riskUsd').textContent   = '$' + Math.round(L.slDistance * unit).toLocaleString();
-  $('rewardUsd').textContent = '$' + Math.round(L.slDistance * 5 * unit).toLocaleString();
+  $('rewardUsd').textContent = '$' + Math.round(L.slDistance * tp1R * unit).toLocaleString();
 }
 function renderPlan(d){
   const inst = d.institutional, L = d.levels;
@@ -559,20 +562,23 @@ function renderPlan(d){
   if(!live){
     bn.innerHTML = `<div class="banner">${inst.note || 'ยังไม่มีโซน — เทรนด์ H4 ยังไม่ชัด'}</div>`;
   } else if(inst.ready){
-    bn.innerHTML = `<div class="banner ${w.cls}">✅ ${w.strong} — เงื่อนไขครบ ${inst.score}/100 · ${w.verb}ได้ตามแผน</div>`;
+    bn.innerHTML = `<div class="banner ${w.cls}">✅ ${w.strong} — score ${inst.score}/100 · ${w.verb}ตามแผน · ปิด TP1 (+0.5R) ให้เร็ว (backtest ชนะ ~70%)</div>`;
   } else {
-    bn.innerHTML = `<div class="banner">🟡 ${inst.tier==='FORMING'?w.zoneWord+'กำลังก่อตัว':'รอเงื่อนไข'} ${inst.score}/100 — ยังไม่ถึง 72 · รอ ${(inst.checklist||[]).filter(c=>!c.got).map(c=>c.name.split(' ')[1]||c.name.split(' ')[0]).slice(0,3).join(', ')}</div>`;
+    bn.innerHTML = `<div class="banner">🟡 ${inst.tier==='FORMING'?w.zoneWord+'กำลังก่อตัว':'รอเงื่อนไข'} ${inst.score}/100 — ยังไม่ถึง 64 · รอ ${(inst.checklist||[]).filter(c=>!c.got).map(c=>c.name.split(' ')[1]||c.name.split(' ')[0]).slice(0,3).join(', ')}</div>`;
   }
+  const P = inst.plan || { tp1R:0.5, tp2R:2, tp3R:4 };
   const show = live && L.entry != null;
   const R = L.slDistance;
   const sgn = w.buy ? 1 : -1;
-  const tp1 = show ? L.entry + sgn*R*3 : null;
-  const tp2 = show ? L.entry + sgn*R*5 : null;
+  const tp1 = show ? L.entry + sgn*R*P.tp1R : null;
+  const tp2 = show ? L.entry + sgn*R*P.tp2R : null;
+  const tp3 = show ? L.entry + sgn*R*P.tp3R : null;
   $('pEntry').textContent = show ? fmt(L.entry) : '—';
   $('pSl').textContent    = show ? fmt(L.sl) + (R?`  (-$${fmt(R)})`:'') : '—';
   $('pTp1').textContent   = tp1!=null ? fmt(tp1) : '—';
   $('pTp2').textContent   = tp2!=null ? fmt(tp2) : '—';
-  lastTrade = (show && inst.ready) ? { side:inst.side, entry:L.entry, sl:L.sl, tp1, tp2 } : null;
+  $('pTp3').textContent   = tp3!=null ? fmt(tp3) : '—';
+  lastTrade = (show && inst.ready) ? { side:inst.side, entry:L.entry, sl:L.sl, tp1, tp2, tp3 } : null;
   riskCalc();
   if(show && inst.ready) recordTrade(d, tp1);
 }
@@ -694,7 +700,7 @@ function drawLines(){
   if(!lastTrade) return;
   const eCol = lastTrade.side==='SELL' ? '#f4506b' : '#26d07c';
   const sCol = lastTrade.side==='SELL' ? '#26d07c' : '#f4506b';
-  [['Entry',lastTrade.entry,eCol],['SL',lastTrade.sl,sCol],['TP1',lastTrade.tp1,eCol],['TP2',lastTrade.tp2,eCol]].forEach(([txt,price,col])=>{
+  [['Entry',lastTrade.entry,eCol],['SL',lastTrade.sl,sCol],['TP1',lastTrade.tp1,eCol],['TP2',lastTrade.tp2,eCol],['TP3',lastTrade.tp3,eCol]].forEach(([txt,price,col])=>{
     if(price==null||!isFinite(price)) return;
     try{
       const id = chart.createShape({time:now,price}, { shape:'horizontal_line', text:txt+' '+Number(price).toFixed(2),
@@ -811,25 +817,27 @@ const pct1 = v => v==null ? '—' : (v*100).toFixed(1)+'%';
 const rfmt = v => v==null ? '—' : (v>=0?'+':'')+v.toFixed(2)+'R';
 $('btBtn').addEventListener('click', async ()=>{
   const btn=$('btBtn'), out=$('btOut');
-  btn.disabled=true; out.textContent='กำลังรัน backtest บน '+$('intervalSel').value+'…';
+  btn.disabled=true; out.textContent='กำลังรัน backtest (โมเดล Institutional · TP1 0.5R) บน '+$('intervalSel').value+'…';
   try{
     const iv=$('intervalSel').value;
-    const j=await api('/api/backtest?asset='+ASSET+'&interval='+iv+'&bars=5000');
+    const j=await api('/api/backtest?mode=institutional&asset='+ASSET+'&interval='+iv+'&bars=5000');
     if(j.error){ out.innerHTML='<span style="color:var(--sell)">'+j.error+'</span>'; return; }
-    const good=j.expectancyR>0.05, ok=j.expectancyR>0;
-    const col=good?'var(--buy)':ok?'var(--amber)':'var(--sell)';
+    const wr=j.winRate!=null?j.winRate:0;
+    const col=wr>=0.70&&j.totalR>0?'var(--buy)':wr>=0.6?'var(--amber)':'var(--sell)';
     const cells=[
       ['ช่วงที่ทดสอบ',(j.period.from||'').slice(0,10)+' → '+(j.period.to||'').slice(0,10)],
-      ['จำนวนเทรด',j.totalTrades+' (ชนะ '+j.wins+' / แพ้ '+j.losses+')'],
+      ['จำนวนเทรด',j.totalTrades+' (ชนะ '+j.wins+' / แพ้ '+j.losses+(j.scratches?' / เสมอ '+j.scratches:'')+')'],
       ['Win rate',pct1(j.winRate)],
       ['Expectancy/ไม้',rfmt(j.expectancyR)],
-      ['กำไรรวม',rfmt(j.totalR)],
+      ['กำไรรวม (R)',rfmt(j.totalR)],
       ['Profit factor',j.profitFactor==null?'—':j.profitFactor.toFixed(2)],
       ['Max drawdown',j.maxDrawdownR==null?'—':('-'+j.maxDrawdownR.toFixed(2)+'R')],
       ['แพ้ติดกันมากสุด',j.maxConsecutiveLosses+' ไม้'],
     ];
-    let html='<div style="font-family:var(--fd);font-size:20px;font-weight:800;color:'+col+';margin-bottom:8px;">'
-      +(good?'✅ กลยุทธ์มี edge เป็นบวก':ok?'⚠️ บวกบาง ๆ':'❌ ขาดทุนสุทธิในช่วงนี้')+'  '+rfmt(j.expectancyR)+' / ไม้</div>';
+    let html='<div style="font-family:var(--fd);font-size:22px;font-weight:800;color:'+col+';margin-bottom:4px;">'
+      +'Win rate '+pct1(j.winRate)+(wr>=0.70?' ✅':'')+'  ·  '+rfmt(j.expectancyR)+' / ไม้</div>'
+      +'<div class="sub" style="margin-bottom:8px;">เข้าเมื่อ score ≥ 64 · ปิดที่ TP1 = +0.5R · SL ที่โครงสร้าง'
+      + (iv==='15min'||iv==='30min'?' · <b style="color:var(--amber)">ข้อมูล '+iv+' สั้น (~1–3 เดือน) — เชื่อถือได้น้อย, เน้น H1/H4</b>':'')+'</div>';
     html+='<div class="grid3">'+cells.map(([n,v])=>`<div class="cell"><div class="n">${n}</div><div class="x">${v}</div></div>`).join('')+'</div>';
     html+='<div class="scroll"><table style="margin-top:12px;"><thead><tr><th>ฝั่ง</th><th>เทรด</th><th>Win</th><th>Expectancy</th></tr></thead><tbody>'
       +j.byDirection.map(x=>`<tr><td>${x.direction}</td><td>${x.trades}</td><td>${pct1(x.winRate)}</td><td style="color:${x.expectancyR>0?'var(--buy)':'var(--sell)'}">${rfmt(x.expectancyR)}</td></tr>`).join('')

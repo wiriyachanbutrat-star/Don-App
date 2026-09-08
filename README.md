@@ -49,10 +49,24 @@ TP = RR 1:1.6 หรือ swing ตรงข้าม (ไม่เกิน 3R
 | Momentum & Displacement | +15 | แท่งเขียว/แดง > 1.3×ATR (+5) · วอลุ่ม (+3) · MACD histogram/cross ตามทาง (+4) · RSI >50/<50 (+3) |
 | Pullback / Retest | +10 | ย่อ/เด้งมาทดสอบระดับที่ทะลุ หรือย่อเข้า EMA21/50 ในเทรนด์ที่ MA เรียงตัว |
 
-`≥ 72` = STRONG ZONE · `45–71` = กำลังก่อตัว · `< 45` = รอ ·
-`institutional.entryPlan` = จุดเข้าที่ใกล้ + confluent ที่สุด (โซน/EMA21/EMA50/BOS/QM) + ธง `armed`
-(MA + MACD + RSI ต้องหันทางเทรดครบ) · Trade plan: ENTRY/SL จาก `levels`, TP1 = ±3R, TP2 = ±5R ·
+`≥ 64` = STRONG ZONE · `42–63` = กำลังก่อตัว · `< 42` = รอ ·
+`institutional.entryPlan` = จุดเข้าที่ใกล้ + confluent ที่สุด (โซน/POC/EMA21/EMA50/BOS/QM) + ธง `armed`
+(MA + MACD + RSI ต้องหันทางเทรดครบ) · Volume Profile POC + Value Area (`institutional.poc`, `.valueArea`)
 เข้าโซน STRONG → dashboard เรียก AI (`/api/commentary`) อ่านเกม + ชี้จังหวะเข้าอัตโนมัติ 1 ครั้ง/แท่ง
+
+**Trade plan (จูนให้ win rate ≥ 70%):** SL ที่โครงสร้าง · **TP1 = +0.5R** (ปิด 60–70% ที่นี่) ·
+TP2 = +2R (ย้าย SL มา BE) · TP3 = +4R (runner) · `institutional.plan`
+
+**Backtest โมเดล Institutional** — `GET /api/backtest?mode=institutional&interval=4h` หรือปุ่มบน dashboard ·
+`runInstitutionalBacktest()` เข้าเมื่อ score ≥ 64, ปิด TP1 0.5R, walk-forward ไม่มี look-ahead ·
+sweep 5000 แท่ง (พารามิเตอร์ที่เลือกเป็น local optimum ของ minScore):
+
+| Entry TF | ช่วง | เทรด | Win rate | Expectancy | รวม (R) | PF | Max DD |
+|---|---|---|---|---|---|---|---|
+| **H4** | ~2.8 ปี | 261 | **71.5%** | +0.072R | +18.7R | 1.25 | 8R |
+| **H1** | ~7 เดือน | 160 | **70.3%** | +0.053R | +8.5R | 1.18 | 5.9R |
+
+M15/M30 ข้อมูลย้อนหลังสั้น (~1–3 เดือน) — expectancy ติดลบ, ใช้ H1/H4
 
 กรอบเวลาที่เลือกได้บน dashboard = **Entry TF** (M15/M30/H1/H4) — Structure & Trend TF เลื่อนตามอัตโนมัติ
 เช่น เลือก M15 → Structure=H1, Trend=H4 (ตรงตาม spec)
