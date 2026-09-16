@@ -198,7 +198,7 @@
       </select>
       <select id="intervalSel" title="กรอบเวลาหาจุดเข้า">
         <option value="15min">M15 ⚠️</option>
-        <option value="30min">M30 ⚠️</option>
+        <option value="30min">M30 ✅</option>
         <option value="1h">H1 ⚠️</option>
         <option value="4h" selected>H4 ✅</option>
       </select>
@@ -354,8 +354,9 @@
   <details class="sec">
     <summary>▶ ทดสอบย้อนหลัง — ผลจริงของโมเดล Trigger</summary>
     <div class="sub" style="margin-bottom:10px;">รันโมเดล Trigger ย้อนหลังสูงสุด 5000 แท่ง walk-forward ไม่มี look-ahead คิดสเปรดแล้ว ·
-      <b style="color:var(--buy)">H4 (High-Confidence): ชนะ ~65% · +0.62R/ไม้ · PF 2.9 · max drawdown ~4R · ~0.7 ไม้/เดือน</b> (2.8 ปี) ·
-      <b style="color:var(--sell)">H1 และต่ำกว่า: ติดลบ</b> — ใช้ H4</div>
+      <b style="color:var(--buy)">H4: ชนะ ~65% · +0.62R/ไม้ · PF 2.9 · max drawdown ~4R</b> (2.8 ปี, ~0.7 ไม้/เดือน) ·
+      <b style="color:var(--amber)">M30: ชนะ ~55% · +0.32R/ไม้ · PF 1.8</b> (sample เล็ก ~3.5 เดือน, ~3.7 ไม้/เดือน) ·
+      <b style="color:var(--sell)">M15 / H1: ทดสอบหลายสิบแบบแล้วยังติดลบทุกแบบ</b> — ใช้ M30/H4 เป็นหลัก</div>
     <button id="btBtn" style="border-color:var(--buy);color:var(--buy);">▶ รัน Backtest (H4)</button>
     <div id="btOut" class="sub" style="margin-top:12px;"></div>
   </details>
@@ -443,10 +444,11 @@ function renderStatus(d){
   const inst = d.institutional, es = inst.entrySignal || {};
   const el = $('statusBadge'), note = $('sbNote');
   let cls, word, txt;
+  const unrel = es.reliable === false ? ' ⚠️ TF นี้ยังไม่ยืนยัน' : '';
   if(es.fire && inst.side === 'BUY'){
-    cls='buy'; word='เข้าซื้อ'; txt = `ทริกเกอร์ยิงแล้ว · RR≈1:${es.rr1||'?'} · SL ${fmt(es.sl)}`;
+    cls='buy'; word='เข้าซื้อ'; txt = `ทริกเกอร์ยิงแล้ว · RR≈1:${es.rr1||'?'} · SL ${fmt(es.sl)}${unrel}`;
   } else if(es.fire && inst.side === 'SELL'){
-    cls='sell'; word='เข้าขาย'; txt = `ทริกเกอร์ยิงแล้ว · RR≈1:${es.rr1||'?'} · SL ${fmt(es.sl)}`;
+    cls='sell'; word='เข้าขาย'; txt = `ทริกเกอร์ยิงแล้ว · RR≈1:${es.rr1||'?'} · SL ${fmt(es.sl)}${unrel}`;
   } else if(inst.ready){
     cls='wait'; word='พร้อม';
     txt = `${W(inst).zoneWord} ${inst.score}/100 — รอทริกเกอร์: ${(es.blockers||['—']).slice(0,2).join(' · ')}`;
@@ -576,14 +578,16 @@ function riskCalc(){
 function renderPlan(d){
   const inst = d.institutional, es = inst.entrySignal || {}, w = W(inst);
   const bn = $('planBanner');
+  const unreliable = es.reliable === false;
+  const warn = unreliable ? `<div class="banner" style="margin-bottom:6px;border-color:var(--sell);color:var(--sell);">⚠️ กรอบเวลานี้ backtest ยังไม่พบ edge ที่เป็นบวกอย่างน่าเชื่อถือ — ใช้ดูจังหวะ/ติดตามเท่านั้น ไม่แนะนำให้เข้าจริงตามสัญญาณนี้ (ดู H4 หรือ M30 แทน)</div>` : '';
   if(inst.state!=='ACCUMULATION' && inst.state!=='DISTRIBUTION'){
-    bn.innerHTML = `<div class="banner">${inst.note || 'ยังไม่มีโซน — เทรนด์ H4 ยังไม่ชัด'}</div>`;
+    bn.innerHTML = warn + `<div class="banner">${inst.note || 'ยังไม่มีโซน — เทรนด์ H4 ยังไม่ชัด'}</div>`;
   } else if(es.fire){
-    bn.innerHTML = `<div class="banner ${w.cls}">✅ ทริกเกอร์ยิงแล้ว — ${w.verb} · ปิดครึ่งที่ TP1 (~1.4R) แล้วเลื่อน SL มา BE · ปล่อย runner ไป TP2/TP3</div>`;
+    bn.innerHTML = warn + `<div class="banner ${w.cls}">✅ ทริกเกอร์ยิงแล้ว — ${w.verb} · ปิดครึ่งที่ TP1 (~1.4R) แล้วเลื่อน SL มา BE · ปล่อย runner ไป TP2/TP3</div>`;
   } else if(inst.ready){
-    bn.innerHTML = `<div class="banner">⏳ เซ็ตอัพพร้อม (${inst.score}/100) — <b>ยังไม่เข้า</b> รอทริกเกอร์: ${(es.blockers||['—']).slice(0,3).join(' · ')}</div>`;
+    bn.innerHTML = warn + `<div class="banner">⏳ เซ็ตอัพพร้อม (${inst.score}/100) — <b>ยังไม่เข้า</b> รอทริกเกอร์: ${(es.blockers||['—']).slice(0,3).join(' · ')}</div>`;
   } else {
-    bn.innerHTML = `<div class="banner">🟡 ${inst.tier==='FORMING'?w.zoneWord+'กำลังก่อตัว':'รอเงื่อนไข'} ${inst.score}/100 — ยังไม่ถึง 64</div>`;
+    bn.innerHTML = warn + `<div class="banner">🟡 ${inst.tier==='FORMING'?w.zoneWord+'กำลังก่อตัว':'รอเงื่อนไข'} ${inst.score}/100 — ยังไม่ถึง 64</div>`;
   }
   const p = planLevels(d);
   const show = p.live;
@@ -856,7 +860,8 @@ $('btBtn').addEventListener('click', async ()=>{
       +(edge?'✅ มี edge เป็นบวก':j.expectancyR>0?'⚠️ บวกบาง ๆ':'❌ ติดลบในช่วงนี้')
       +'  ·  ชนะ '+pct1(j.winRate)+'  ·  '+rfmt(j.expectancyR)+'/ไม้  ·  PF '+(pf?pf.toFixed(2):'—')+'</div>'
       +'<div class="sub" style="margin-bottom:8px;">โมเดล Trigger (High-Confidence): แท่ง rejection ที่ระดับ + ADX≥18 + MA เรียงตัว ≥3/4 + RSI ยืนยันฝั่ง + ในเวลาเทรด + MACD หันทาง · SL พ้นโครงสร้าง · ปิดครึ่งที่ TP1 เลื่อน SL มา BE'
-      + ((iv==='15min'||iv==='30min'||iv==='1h')?' · <b style="color:var(--sell)">⚠️ '+iv+' — backtest ติดลบ/สั้น แนะนำ H4</b>':'')+'</div>';
+      + ((iv==='15min'||iv==='1h')?' · <b style="color:var(--sell)">⚠️ '+iv+' — ทดสอบหลายแบบแล้วยังติดลบ ไม่แนะนำ</b>'
+         : iv==='30min' ? ' · <b style="color:var(--amber)">M30 — sample เล็ก (~3.5 เดือน) ยังไม่หนักแน่นเท่า H4</b>' : '')+'</div>';
     html+='<div class="sub faint" style="margin-bottom:10px;">ℹ️ โหมด High-Confidence (MA เรียงตัว ≥3/4 + RSI ยืนยันฝั่ง) เน้นความแม่น — win rate ~65% แลกกับความถี่ที่ลดลง (~0.7 ไม้/เดือน) · <b>PF &gt; 2 = ไม้ชนะใหญ่กว่าไม้แพ้มาก</b></div>';
     html+='<div class="grid3">'+cells.map(([n,v])=>`<div class="cell"><div class="n">${n}</div><div class="x">${v}</div></div>`).join('')+'</div>';
     html+='<div class="scroll"><table style="margin-top:12px;"><thead><tr><th>ฝั่ง</th><th>เทรด</th><th>Win</th></tr></thead><tbody>'

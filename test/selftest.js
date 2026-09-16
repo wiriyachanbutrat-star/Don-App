@@ -176,6 +176,13 @@ function check(name, cond, detail) {
   check('strategy: institutional has MA stack + MACD + POC + entryPlan', up.institutional.maStack && ['UP','DOWN','MIXED','NA'].includes(up.institutional.maStack.dir) && 'macd' in up.institutional && 'poc' in up.institutional && 'entryPlan' in up.institutional);
   check('strategy: entrySignal present with fire flag', up.institutional.entrySignal && typeof up.institutional.entrySignal.fire === 'boolean' && 'armed' in up.institutional && 'adx' in up.institutional);
   check('strategy: entrySignal not firing → has blockers list', up.institutional.entrySignal.fire === false ? Array.isArray(up.institutional.entrySignal.blockers) : (up.institutional.entrySignal.entry != null && up.institutional.entrySignal.sl != null));
+
+  // Per-TF entry-trigger reliability: backtest found real edge only on H4/M30.
+  const up4h = S.analyze({ assetKey: 'XAU', interval: '4h', entryCandles: mk(320, 2000, 0.8), structureCandles: mk(320, 1950, 1.2), trendCandles: mk(320, 1900, 1.6) });
+  const up1h = S.analyze({ assetKey: 'XAU', interval: '1h', entryCandles: mk(320, 2000, 0.8), structureCandles: mk(320, 1950, 1.2), trendCandles: mk(320, 1900, 1.6) });
+  check('strategy: 4h entrySignal marked reliable', up4h.institutional.entrySignal.reliable === true);
+  check('strategy: 1h entrySignal marked unreliable (no backtested edge)', up1h.institutional.entrySignal.reliable === false);
+  check('strategy: entryOpts override wins over per-TF default', S.analyze({ assetKey:'XAU', interval:'1h', entryCandles: mk(320,2000,0.8), structureCandles: mk(320,1950,1.2), trendCandles: mk(320,1900,1.6), entryOpts:{ reliable:true } }).institutional.entrySignal.reliable === true);
   check('strategy: indicators expose POC', 'poc' in up.indicators && 'volumeProfile' in up.indicators);
   check('strategy: indicators expose EMA 9/21/50/200', up.indicators.ema9 != null && up.indicators.ema21 != null && up.indicators.ema50 != null && up.indicators.ema200 != null);
   check('strategy: institutional (SELL) → DISTRIBUTION', dn.institutional && dn.institutional.state === 'DISTRIBUTION' && dn.institutional.side === 'SELL' && dn.institutional.components.length === 6 && dn.institutional.checklist.some(c => /Sweep High/.test(c.name)), JSON.stringify(dn.institutional && dn.institutional.checklist.map(c => c.name)));
