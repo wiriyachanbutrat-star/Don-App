@@ -354,7 +354,7 @@
   <details class="sec">
     <summary>▶ ทดสอบย้อนหลัง — ผลจริงของโมเดล Trigger</summary>
     <div class="sub" style="margin-bottom:10px;">รันโมเดล Trigger ย้อนหลังสูงสุด 5000 แท่ง walk-forward ไม่มี look-ahead คิดสเปรดแล้ว ·
-      <b style="color:var(--buy)">H4: ชนะ ~58% · +0.50R/ไม้ · PF 2.4 · max drawdown ~3R · ~1.4 ไม้/เดือน</b> (2.8 ปี) ·
+      <b style="color:var(--buy)">H4 (High-Confidence): ชนะ ~65% · +0.62R/ไม้ · PF 2.9 · max drawdown ~4R · ~0.7 ไม้/เดือน</b> (2.8 ปี) ·
       <b style="color:var(--sell)">H1 และต่ำกว่า: ติดลบ</b> — ใช้ H4</div>
     <button id="btBtn" style="border-color:var(--buy);color:var(--buy);">▶ รัน Backtest (H4)</button>
     <div id="btOut" class="sub" style="margin-top:12px;"></div>
@@ -855,9 +855,9 @@ $('btBtn').addEventListener('click', async ()=>{
     let html='<div style="font-family:var(--fd);font-size:20px;font-weight:800;color:'+col+';margin-bottom:4px;">'
       +(edge?'✅ มี edge เป็นบวก':j.expectancyR>0?'⚠️ บวกบาง ๆ':'❌ ติดลบในช่วงนี้')
       +'  ·  ชนะ '+pct1(j.winRate)+'  ·  '+rfmt(j.expectancyR)+'/ไม้  ·  PF '+(pf?pf.toFixed(2):'—')+'</div>'
-      +'<div class="sub" style="margin-bottom:8px;">โมเดล Trigger: แท่ง rejection + ที่ระดับ + ADX≥20/MA + ในเวลาเทรด + MACD หันทาง · SL พ้นโครงสร้าง · ปิดครึ่งที่ TP1 เลื่อน SL มา BE'
+      +'<div class="sub" style="margin-bottom:8px;">โมเดล Trigger (High-Confidence): แท่ง rejection ที่ระดับ + ADX≥18 + MA เรียงตัว ≥3/4 + RSI ยืนยันฝั่ง + ในเวลาเทรด + MACD หันทาง · SL พ้นโครงสร้าง · ปิดครึ่งที่ TP1 เลื่อน SL มา BE'
       + ((iv==='15min'||iv==='30min'||iv==='1h')?' · <b style="color:var(--sell)">⚠️ '+iv+' — backtest ติดลบ/สั้น แนะนำ H4</b>':'')+'</div>';
-    html+='<div class="sub faint" style="margin-bottom:10px;">ℹ️ win rate ~50–56% เป็นเรื่องปกติของระบบที่กำไรระยะยาว — กุญแจคือ <b>ไม้ชนะใหญ่กว่าไม้แพ้</b> (PF &gt; 1.3) ไม่ใช่ชนะบ่อย</div>';
+    html+='<div class="sub faint" style="margin-bottom:10px;">ℹ️ โหมด High-Confidence (MA เรียงตัว ≥3/4 + RSI ยืนยันฝั่ง) เน้นความแม่น — win rate ~65% แลกกับความถี่ที่ลดลง (~0.7 ไม้/เดือน) · <b>PF &gt; 2 = ไม้ชนะใหญ่กว่าไม้แพ้มาก</b></div>';
     html+='<div class="grid3">'+cells.map(([n,v])=>`<div class="cell"><div class="n">${n}</div><div class="x">${v}</div></div>`).join('')+'</div>';
     html+='<div class="scroll"><table style="margin-top:12px;"><thead><tr><th>ฝั่ง</th><th>เทรด</th><th>Win</th></tr></thead><tbody>'
       +j.byDirection.map(x=>`<tr><td>${x.direction}</td><td>${x.trades}</td><td>${pct1(x.winRate)}</td></tr>`).join('')
