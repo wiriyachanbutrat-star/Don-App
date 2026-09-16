@@ -227,6 +227,18 @@ function check(name, cond, detail) {
   check('volumeProfile: POC in range & value area ordered',
     vp && vp.val <= vp.poc && vp.poc <= vp.vah && vp.poc >= vp.lo && vp.poc <= vp.hi && vp.source === 'volume', JSON.stringify(vp));
   check('volumeProfile: null on too little data', I.volumeProfile([{ time: '0', open: 1, high: 1, low: 1, close: 1 }], 20) === null);
+
+  // meanReversion: too little data -> no fire, has blockers
+  const mrShort = S.meanReversion([{ time: '2024-01-01 00:00:00', open: 1, high: 1, low: 1, close: 1 }]);
+  check('meanReversion: too little data -> no fire', mrShort.fire === false && Array.isArray(mrShort.blockers) && mrShort.blockers.length > 0);
+  // ranging + oversold synthetic series should at least evaluate without throwing and report ADX/RSI
+  const mrc = [];
+  for (let i = 0; i < 80; i++) {
+    const v = 2000 + Math.sin(i / 4) * 10 - (i > 70 ? 15 : 0);
+    mrc.push({ time: `2024-01-01 ${String(i % 24).padStart(2, '0')}:00:00`, open: v, high: v + 1.5, low: v - 1.5, close: v });
+  }
+  const mr = S.meanReversion(mrc);
+  check('meanReversion: returns rsi/adx/bb on enough data', mr.rsi != null && mr.adx != null && mr.bb && typeof mr.fire === 'boolean', JSON.stringify({ fire: mr.fire, rsi: mr.rsi, adx: mr.adx }));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

@@ -8,7 +8,7 @@ const nodemailer = require('nodemailer');
 const { ASSETS, VALID_INTERVALS, getAnalysis, getLongSeries } = require('./lib/marketData');
 const { assetConfig, higherInterval, trendInterval } = require('./lib/strategy');
 const { getCommentary, MODEL: AI_MODEL } = require('./lib/aiCommentary');
-const { runBacktest, runInstitutionalBacktest, runTriggerBacktest } = require('./lib/backtest');
+const { runBacktest, runInstitutionalBacktest, runTriggerBacktest, runMeanReversionBacktest } = require('./lib/backtest');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -91,24 +91,31 @@ app.get('/api/backtest', async (req, res) => {
   const asset = pickAsset(req.query.asset);
   const interval = pickInterval(req.query.interval);
   const bars = Math.max(800, Math.min(5000, Number(req.query.bars) || 3000));
-  const mode = ['institutional', 'trigger'].includes(req.query.mode) ? req.query.mode : 'signal';
+  const mode = ['institutional', 'trigger', 'meanreversion'].includes(req.query.mode) ? req.query.mode : 'signal';
   const cacheKey = `${mode}:${asset}:${interval}:${bars}`;
   const hit = backtestCache.get(cacheKey);
   if (hit && Date.now() - hit.time < BACKTEST_TTL_MS) {
     return res.json({ ...hit.data, cached: true });
   }
   try {
-    const [candles, structureCandles, trendCandles] = await Promise.all([
-      getLongSeries(asset, interval, bars),
-      getLongSeries(asset, higherInterval(interval), bars),
-      getLongSeries(asset, trendInterval(interval), bars),
-    ]);
     const t0 = Date.now();
-    const result = mode === 'trigger'
-      ? runTriggerBacktest({ assetKey: asset, interval, candles, structureCandles, trendCandles })
-      : mode === 'institutional'
-        ? runInstitutionalBacktest({ assetKey: asset, interval, candles, structureCandles, trendCandles, minScore: 64, tpR: 0.5 })
-        : runBacktest({ assetKey: asset, interval, candles, structureCandles, trendCandles });
+    let result;
+    if (mode === 'meanreversion') {
+      // Single-TF model — no higher-TF fetch needed.
+      const candles = await getLongSeries(asset, interval, bars);
+      result = runMeanReversionBacktest({ assetKey: asset, interval, candles });
+    } else {
+      const [candles, structureCandles, trendCandles] = await Promise.all([
+        getLongSeries(asset, interval, bars),
+        getLongSeries(asset, higherInterval(interval), bars),
+        getLongSeries(asset, trendInterval(interval), bars),
+      ]);
+      result = mode === 'trigger'
+        ? runTriggerBacktest({ assetKey: asset, interval, candles, structureCandles, trendCandles })
+        : mode === 'institutional'
+          ? runInstitutionalBacktest({ assetKey: asset, interval, candles, structureCandles, trendCandles, minScore: 64, tpR: 0.5 })
+          : runBacktest({ assetKey: asset, interval, candles, structureCandles, trendCandles });
+    }
     result.asset = asset;
     result.computeMs = Date.now() - t0;
     if (!result.error) backtestCache.set(cacheKey, { time: Date.now(), data: result });
